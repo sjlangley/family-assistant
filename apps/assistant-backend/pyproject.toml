@@ -40,15 +40,11 @@ dev = [
     "yapf==0.43.0"
 ]
 
-[project.scripts]
-assistant = "assistant.app:app"
-
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
 assistant = ["py.typed"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
