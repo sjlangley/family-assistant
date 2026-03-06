@@ -7,14 +7,14 @@ on:
       - 'apps/assistant-ui/**'
       - '!apps/assistant-ui/*.md'
       - '!apps/assistant-ui/**/*.md'
-      - '.github/workflows/ci-assistant-ui.yml'
+      - '.github/workflows/assistant-ui-ci.yml'
   pull_request:
     branches: [main]
     paths:
       - 'apps/assistant-ui/**'
       - '!apps/assistant-ui/*.md'
       - '!apps/assistant-ui/**/*.md'
-      - '.github/workflows/ci-assistant-ui.yml'
+      - '.github/workflows/assistant-ui-ci.yml'
 
 jobs:
   build:
