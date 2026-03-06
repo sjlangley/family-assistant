@@ -1,0 +1,39 @@
+# Assistant UI
+
+Minimal LLM UI scaffold using Vite, React, TypeScript, Tailwind, Vitest, and Prettier.
+
+## Prerequisites
+
+- Node.js 20+
+- npm 10+
+
+## Install
+
+```bash
+npm install
+```
+
+## Run locally
+
+```bash
+npm run dev
+```
+
+## Run tests
+
+```bash
+npm run test
+```
+
+## Format
+
+```bash
+npm run format
+```
+
+## Run with Docker
+
+```bash
+docker build -t assistant-ui .
+docker run --rm -p 5173:5173 assistant-ui
+```
