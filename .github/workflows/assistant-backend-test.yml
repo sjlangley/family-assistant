@@ -7,14 +7,14 @@ on:
       - 'apps/assistant-backend/**'
       - '!apps/assistant-backend/*.md'
       - '!apps/assistant-backend/**/*.md'
-      - '.github/workflows/assistant-backend-tests.yml'
+      - '.github/workflows/assistant-backend-test.yml'
   pull_request:
     branches: [main]
     paths:
       - 'apps/assistant-backend/**'
       - '!apps/assistant-backend/*.md'
       - '!apps/assistant-backend/**/*.md'
-      - '.github/workflows/assistant-backend-tests.yml'
+      - '.github/workflows/assistant-backend-test.yml'
 
 jobs:
   test:
