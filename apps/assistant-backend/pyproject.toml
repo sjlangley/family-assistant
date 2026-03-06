@@ -15,15 +15,17 @@ authors = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
     "fastapi==0.128.0",
+    "gunicorn==25.1.0",
     "pydantic==2.12.5",
     "pydantic-settings==2.12.0",
+    "uvicorn==0.41.0",
 ]
 
 [project.optional-dependencies]
@@ -52,6 +54,7 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = [
     "--strict-markers",
+    "--cov=src",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-fail-under=90",
