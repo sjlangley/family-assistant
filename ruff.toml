@@ -1,0 +1,31 @@
+line-length = 80
+target-version = "py313"
+exclude = ["CHANGELOG.md"]
+
+[lint]
+select = ["A", "B", "C", "E", "F", "I", "PT", "ASYNC"]
+ignore = ["B008", "C901", "E501"]
+
+[lint.flake8-quotes]
+inline-quotes = "single"
+multiline-quotes = "single"
+
+
+[format]
+quote-style = "single"
+indent-style = "space"
+
+
+[lint.isort]
+# PEP 8 import sorting configuration
+combine-as-imports = true
+force-sort-within-sections = true
+lines-between-types = 1
+known-first-party = ["assistant"]
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder"
+]
