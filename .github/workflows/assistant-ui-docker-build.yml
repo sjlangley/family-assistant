@@ -59,7 +59,7 @@ jobs:
           sleep_duration=1
 
           while [ $attempt -lt $max_attempts ]; do
-            if curl -f -s --max-time 5 --retry 2 --retry-delay 1 http://localhost:5173 > /dev/null 2>&1; then
+            if curl -f -s --max-time 5 --retry 2 --retry-delay 1 http://localhost:300 > /dev/null 2>&1; then
               echo "Application is running!"
               exit 0
             fi
