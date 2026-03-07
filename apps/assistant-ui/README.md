@@ -35,5 +35,5 @@ npm run format
 
 ```bash
 docker build -t assistant-ui .
-docker run --rm -p 5173:5173 assistant-ui
+docker run --rm -p 3000:3000 assistant-ui
 ```
