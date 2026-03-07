@@ -19,16 +19,16 @@ RUN npm install -g serve
 
 # Create a non-root user
 RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nextjs -u 1001
+RUN adduser -S assistantui -u 1001
 
 # Copy built app from builder
 COPY --from=builder /app/dist ./dist
 
 # Set proper ownership
-RUN chown -R nextjs:nodejs /app
+RUN chown -R assistantui:nodejs /app
 
 # Switch to non-root user
-USER nextjs
+USER assistantui
 
 EXPOSE 3000
 

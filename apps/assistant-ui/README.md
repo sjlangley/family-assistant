@@ -4,7 +4,7 @@ Minimal LLM UI scaffold using Vite, React, TypeScript, Tailwind, Vitest, and Pre
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 22+
 - npm 10+
 
 ## Install
