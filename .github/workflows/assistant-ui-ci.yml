@@ -1,4 +1,4 @@
-name: AAssistant UI CI/CD
+name: Assistant UI CI/CD
 
 on:
   push:
