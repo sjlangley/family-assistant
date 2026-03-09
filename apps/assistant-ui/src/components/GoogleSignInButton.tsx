@@ -3,13 +3,33 @@
  * Uses Google Identity Services to render the sign-in button
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../lib/auth";
 
 export function GoogleSignInButton() {
   const buttonRef = useRef<HTMLDivElement>(null);
   const { loginWithGoogle } = useAuth();
+  const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
 
+  // Wait for Google Identity Services script to load
+  useEffect(() => {
+    if (window.google) {
+      setIsGoogleLoaded(true);
+      return;
+    }
+
+    // Poll for Google script availability
+    const checkGoogle = setInterval(() => {
+      if (window.google) {
+        setIsGoogleLoaded(true);
+        clearInterval(checkGoogle);
+      }
+    }, 100);
+
+    return () => clearInterval(checkGoogle);
+  }, []);
+
+  // Initialize Google Sign-In button once script is loaded
   useEffect(() => {
     const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -22,7 +42,7 @@ export function GoogleSignInButton() {
       return;
     }
 
-    if (!window.google || !buttonRef.current) {
+    if (!isGoogleLoaded || !buttonRef.current) {
       return;
     }
 
@@ -44,7 +64,7 @@ export function GoogleSignInButton() {
       size: "large",
       text: "signin_with",
     });
-  }, [loginWithGoogle]);
+  }, [isGoogleLoaded, loginWithGoogle]);
 
   return <div ref={buttonRef} data-testid="google-signin-button"></div>;
 }
