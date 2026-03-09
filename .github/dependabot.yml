@@ -10,6 +10,16 @@ updates:
     schedule:
       interval: monthly
 
+  - package-ecosystem: docker
+    directory: /apps/assistant-backend
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: docker
+    directory: /apps/assistant-ui
+    schedule:
+      interval: monthly
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
