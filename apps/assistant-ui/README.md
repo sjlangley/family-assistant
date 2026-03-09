@@ -28,7 +28,7 @@ Frontend for the Family Assistant application. Implements Google OAuth authentic
 npm install
 ```
 
-1. **Configure environment variables:**
+2. **Configure environment variables:**
 
 ```bash
 cp .env.example .env
