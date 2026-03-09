@@ -38,7 +38,7 @@ async def get_current_google_user(
     if token is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail='Authorization header missing',
+            detail='Missing or invalid Authorization header',
         )
 
     return await verify_bearer_token(token.credentials)

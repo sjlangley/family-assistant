@@ -31,7 +31,7 @@ app.add_middleware(
     session_cookie='family-assistant-session',
     max_age=60 * 60 * 24 * 7,  # 7 days
     same_site='lax',
-    https_only=settings.environment == Environment.PRODUCTION,
+    https_only=settings.environment in (Environment.PRODUCTION, Environment.STAGING),
 )
 
 app.include_router(health.router, prefix='/health')
