@@ -5,13 +5,15 @@
 
 import type { User } from "../types/api";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+function getApiBaseUrl(): string {
+  return import.meta.env.VITE_API_BASE_URL || "";
+}
 
 /**
  * Login with Google ID token
  */
 export async function login(googleIdToken: string): Promise<User> {
-  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+  const response = await fetch(`${getApiBaseUrl()}/auth/login`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${googleIdToken}`,
@@ -33,7 +35,7 @@ export async function login(googleIdToken: string): Promise<User> {
 export async function getCurrentUser(
   signal?: AbortSignal,
 ): Promise<User | null> {
-  const response = await fetch(`${API_BASE_URL}/user/current`, {
+  const response = await fetch(`${getApiBaseUrl()}/user/current`, {
     credentials: "include",
     signal,
   });
@@ -53,7 +55,7 @@ export async function getCurrentUser(
  * Logout current user
  */
 export async function logout(): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+  const response = await fetch(`${getApiBaseUrl()}/auth/logout`, {
     method: "POST",
     credentials: "include",
   });
