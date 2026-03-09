@@ -42,7 +42,7 @@ export function GoogleSignInButton() {
       return;
     }
 
-    if (!isGoogleLoaded || !buttonRef.current) {
+    if (!isGoogleLoaded || !window.google || !buttonRef.current) {
       return;
     }
 
