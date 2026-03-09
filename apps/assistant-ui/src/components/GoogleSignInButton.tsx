@@ -6,13 +6,13 @@
 import { useEffect, useRef } from "react";
 import { useAuth } from "../lib/auth";
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-
 export function GoogleSignInButton() {
   const buttonRef = useRef<HTMLDivElement>(null);
   const { loginWithGoogle } = useAuth();
 
   useEffect(() => {
+    const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
     if (!GOOGLE_CLIENT_ID) {
       console.error(
         "VITE_GOOGLE_CLIENT_ID environment variable is not set. " +
