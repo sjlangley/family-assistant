@@ -9,6 +9,15 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
+      exclude: [
+        "**/*.config.*",
+        "**/main.tsx",
+        "**/setupTests.ts",
+        "**/vite-env.d.ts",
+        "**/*.d.ts",
+        "**/node_modules/**",
+        "**/dist/**",
+      ],
     },
   },
 });
