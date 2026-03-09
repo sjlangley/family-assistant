@@ -1,4 +1,4 @@
-"""REST API handler for health checking."""
+"""REST API handler for current user APIs."""
 
 from fastapi import APIRouter, Request, status
 

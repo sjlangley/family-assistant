@@ -1,4 +1,4 @@
-"""REST API handler for health checking."""
+"""REST API handler for user authentication."""
 
 from typing import Annotated
 
@@ -36,11 +36,10 @@ async def login(user: CurrentGoogleUser, request: Request) -> User:
 
 @router.post(
     '/logout',
-    response_description='Return HTTP Status Code 200 (OK)',
-    status_code=status.HTTP_200_OK,
+    response_description='Return HTTP Status Code 204 (No Content)',
+    status_code=status.HTTP_204_NO_CONTENT,
     include_in_schema=False,
 )
-async def logout(request: Request) -> None:
+async def logout(request: Request):
     """Clear the user session to log out."""
     request.session.clear()
-    return None

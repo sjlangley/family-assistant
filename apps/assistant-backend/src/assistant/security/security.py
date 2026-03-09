@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 security = HTTPBearer(auto_error=False)
 
-_AUTH_BYPASS_ALLOWED_ENVS = {Environment.LOCAL}
+_AUTH_BYPASS_ALLOWED_ENVS = {Environment.LOCAL, Environment.DEVELOPMENT}
 
 
 async def get_current_google_user(

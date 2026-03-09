@@ -28,17 +28,23 @@ async def test_login_endpoint(async_test_client):
     cookies = {
         'family-assistant-session': response.cookies['family-assistant-session']
     }
-    verify_response = await async_test_client.get('/health', cookies=cookies)
+    verify_response = await async_test_client.get(
+        '/user/current', cookies=cookies
+    )
     assert verify_response.status_code == 200
 
 
 @pytest.mark.asyncio
 async def test_logout_endpoint(authenticated_async_test_client):
     """Test that logout endpoint clears the session."""
-    response = await authenticated_async_test_client.post('/auth/logout')
-
-    # Verify status code
+    # Ensure we are logged in first
+    response = await authenticated_async_test_client.get('/user/current')
     assert response.status_code == 200
 
+    # Log out
+    response = await authenticated_async_test_client.post('/auth/logout')
+    assert response.status_code == 204
+
     # Verify session cookie was cleared
-    assert 'family-assistant-session' not in response.cookies
+    response = await authenticated_async_test_client.get('/user/current')
+    assert response.status_code == 401
