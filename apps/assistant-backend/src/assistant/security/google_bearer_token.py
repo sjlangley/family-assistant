@@ -1,6 +1,5 @@
 """Verifies the bearer token in the Authorization header."""
 
-import asyncio
 from functools import lru_cache
 import logging
 from typing import Any
