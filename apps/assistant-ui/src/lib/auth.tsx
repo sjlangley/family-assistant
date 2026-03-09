@@ -36,30 +36,30 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Check authentication status on mount
   useEffect(() => {
-    let mounted = true;
+    const abortController = new AbortController();
 
     async function checkAuth() {
       try {
-        const user = await api.getCurrentUser();
-        if (mounted) {
-          if (user) {
-            setAuthState({ status: "authenticated", user });
-          } else {
-            setAuthState({ status: "unauthenticated" });
-          }
-        }
-      } catch (error) {
-        console.error("Auth check failed:", error);
-        if (mounted) {
+        const user = await api.getCurrentUser(abortController.signal);
+        if (user) {
+          setAuthState({ status: "authenticated", user });
+        } else {
           setAuthState({ status: "unauthenticated" });
         }
+      } catch (error) {
+        // Ignore abort errors - component unmounted
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+        console.error("Auth check failed:", error);
+        setAuthState({ status: "unauthenticated" });
       }
     }
 
     checkAuth();
 
     return () => {
-      mounted = false;
+      abortController.abort();
     };
   }, []);
 

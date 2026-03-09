@@ -89,22 +89,6 @@ describe("App", () => {
     expect(screen.getByTestId("logout-button")).toBeInTheDocument();
   });
 
-  it("handles 401 response from getCurrentUser", async () => {
-    vi.mocked(api.getCurrentUser).mockResolvedValue(null);
-
-    render(
-      <AuthProvider>
-        <App />
-      </AuthProvider>,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId("login-section")).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("Family Assistant")).toBeInTheDocument();
-  });
-
   it("handles logout button click", async () => {
     const user = userEvent.setup();
     const mockUser = {

@@ -30,9 +30,12 @@ export async function login(googleIdToken: string): Promise<User> {
  * Get current authenticated user
  * Returns null if not authenticated (401 response)
  */
-export async function getCurrentUser(): Promise<User | null> {
+export async function getCurrentUser(
+  signal?: AbortSignal,
+): Promise<User | null> {
   const response = await fetch(`${API_BASE_URL}/user/current`, {
     credentials: "include",
+    signal,
   });
 
   if (response.status === 401) {

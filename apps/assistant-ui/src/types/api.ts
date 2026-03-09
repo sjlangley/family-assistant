@@ -6,7 +6,3 @@ export interface User {
   userid: string;
   name: string | null;
 }
-
-export interface ApiError {
-  detail: string;
-}

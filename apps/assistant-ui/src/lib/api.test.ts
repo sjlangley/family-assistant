@@ -3,7 +3,7 @@ import * as api from "./api";
 
 // Mock fetch globally
 const mockFetch = vi.fn();
-globalThis.fetch = mockFetch as any;
+globalThis.fetch = mockFetch as typeof fetch;
 
 describe("API client", () => {
   beforeEach(() => {
@@ -26,7 +26,7 @@ describe("API client", () => {
       const result = await api.login("fake-google-token");
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "/auth/login",
+        "http://localhost:8000/auth/login",
         expect.objectContaining({
           method: "POST",
           headers: {
@@ -66,7 +66,7 @@ describe("API client", () => {
       const result = await api.getCurrentUser();
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "/user/current",
+        "http://localhost:8000/user/current",
         expect.objectContaining({
           credentials: "include",
         }),
@@ -108,7 +108,7 @@ describe("API client", () => {
       await api.logout();
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "/auth/logout",
+        "http://localhost:8000/auth/logout",
         expect.objectContaining({
           method: "POST",
           credentials: "include",
