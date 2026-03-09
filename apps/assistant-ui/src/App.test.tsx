@@ -12,7 +12,7 @@ vi.mock("./lib/api");
 beforeEach(() => {
   // Mock VITE_GOOGLE_CLIENT_ID environment variable
   vi.stubEnv("VITE_GOOGLE_CLIENT_ID", "mock-google-client-id");
-  
+
   window.google = {
     accounts: {
       id: {
