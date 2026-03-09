@@ -49,6 +49,9 @@ jobs:
             --network host \
             --memory 512m \
             --cpus 1 \
+            -e ENVIRONMENT=testing \
+            -e GOOGLE_OAUTH_CLIENT_ID='not-yet-a-real-client' \
+            -e SESSION_SECRET_KEY='not-a-real-secret' \
             assistant-backend:test
 
       - name: Wait for application to start and check health
