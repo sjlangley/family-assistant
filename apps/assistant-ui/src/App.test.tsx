@@ -10,6 +10,9 @@ vi.mock("./lib/api");
 
 // Mock Google Identity Services
 beforeEach(() => {
+  // Mock VITE_GOOGLE_CLIENT_ID environment variable
+  vi.stubEnv("VITE_GOOGLE_CLIENT_ID", "mock-google-client-id");
+  
   window.google = {
     accounts: {
       id: {
@@ -24,6 +27,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   cleanup();
 });
 
