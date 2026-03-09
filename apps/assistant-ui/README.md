@@ -182,20 +182,24 @@ Displayed while checking authentication status on app startup.
 
 ## Docker
 
-Build:
+**Important:** Vite environment variables (`VITE_*`) are baked into the bundle at **build time**, not runtime. You must pass configuration values when building the image, not when running the container.
+
+Build with configuration:
 
 ```bash
-docker build -t assistant-ui .
+docker build \
+  --build-arg VITE_API_BASE_URL=http://localhost:8000 \
+  --build-arg VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com \
+  -t assistant-ui .
 ```
 
 Run:
 
 ```bash
-docker run --rm -p 3000:3000 \
-  -e VITE_API_BASE_URL=http://localhost:8000 \
-  -e VITE_GOOGLE_CLIENT_ID=your-client-id \
-  assistant-ui
+docker run --rm -p 3000:3000 assistant-ui
 ```
+
+**Note:** The values are compiled into the static bundle during `docker build`. If you need different configuration, you must rebuild the image with new `--build-arg` values.
 
 ## Notes
 

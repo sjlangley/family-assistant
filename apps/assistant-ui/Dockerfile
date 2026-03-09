@@ -3,10 +3,19 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+# Accept build arguments for Vite environment variables
+# These are baked into the bundle at build time
+ARG VITE_API_BASE_URL
+ARG VITE_GOOGLE_CLIENT_ID
+
 COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
+
+# Build with environment variables from build args
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
 RUN npm run build
 
 # Runtime stage
