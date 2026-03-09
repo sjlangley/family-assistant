@@ -17,7 +17,7 @@ security = HTTPBearer(auto_error=False)
 _AUTH_BYPASS_ALLOWED_ENVS = {Environment.LOCAL, Environment.DEVELOPMENT}
 
 
-async def get_current_google_user(
+def get_current_google_user(
     token: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> User:
     # Provide a special environment variable to bypass bearer token
@@ -41,4 +41,4 @@ async def get_current_google_user(
             detail='Missing or invalid Authorization header',
         )
 
-    return await verify_bearer_token(token.credentials)
+    return verify_bearer_token(token.credentials)

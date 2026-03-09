@@ -25,11 +25,10 @@ def get_google_request():
     return google_requests.Request(session=cached_session)
 
 
-async def verify_bearer_token(token: str) -> User:
+def verify_bearer_token(token: str) -> User:
     try:
         request = get_google_request()
-        payload = await asyncio.to_thread(
-            google_id_token.verify_oauth2_token,
+        payload = google_id_token.verify_oauth2_token(
             token,
             request=request,
             audience=settings.client_id,

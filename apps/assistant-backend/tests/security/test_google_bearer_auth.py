@@ -8,8 +8,7 @@ from assistant.security import google_bearer_token as bearer_token_module
 from assistant.settings import settings
 
 
-@pytest.mark.asyncio
-async def test_verify_bearer_token_success(
+def test_verify_bearer_token_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def fake_verify_oauth2_token(token: str, request, audience: str):  # noqa: ANN001
@@ -23,14 +22,13 @@ async def test_verify_bearer_token_success(
         fake_verify_oauth2_token,
     )
 
-    user = await bearer_token_module.verify_bearer_token('token-123')
+    user = bearer_token_module.verify_bearer_token('token-123')
     assert user.userid == 'user-1'
     assert user.email == 'u@example.com'
     assert user.name == 'User One'
 
 
-@pytest.mark.asyncio
-async def test_verify_bearer_token_missing_sub_raises_401(
+def test_verify_bearer_token_missing_sub_raises_401(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def fake_verify_oauth2_token(token: str, request, audience: str):  # noqa: ANN001
@@ -43,14 +41,13 @@ async def test_verify_bearer_token_missing_sub_raises_401(
     )
 
     with pytest.raises(HTTPException) as exc:
-        await bearer_token_module.verify_bearer_token('token-123')
+        bearer_token_module.verify_bearer_token('token-123')
 
     assert exc.value.status_code == 401
     assert exc.value.detail == 'Invalid token payload'
 
 
-@pytest.mark.asyncio
-async def test_verify_bearer_token_allows_missing_email(
+def test_verify_bearer_token_allows_missing_email(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def fake_verify_oauth2_token(token: str, request, audience: str):  # noqa: ANN001
@@ -62,14 +59,13 @@ async def test_verify_bearer_token_allows_missing_email(
         fake_verify_oauth2_token,
     )
 
-    user = await bearer_token_module.verify_bearer_token('token-123')
+    user = bearer_token_module.verify_bearer_token('token-123')
     assert user.userid == 'user-1'
     assert user.email is None
     assert user.name is None
 
 
-@pytest.mark.asyncio
-async def test_verify_bearer_token_invalid_issuer_raises_401(
+def test_verify_bearer_token_invalid_issuer_raises_401(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def fake_verify_oauth2_token(token: str, request, audience: str):  # noqa: ANN001
@@ -82,14 +78,13 @@ async def test_verify_bearer_token_invalid_issuer_raises_401(
     )
 
     with pytest.raises(HTTPException) as exc:
-        await bearer_token_module.verify_bearer_token('token-123')
+        bearer_token_module.verify_bearer_token('token-123')
 
     assert exc.value.status_code == 401
     assert exc.value.detail == 'Authentication failed'
 
 
-@pytest.mark.asyncio
-async def test_verify_bearer_token_invalid_token_raises_401(
+def test_verify_bearer_token_invalid_token_raises_401(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def fake_verify_oauth2_token(token: str, request, audience: str):  # noqa: ANN001
@@ -102,7 +97,7 @@ async def test_verify_bearer_token_invalid_token_raises_401(
     )
 
     with pytest.raises(HTTPException) as exc:
-        await bearer_token_module.verify_bearer_token('token-123')
+        bearer_token_module.verify_bearer_token('token-123')
 
     assert exc.value.status_code == 401
     assert exc.value.detail == 'Invalid token'
