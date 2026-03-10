@@ -59,5 +59,22 @@ class Settings(BaseSettings):
         alias='SESSION_SECRET_KEY',
     )
 
+    # LLM Backend
+    llm_base_url: str = Field(
+        ...,
+        description='Base URL for the LLM backend service.',
+        alias='LLM_BASE_URL',
+    )
+    llm_timeout_seconds: int = Field(
+        default=30,
+        description='Timeout in seconds for requests to the LLM backend.',
+        alias='LLM_TIMEOUT_SECONDS',
+    )
+    llm_model: str = Field(
+        default='gpt-4',
+        description='Name of the LLM model to use.',
+        alias='LLM_MODEL',
+    )
+
 
 settings = Settings()  # pyrefly: ignore[missing-argument]
