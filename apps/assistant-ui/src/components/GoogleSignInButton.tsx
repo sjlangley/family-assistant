@@ -9,12 +9,13 @@ import { useAuth } from "../lib/auth";
 export function GoogleSignInButton() {
   const buttonRef = useRef<HTMLDivElement>(null);
   const { loginWithGoogle } = useAuth();
-  const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
+  // Initialize with current state - avoid setState in effect
+  const [isGoogleLoaded, setIsGoogleLoaded] = useState(() => !!window.google);
 
   // Wait for Google Identity Services script to load
   useEffect(() => {
+    // If already loaded, no need to poll
     if (window.google) {
-      setIsGoogleLoaded(true);
       return;
     }
 
