@@ -9,6 +9,10 @@ class LLMService:
         self.timeout_seconds = timeout_seconds
         self.client = httpx.AsyncClient(timeout=timeout_seconds)
 
+    async def aclose(self) -> None:
+        """Close the underlying HTTP client and release network resources."""
+        await self.client.aclose()
+
     async def create_chat_completion(self, request_body: dict) -> dict:
         """Sends a chat completion request to the LLM backend."""
         try:

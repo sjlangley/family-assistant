@@ -10,7 +10,7 @@ from assistant.models.llm import (
     CreateChatCompletionResponse,
 )
 from assistant.security.session_auth import CurrentUser
-from assistant.services import llm_service
+from assistant.services import get_llm_service
 from assistant.settings import settings
 
 router = APIRouter()
@@ -42,7 +42,7 @@ async def create_chat_completion(
     )
 
     try:
-        response = await llm_service.create_chat_completion(
+        response = await get_llm_service().create_chat_completion(
             request_body.model_dump(exclude_none=True)
         )
     except TimeoutError as exc:
