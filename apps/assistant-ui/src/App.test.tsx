@@ -81,16 +81,13 @@ describe("App", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("user-info")).toBeInTheDocument();
+      expect(screen.getByTestId("chat-container")).toBeInTheDocument();
     });
 
     expect(screen.getByText("Family Assistant")).toBeInTheDocument();
-    expect(screen.getByTestId("user-email")).toHaveTextContent(
-      "test@example.com",
-    );
-    expect(screen.getByTestId("user-name")).toHaveTextContent("Test User");
-    expect(screen.getByTestId("user-id")).toHaveTextContent("user-123");
+    expect(screen.getByTestId("user-display")).toHaveTextContent("Test User");
     expect(screen.getByTestId("logout-button")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-input")).toBeInTheDocument();
   });
 
   it("handles logout button click", async () => {
@@ -141,12 +138,11 @@ describe("App", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("user-info")).toBeInTheDocument();
+      expect(screen.getByTestId("chat-container")).toBeInTheDocument();
     });
 
-    expect(screen.getByTestId("user-email")).toHaveTextContent("N/A");
-    expect(screen.getByTestId("user-name")).toHaveTextContent("N/A");
-    expect(screen.getByTestId("user-id")).toHaveTextContent("user-789");
+    // User display should show "User" as fallback
+    expect(screen.getByTestId("user-display")).toHaveTextContent("User");
   });
 
   it("handles API errors gracefully", async () => {
@@ -201,14 +197,41 @@ describe("App", () => {
         select_by: "btn",
       });
 
-      // After successful login, should show user info
+      // After successful login, should show chat interface
       await waitFor(() => {
-        expect(screen.getByTestId("user-info")).toBeInTheDocument();
+        expect(screen.getByTestId("chat-container")).toBeInTheDocument();
       });
 
-      expect(screen.getByTestId("user-email")).toHaveTextContent(
-        "newuser@example.com",
-      );
+      expect(screen.getByTestId("user-display")).toHaveTextContent("New User");
     }
+  });
+
+  it("shows chat interface for authenticated users", async () => {
+    const mockUser = {
+      email: "chat@example.com",
+      userid: "user-456",
+      name: "Chat User",
+    };
+
+    vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser);
+
+    render(
+      <AuthProvider>
+        <App />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-container")).toBeInTheDocument();
+    });
+
+    // Should have chat input and submit button
+    expect(screen.getByTestId("chat-input")).toBeInTheDocument();
+    expect(screen.getByTestId("chat-submit")).toBeInTheDocument();
+
+    // Should show empty state message
+    expect(
+      screen.getByText(/Start a conversation by typing a message below/i),
+    ).toBeInTheDocument();
   });
 });

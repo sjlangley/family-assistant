@@ -2,8 +2,10 @@ from fastapi import APIRouter, HTTPException, Request, status
 import httpx
 import pydantic
 
+from assistant.constants import SYSTEM_ROLE
 from assistant.models.chat import ChatRequest, ChatResponse
 from assistant.models.llm import (
+    ChatCompletionRequestSystemMessage,
     CreateChatCompletionRequest,
     CreateChatCompletionResponse,
 )
@@ -25,9 +27,15 @@ async def create_chat_completion(
             detail='At least one message is required',
         )
 
+    system_message = ChatCompletionRequestSystemMessage(
+        role='system', content=SYSTEM_ROLE
+    )
+    messages = [system_message.model_dump()] + [
+        message.model_dump() for message in payload.messages
+    ]
     request_body: CreateChatCompletionRequest = CreateChatCompletionRequest(
         model=settings.llm_model,
-        messages=[message.model_dump() for message in payload.messages],
+        messages=messages,
         temperature=payload.temperature,
         max_tokens=payload.max_tokens,
         stream=False,
@@ -39,7 +47,7 @@ async def create_chat_completion(
         ) as client:
             response = await client.post(
                 f'{settings.llm_base_url}/v1/chat/completions',
-                json=request_body.model_dump(),
+                json=request_body.model_dump(exclude_none=True),
             )
     except httpx.TimeoutException as exc:
         raise HTTPException(

@@ -3,7 +3,7 @@
  * All requests include credentials to send session cookies
  */
 
-import type { User } from "../types/api";
+import type { User, ChatRequest, ChatResponse } from "../types/api";
 
 function getApiBaseUrl(): string {
   return import.meta.env.VITE_API_BASE_URL || "";
@@ -63,4 +63,30 @@ export async function logout(): Promise<void> {
   if (!response.ok) {
     throw new Error("Logout failed");
   }
+}
+
+/**
+ * Send chat completion request
+ * Throws error if request fails or user is not authenticated (401)
+ */
+export async function sendChatCompletion(
+  request: ChatRequest,
+): Promise<ChatResponse> {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    credentials: "include",
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error("UNAUTHORIZED");
+    }
+    throw new Error("Chat request failed");
+  }
+
+  return response.json();
 }
