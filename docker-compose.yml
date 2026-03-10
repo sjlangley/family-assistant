@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: family-assistant-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: family_assistant
+      POSTGRES_USER: assistant
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -U assistant -d family_assistant"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - family-assistant-network
+
+  backend:
+    build:
+      context: ./apps/assistant-backend
+      dockerfile: Dockerfile
+    container_name: family-assistant-backend
+    restart: unless-stopped
+    environment:
+      # Server configuration
+      PORT: 8080
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+
+      # CORS configuration
+      CLIENT_ORIGINS: ${CLIENT_ORIGINS:-http://localhost:3000,http://localhost:5173}
+
+      # Authentication
+      AUTH_DISABLED: ${AUTH_DISABLED:-false}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:?GOOGLE_OAUTH_CLIENT_ID must be set}
+      ALLOWED_HOSTED_DOMAINS: ${ALLOWED_HOSTED_DOMAINS:-}
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:?SESSION_SECRET_KEY must be set}
+
+      # LLM backend configuration
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:8000}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-120}
+      LLM_MODEL: ${LLM_MODEL:-llama-3.1-8b-instruct}
+
+      # Database configuration (for future use)
+      DATABASE_URL: postgresql+asyncpg://assistant:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/family_assistant
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - family-assistant-network
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./apps/assistant-ui
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:?VITE_GOOGLE_CLIENT_ID must be set}
+    container_name: family-assistant-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - family-assistant-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  family-assistant-network:
+    driver: bridge
