@@ -2,14 +2,14 @@ from pydantic import BaseModel, Field
 
 
 class ChatMessage(BaseModel):
-    role: str = Field(pattern='^(system|user|assistant)$')
+    role: str = Field(pattern='^(user|assistant)$')
     content: str
 
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
-    temperature: float = 0.7
-    max_tokens: int | None = 512
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    max_tokens: int | None = Field(default=512, ge=1, le=4096)
 
 
 class ChatResponse(BaseModel):

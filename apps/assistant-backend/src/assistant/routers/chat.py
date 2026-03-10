@@ -53,12 +53,12 @@ async def create_chat_completion(
         ) from exc
 
     if response.status_code >= 400:
+    if response.status_code >= 400:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={
                 'message': 'LLM backend returned an error',
                 'status_code': response.status_code,
-                'body': response.text,
             },
         )
 
@@ -81,7 +81,7 @@ async def create_chat_completion(
     choice = llm_response.choices[0]
     return ChatResponse(
         # pyrefly: ignore [bad-argument-type]
-        content=choice.message.content,
+        content=choice.message.content or '',
         model=llm_response.model,
         prompt_tokens=llm_response.usage.prompt_tokens,
         completion_tokens=llm_response.usage.completion_tokens,

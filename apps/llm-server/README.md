@@ -101,7 +101,7 @@ The server will start and be available at `http://localhost:8080`
 - `--model <path>` - Path to the GGUF model file **(required)**
 - `--chat_format <format>` - Chat template format (e.g., `llama-3`, `chatml`, `mistral-instruct`)
 - `--host <host>` - Host to bind to (default: `localhost`, use `0.0.0.0` for remote access)
-- `--port <port>` - Port to listen on (default: `8000`)
+- `--port <port>` - Port to listen on (default: `8080`)
 - `--n_ctx <size>` - Context window size (default: `2048`, increase for longer conversations)
 - `--n_gpu_layers <layers>` - Number of layers to offload to GPU (default: `0`, use `-1` for all)
 - `--n_threads <threads>` - Number of CPU threads to use
