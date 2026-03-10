@@ -53,7 +53,6 @@ async def create_chat_completion(
         ) from exc
 
     if response.status_code >= 400:
-    if response.status_code >= 400:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={

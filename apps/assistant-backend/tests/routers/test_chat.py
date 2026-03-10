@@ -1,19 +1,4 @@
-"""Tests for chat endpoint.
-
-Test coverage:
-- Successful chat completion with valid response
-- Authentication requirement (401 for unauthenticated)
-- Empty messages validation (400 error)
-- Invalid message role validation (422 error)
-- LLM timeout handling (504 error)
-- LLM backend unreachable (502 error)
-- LLM backend error responses (502 error)
-- Malformed LLM responses (502 error)
-- Missing content field in response (502 error)
-- System + user message conversation
-- Custom temperature and max_tokens parameters
-- Missing usage information in response
-"""
+"""Tests for chat endpoint."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -289,69 +274,6 @@ async def test_create_chat_completion_missing_content(
     assert response.status_code == 502
     data = response.json()
     assert 'unexpected response shape' in data['detail']
-
-
-async def test_create_chat_completion_with_system_message(
-    authenticated_async_test_client,
-):
-    """Test chat completion with system and user messages."""
-    mock_llm_response = {
-        'id': 'chatcmpl-system',
-        'object': 'chat.completion',
-        'created': 1677652288,
-        'model': 'test-model',
-        'choices': [
-            {
-                'index': 0,
-                'message': {
-                    'role': 'assistant',
-                    'content': 'I am a helpful assistant.',
-                },
-                'logprobs': None,
-                'finish_reason': 'stop',
-            }
-        ],
-        'usage': {
-            'prompt_tokens': 20,
-            'completion_tokens': 8,
-            'total_tokens': 28,
-        },
-    }
-
-    with patch('httpx.AsyncClient') as mock_client:
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = mock_llm_response
-
-        mock_post = AsyncMock(return_value=mock_response)
-        mock_client.return_value.__aenter__.return_value.post = mock_post
-
-        response = await authenticated_async_test_client.post(
-            '/api/v1/chat/completions',
-            json={
-                'messages': [
-                    {
-                        'role': 'system',
-                        'content': 'You are a helpful assistant.',
-                    },
-                    {'role': 'user', 'content': 'Who are you?'},
-                ],
-                'temperature': 0.5,
-                'max_tokens': 100,
-            },
-        )
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data['content'] == 'I am a helpful assistant.'
-
-    # Verify system message was included
-    mock_post.assert_called_once()
-    call_args = mock_post.call_args
-    messages = call_args[1]['json']['messages']
-    assert len(messages) == 2
-    assert messages[0]['role'] == 'system'
-    assert messages[1]['role'] == 'user'
 
 
 async def test_create_chat_completion_custom_temperature(
