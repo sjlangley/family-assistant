@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, status
 import httpx
 import pydantic
 
@@ -9,7 +9,7 @@ from assistant.models.llm import (
     CreateChatCompletionRequest,
     CreateChatCompletionResponse,
 )
-from assistant.security.session_auth import require_auth
+from assistant.security.session_auth import CurrentUser
 from assistant.settings import settings
 
 router = APIRouter()
@@ -17,10 +17,9 @@ router = APIRouter()
 
 @router.post('/completions', response_model=ChatResponse)
 async def create_chat_completion(
-    request: Request,
     payload: ChatRequest,
+    _: CurrentUser,
 ) -> ChatResponse:
-    require_auth(request)
     if not payload.messages:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

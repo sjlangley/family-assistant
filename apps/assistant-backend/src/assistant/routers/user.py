@@ -1,9 +1,10 @@
 """REST API handler for current user APIs."""
 
-from fastapi import APIRouter, Request, status
+
+from fastapi import APIRouter, status
 
 from assistant.models.user import User
-from assistant.security.session_auth import require_auth
+from assistant.security.session_auth import CurrentUser
 
 router = APIRouter()
 
@@ -15,14 +16,6 @@ router = APIRouter()
     response_model=User,
     include_in_schema=False,
 )
-async def get_current_user(request: Request) -> User:
+async def get_current_user(current_user: CurrentUser) -> User:
     """Authenticate the user and return the user information."""
-    session = require_auth(request)
-    user = User(
-        email=session.get('email'),
-        # pyrefly: ignore [bad-argument-type]
-        userid=session.get('userid'),
-        name=session.get('name'),
-    )
-
-    return user
+    return current_user
