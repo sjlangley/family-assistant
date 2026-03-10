@@ -10,6 +10,7 @@ from assistant.models.llm import (
     CreateChatCompletionResponse,
 )
 from assistant.security.session_auth import CurrentUser
+from assistant.services import get_llm_service
 from assistant.settings import settings
 
 router = APIRouter()
@@ -41,37 +42,30 @@ async def create_chat_completion(
     )
 
     try:
-        async with httpx.AsyncClient(
-            timeout=settings.llm_timeout_seconds
-        ) as client:
-            response = await client.post(
-                f'{settings.llm_base_url}/v1/chat/completions',
-                json=request_body.model_dump(exclude_none=True),
-            )
-    except httpx.TimeoutException as exc:
+        response = await get_llm_service().create_chat_completion(
+            request_body.model_dump(exclude_none=True)
+        )
+    except TimeoutError as exc:
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail='LLM request timed out',
         ) from exc
-    except httpx.HTTPError as exc:
+    except ConnectionError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail='Failed to reach LLM backend',
         ) from exc
-
-    if response.status_code >= 400:
+    except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={
                 'message': 'LLM backend returned an error',
-                'status_code': response.status_code,
+                'status_code': exc.response.status_code,
             },
-        )
-
-    data = response.json()
+        ) from exc
 
     try:
-        llm_response = CreateChatCompletionResponse.model_validate(data)
+        llm_response = CreateChatCompletionResponse.model_validate(response)
     except pydantic.ValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

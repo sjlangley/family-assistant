@@ -1,6 +1,6 @@
 """Tests for chat endpoint."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -37,14 +37,15 @@ async def test_create_chat_completion_success(
         },
     }
 
-    with patch('httpx.AsyncClient') as mock_client:
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = mock_llm_response
+    mock_service = AsyncMock()
+    mock_service.create_chat_completion = AsyncMock(
+        return_value=mock_llm_response
+    )
 
-        mock_post = AsyncMock(return_value=mock_response)
-        mock_client.return_value.__aenter__.return_value.post = mock_post
-
+    with patch(
+        'assistant.routers.chat.get_llm_service',
+        return_value=mock_service,
+    ):
         response = await authenticated_async_test_client.post(
             '/api/v1/chat/completions',
             json={
@@ -65,13 +66,12 @@ async def test_create_chat_completion_success(
     assert data['total_tokens'] == 25
 
     # Verify the LLM was called with correct parameters
-    mock_post.assert_called_once()
-    call_args = mock_post.call_args
-    assert '/v1/chat/completions' in call_args[0][0]
-    assert call_args[1]['json']['messages'][0]['role'] == 'system'
-    assert call_args[1]['json']['messages'][0]['content'] == SYSTEM_PROMPT
-    assert call_args[1]['json']['messages'][1]['role'] == 'user'
-    assert call_args[1]['json']['messages'][1]['content'] == 'Hello'
+    mock_service.create_chat_completion.assert_called_once()
+    request_body = mock_service.create_chat_completion.call_args[0][0]
+    assert request_body['messages'][0]['role'] == 'system'
+    assert request_body['messages'][0]['content'] == SYSTEM_PROMPT
+    assert request_body['messages'][1]['role'] == 'user'
+    assert request_body['messages'][1]['content'] == 'Hello'
 
 
 async def test_create_chat_completion_requires_auth(async_test_client):
@@ -124,10 +124,15 @@ async def test_create_chat_completion_llm_timeout(
     authenticated_async_test_client,
 ):
     """Test LLM timeout handling."""
-    with patch('httpx.AsyncClient') as mock_client:
-        mock_post = AsyncMock(side_effect=httpx.TimeoutException('Timeout'))
-        mock_client.return_value.__aenter__.return_value.post = mock_post
+    mock_service = AsyncMock()
+    mock_service.create_chat_completion = AsyncMock(
+        side_effect=TimeoutError('LLM request timed out')
+    )
 
+    with patch(
+        'assistant.routers.chat.get_llm_service',
+        return_value=mock_service,
+    ):
         response = await authenticated_async_test_client.post(
             '/api/v1/chat/completions',
             json={
@@ -146,12 +151,15 @@ async def test_create_chat_completion_llm_unreachable(
     authenticated_async_test_client,
 ):
     """Test LLM backend unreachable handling."""
-    with patch('httpx.AsyncClient') as mock_client:
-        mock_post = AsyncMock(
-            side_effect=httpx.ConnectError('Connection failed')
-        )
-        mock_client.return_value.__aenter__.return_value.post = mock_post
+    mock_service = AsyncMock()
+    mock_service.create_chat_completion = AsyncMock(
+        side_effect=ConnectionError('Failed to reach LLM backend')
+    )
 
+    with patch(
+        'assistant.routers.chat.get_llm_service',
+        return_value=mock_service,
+    ):
         response = await authenticated_async_test_client.post(
             '/api/v1/chat/completions',
             json={
@@ -170,14 +178,23 @@ async def test_create_chat_completion_llm_error_response(
     authenticated_async_test_client,
 ):
     """Test LLM backend error response handling."""
-    with patch('httpx.AsyncClient') as mock_client:
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_response.text = 'Internal Server Error'
+    response = httpx.Response(
+        500,
+        request=httpx.Request('POST', 'http://test'),
+    )
+    error = httpx.HTTPStatusError(
+        'LLM error',
+        request=response.request,
+        response=response,
+    )
 
-        mock_post = AsyncMock(return_value=mock_response)
-        mock_client.return_value.__aenter__.return_value.post = mock_post
+    mock_service = AsyncMock()
+    mock_service.create_chat_completion = AsyncMock(side_effect=error)
 
+    with patch(
+        'assistant.routers.chat.get_llm_service',
+        return_value=mock_service,
+    ):
         response = await authenticated_async_test_client.post(
             '/api/v1/chat/completions',
             json={
@@ -210,14 +227,15 @@ async def test_create_chat_completion_malformed_llm_response(
         },
     }
 
-    with patch('httpx.AsyncClient') as mock_client:
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = mock_llm_response
+    mock_service = AsyncMock()
+    mock_service.create_chat_completion = AsyncMock(
+        return_value=mock_llm_response
+    )
 
-        mock_post = AsyncMock(return_value=mock_response)
-        mock_client.return_value.__aenter__.return_value.post = mock_post
-
+    with patch(
+        'assistant.routers.chat.get_llm_service',
+        return_value=mock_service,
+    ):
         response = await authenticated_async_test_client.post(
             '/api/v1/chat/completions',
             json={
@@ -259,14 +277,15 @@ async def test_create_chat_completion_missing_content(
         },
     }
 
-    with patch('httpx.AsyncClient') as mock_client:
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = mock_llm_response
+    mock_service = AsyncMock()
+    mock_service.create_chat_completion = AsyncMock(
+        return_value=mock_llm_response
+    )
 
-        mock_post = AsyncMock(return_value=mock_response)
-        mock_client.return_value.__aenter__.return_value.post = mock_post
-
+    with patch(
+        'assistant.routers.chat.get_llm_service',
+        return_value=mock_service,
+    ):
         response = await authenticated_async_test_client.post(
             '/api/v1/chat/completions',
             json={
@@ -308,14 +327,15 @@ async def test_create_chat_completion_custom_temperature(
         },
     }
 
-    with patch('httpx.AsyncClient') as mock_client:
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = mock_llm_response
+    mock_service = AsyncMock()
+    mock_service.create_chat_completion = AsyncMock(
+        return_value=mock_llm_response
+    )
 
-        mock_post = AsyncMock(return_value=mock_response)
-        mock_client.return_value.__aenter__.return_value.post = mock_post
-
+    with patch(
+        'assistant.routers.chat.get_llm_service',
+        return_value=mock_service,
+    ):
         response = await authenticated_async_test_client.post(
             '/api/v1/chat/completions',
             json={
@@ -330,8 +350,7 @@ async def test_create_chat_completion_custom_temperature(
     assert response.status_code == 200
 
     # Verify temperature and max_tokens were passed to LLM
-    call_args = mock_post.call_args
-    request_body = call_args[1]['json']
+    request_body = mock_service.create_chat_completion.call_args[0][0]
     assert request_body['temperature'] == 0.2
     assert request_body['max_tokens'] == 256
 
@@ -363,14 +382,15 @@ async def test_create_chat_completion_missing_usage_info(
         },
     }
 
-    with patch('httpx.AsyncClient') as mock_client:
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = mock_llm_response
+    mock_service = AsyncMock()
+    mock_service.create_chat_completion = AsyncMock(
+        return_value=mock_llm_response
+    )
 
-        mock_post = AsyncMock(return_value=mock_response)
-        mock_client.return_value.__aenter__.return_value.post = mock_post
-
+    with patch(
+        'assistant.routers.chat.get_llm_service',
+        return_value=mock_service,
+    ):
         response = await authenticated_async_test_client.post(
             '/api/v1/chat/completions',
             json={

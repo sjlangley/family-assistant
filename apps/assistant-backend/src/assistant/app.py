@@ -1,5 +1,6 @@
 """Entrypoint for the API application."""
 
+from contextlib import asynccontextmanager
 import logging
 
 from fastapi import FastAPI
@@ -8,12 +9,20 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from assistant.enums import Environment
 from assistant.routers import auth, chat, health, user
+from assistant.services import get_llm_service
 from assistant.settings import settings
 
 logger = logging.getLogger(__name__)
 
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    yield
+
+    await get_llm_service().aclose()
+
+
+app = FastAPI(lifespan=lifespan)
 
 # Configure CORS
 if settings.client_origins:
