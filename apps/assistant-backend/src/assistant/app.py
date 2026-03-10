@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from assistant.enums import Environment
-from assistant.routers import auth, health, user
+from assistant.routers import auth, chat, health, user
 from assistant.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,7 @@ app.add_middleware(
     in (Environment.PRODUCTION, Environment.STAGING),
 )
 
-app.include_router(health.router, prefix='/health')
 app.include_router(auth.router, prefix='/auth')
+app.include_router(health.router, prefix='/health')
+app.include_router(chat.router, prefix='/api/v1/chat')
 app.include_router(user.router, prefix='/user')
