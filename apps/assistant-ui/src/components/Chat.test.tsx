@@ -290,6 +290,73 @@ describe("Chat", () => {
     });
   });
 
+  it("excludes failed messages from conversation history", async () => {
+    const user = userEvent.setup();
+    const sendSpy = vi.mocked(api.sendChatCompletion);
+
+    // First message succeeds
+    sendSpy.mockResolvedValueOnce({
+      content: "First response",
+      model: "test-model",
+    });
+
+    render(<Chat onAuthError={mockOnAuthError} />);
+
+    const input = screen.getByTestId("chat-input");
+
+    // First message - succeeds
+    await user.type(input, "First message");
+    await user.click(screen.getByTestId("chat-submit"));
+
+    await waitFor(() => {
+      expect(screen.getByText("First response")).toBeInTheDocument();
+    });
+
+    // Second message - fails
+    sendSpy.mockRejectedValueOnce(new Error("Network error"));
+    await user.type(input, "Second message that fails");
+    await user.click(screen.getByTestId("chat-submit"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("error-message")).toBeInTheDocument();
+    });
+
+    // Third message - succeeds
+    sendSpy.mockResolvedValueOnce({
+      content: "Third response",
+      model: "test-model",
+    });
+    await user.type(input, "Third message");
+    await user.click(screen.getByTestId("chat-submit"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Third response")).toBeInTheDocument();
+    });
+
+    // Third call should have 3 messages: first user, first assistant, third user
+    // Should NOT include the failed second message
+    expect(sendSpy).toHaveBeenCalledTimes(3);
+    expect(sendSpy.mock.calls[2][0].messages).toHaveLength(3);
+    expect(sendSpy.mock.calls[2][0].messages[0]).toEqual({
+      role: "user",
+      content: "First message",
+    });
+    expect(sendSpy.mock.calls[2][0].messages[1]).toEqual({
+      role: "assistant",
+      content: "First response",
+    });
+    expect(sendSpy.mock.calls[2][0].messages[2]).toEqual({
+      role: "user",
+      content: "Third message",
+    });
+    // Verify the failed message is not in the history
+    expect(sendSpy.mock.calls[2][0].messages).not.toContainEqual(
+      expect.objectContaining({
+        content: "Second message that fails",
+      }),
+    );
+  });
+
   it("clears error message on subsequent successful request", async () => {
     const user = userEvent.setup();
     const sendSpy = vi.mocked(api.sendChatCompletion);

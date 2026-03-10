@@ -3,7 +3,13 @@
  * Displays message history and handles user input
  */
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import {
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  type FormEvent,
+} from "react";
 import type { ChatMessage } from "../types/api";
 import * as api from "../lib/api";
 
@@ -29,7 +35,7 @@ export function Chat({ onAuthError }: ChatProps) {
   }, [messages]);
 
   const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
+    async (e: FormEvent) => {
       e.preventDefault();
 
       // Prevent empty submissions
@@ -55,10 +61,12 @@ export function Chat({ onAuthError }: ChatProps) {
       setIsSubmitting(true);
 
       try {
-        // Send to backend
+        // Send to backend (exclude failed messages from history)
         const response = await api.sendChatCompletion({
           messages: [
-            ...messages.map((m) => ({ role: m.role, content: m.content })),
+            ...messages
+              .filter((m) => m.status !== "error")
+              .map((m) => ({ role: m.role, content: m.content })),
             { role: "user", content: trimmedInput },
           ],
         });

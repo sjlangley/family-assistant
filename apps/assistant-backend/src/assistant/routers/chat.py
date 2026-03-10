@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 import httpx
 import pydantic
 
-from assistant.constants import SYSTEM_ROLE
+from assistant.constants import SYSTEM_PROMPT
 from assistant.models.chat import ChatRequest, ChatResponse
 from assistant.models.llm import (
     ChatCompletionRequestSystemMessage,
@@ -28,7 +28,7 @@ async def create_chat_completion(
         )
 
     system_message = ChatCompletionRequestSystemMessage(
-        role='system', content=SYSTEM_ROLE
+        role='system', content=SYSTEM_PROMPT
     )
     messages = [system_message.model_dump()] + [
         message.model_dump() for message in payload.messages
