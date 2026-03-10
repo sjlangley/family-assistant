@@ -1,8 +1,15 @@
 import { useAuth } from "./lib/auth";
 import { GoogleSignInButton } from "./components/GoogleSignInButton";
+import { Chat } from "./components/Chat";
+import { useCallback } from "react";
 
 export default function App() {
   const { authState, logout } = useAuth();
+
+  // Handle auth errors from chat component
+  const handleAuthError = useCallback(() => {
+    logout();
+  }, [logout]);
 
   // Loading state
   if (authState.status === "loading") {
@@ -36,58 +43,26 @@ export default function App() {
     );
   }
 
-  // Authenticated state
+  // Authenticated state - Show chat interface
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-white shadow rounded-lg p-8">
-          <h1
-            className="text-3xl font-bold text-gray-900 mb-8"
-            data-testid="app-title"
-          >
-            Family Assistant
-          </h1>
-
-          <div className="space-y-4" data-testid="user-info">
-            <div className="border-b pb-4">
-              <h2 className="text-lg font-semibold text-gray-700 mb-4">
-                User Information
-              </h2>
-              <dl className="space-y-2">
-                <div>
-                  <dt className="text-sm font-medium text-gray-500">Email</dt>
-                  <dd
-                    className="text-base text-gray-900"
-                    data-testid="user-email"
-                  >
-                    {authState.user.email || "N/A"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-medium text-gray-500">Name</dt>
-                  <dd
-                    className="text-base text-gray-900"
-                    data-testid="user-name"
-                  >
-                    {authState.user.name || "N/A"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-sm font-medium text-gray-500">User ID</dt>
-                  <dd
-                    className="text-base text-gray-900 font-mono text-sm"
-                    data-testid="user-id"
-                  >
-                    {authState.user.userid}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-
-            <div className="pt-4">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <h1
+              className="text-2xl font-bold text-gray-900"
+              data-testid="app-title"
+            >
+              Family Assistant
+            </h1>
+            <div className="flex items-center gap-4">
+              <div className="text-sm text-gray-600" data-testid="user-display">
+                {authState.user.name || authState.user.email || "User"}
+              </div>
               <button
                 onClick={logout}
-                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
                 data-testid="logout-button"
               >
                 Logout
@@ -95,7 +70,14 @@ export default function App() {
             </div>
           </div>
         </div>
-      </div>
+      </header>
+
+      {/* Chat interface */}
+      <main className="flex-1 flex flex-col max-w-4xl w-full mx-auto p-4">
+        <div className="flex-1 bg-white rounded-lg shadow-sm border p-6 flex flex-col min-h-0">
+          <Chat onAuthError={handleAuthError} />
+        </div>
+      </main>
     </div>
   );
 }
