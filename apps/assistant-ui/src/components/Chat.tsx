@@ -43,7 +43,7 @@ export function Chat({ onAuthError }: ChatProps) {
 
       // Create user message
       const userMessage: Message = {
-        id: `user-${Date.now()}`,
+        id: `user-${crypto.randomUUID()}`,
         role: "user",
         content: trimmedInput,
         status: "sent",
@@ -65,7 +65,7 @@ export function Chat({ onAuthError }: ChatProps) {
 
         // Add assistant response
         const assistantMessage: Message = {
-          id: `assistant-${Date.now()}`,
+          id: `assistant-${crypto.randomUUID()}`,
           role: "assistant",
           content: response.content,
           status: "sent",

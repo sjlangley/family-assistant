@@ -66,7 +66,7 @@ class Settings(BaseSettings):
         alias='LLM_BASE_URL',
     )
     llm_timeout_seconds: int = Field(
-        default=30,
+        default=120,
         description='Timeout in seconds for requests to the LLM backend.',
         alias='LLM_TIMEOUT_SECONDS',
     )
