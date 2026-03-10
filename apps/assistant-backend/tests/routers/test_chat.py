@@ -66,7 +66,7 @@ async def test_create_chat_completion_success(
     mock_post.assert_called_once()
     call_args = mock_post.call_args
     assert '/v1/chat/completions' in call_args[0][0]
-    assert call_args[1]['json']['messages'][0]['content'] == 'Hello'
+    assert call_args[1]['json']['messages'][1]['content'] == 'Hello'
 
 
 async def test_create_chat_completion_requires_auth(async_test_client):
