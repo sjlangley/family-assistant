@@ -1,6 +1,5 @@
 """REST API handler for current user APIs."""
 
-
 from fastapi import APIRouter, status
 
 from assistant.models.user import User
