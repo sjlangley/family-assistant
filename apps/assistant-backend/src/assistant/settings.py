@@ -94,7 +94,7 @@ class Settings(BaseSettings):
         alias='DATABASE_PASSWORD',
     )
     database_host: str = Field(default='localhost', alias='DATABASE_HOST')
-    database_port: int = Field(default=3306, alias='DATABASE_PORT')
+    database_port: int = Field(default=5432, alias='DATABASE_PORT')
 
 
 settings = Settings()  # pyrefly: ignore[missing-argument]
