@@ -126,4 +126,286 @@ describe("API client", () => {
       await expect(api.logout()).rejects.toThrow("Logout failed");
     });
   });
+
+  describe("listConversations", () => {
+    it("returns conversations list on success", async () => {
+      const mockResponse = {
+        items: [
+          {
+            id: "conv-1",
+            title: "Test Conversation",
+            created_at: "2024-01-01T00:00:00Z",
+            updated_at: "2024-01-01T00:00:00Z",
+          },
+        ],
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const result = await api.listConversations();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/v1\/conversations$/),
+        expect.objectContaining({
+          credentials: "include",
+          signal: undefined,
+        }),
+      );
+
+      expect(result).toEqual(mockResponse);
+    });
+
+    it("throws UNAUTHORIZED error on 401 response", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+      });
+
+      await expect(api.listConversations()).rejects.toThrow("UNAUTHORIZED");
+    });
+
+    it("throws error on non-401 failure", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      });
+
+      await expect(api.listConversations()).rejects.toThrow(
+        "Failed to fetch conversations",
+      );
+    });
+  });
+
+  describe("getConversationMessages", () => {
+    it("returns conversation messages on success", async () => {
+      const mockResponse = {
+        conversation: {
+          id: "conv-1",
+          title: "Test Conversation",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+        items: [
+          {
+            id: "msg-1",
+            role: "user" as const,
+            content: "Hello",
+            sequence_number: 1,
+            created_at: "2024-01-01T00:00:00Z",
+            error: null,
+          },
+        ],
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const result = await api.getConversationMessages("conv-1");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/v1\/conversations\/conv-1\/messages$/),
+        expect.objectContaining({
+          credentials: "include",
+          signal: undefined,
+        }),
+      );
+
+      expect(result).toEqual(mockResponse);
+    });
+
+    it("throws UNAUTHORIZED error on 401 response", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+      });
+
+      await expect(api.getConversationMessages("conv-1")).rejects.toThrow(
+        "UNAUTHORIZED",
+      );
+    });
+
+    it("throws Conversation not found error on 404 response", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+      });
+
+      await expect(api.getConversationMessages("conv-1")).rejects.toThrow(
+        "Conversation not found",
+      );
+    });
+
+    it("throws error on other failures", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      });
+
+      await expect(api.getConversationMessages("conv-1")).rejects.toThrow(
+        "Failed to fetch conversation messages",
+      );
+    });
+  });
+
+  describe("createConversationWithMessage", () => {
+    it("creates new conversation with message on success", async () => {
+      const mockRequest = { content: "Hello" };
+      const mockResponse = {
+        conversation: {
+          id: "conv-1",
+          title: "New Conversation",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+        user_message: {
+          id: "msg-1",
+          role: "user" as const,
+          content: "Hello",
+          sequence_number: 1,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+        },
+        assistant_message: {
+          id: "msg-2",
+          role: "assistant" as const,
+          content: "Hi there!",
+          sequence_number: 2,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+        },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const result = await api.createConversationWithMessage(mockRequest);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/v1\/conversations\/with-message$/),
+        expect.objectContaining({
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify(mockRequest),
+        }),
+      );
+
+      expect(result).toEqual(mockResponse);
+    });
+
+    it("throws UNAUTHORIZED error on 401 response", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+      });
+
+      await expect(
+        api.createConversationWithMessage({ content: "Hello" }),
+      ).rejects.toThrow("UNAUTHORIZED");
+    });
+
+    it("throws error on failure", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      });
+
+      await expect(
+        api.createConversationWithMessage({ content: "Hello" }),
+      ).rejects.toThrow("Failed to create conversation");
+    });
+  });
+
+  describe("addMessageToConversation", () => {
+    it("adds message to existing conversation on success", async () => {
+      const mockRequest = { content: "Follow-up question" };
+      const mockResponse = {
+        conversation: {
+          id: "conv-1",
+          title: "Existing Conversation",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:01:00Z",
+        },
+        user_message: {
+          id: "msg-3",
+          role: "user" as const,
+          content: "Follow-up question",
+          sequence_number: 3,
+          created_at: "2024-01-01T00:01:00Z",
+          error: null,
+        },
+        assistant_message: {
+          id: "msg-4",
+          role: "assistant" as const,
+          content: "Here is the answer",
+          sequence_number: 4,
+          created_at: "2024-01-01T00:01:00Z",
+          error: null,
+        },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const result = await api.addMessageToConversation("conv-1", mockRequest);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/v1\/conversations\/conv-1\/messages$/),
+        expect.objectContaining({
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify(mockRequest),
+        }),
+      );
+
+      expect(result).toEqual(mockResponse);
+    });
+
+    it("throws UNAUTHORIZED error on 401 response", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+      });
+
+      await expect(
+        api.addMessageToConversation("conv-1", { content: "Hello" }),
+      ).rejects.toThrow("UNAUTHORIZED");
+    });
+
+    it("throws Conversation not found error on 404 response", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+      });
+
+      await expect(
+        api.addMessageToConversation("conv-1", { content: "Hello" }),
+      ).rejects.toThrow("Conversation not found");
+    });
+
+    it("throws error on other failures", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      });
+
+      await expect(
+        api.addMessageToConversation("conv-1", { content: "Hello" }),
+      ).rejects.toThrow("Failed to add message");
+    });
+  });
 });

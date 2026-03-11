@@ -139,6 +139,7 @@ class ConversationService:
 
         await session.commit()
         await session.refresh(conversation)
+        await session.refresh(user_message)
         await session.refresh(assistant_message)
 
         return ConversationWithMessagesResponse(
@@ -174,6 +175,11 @@ class ConversationService:
             conversation_id=conversation_id,
         )
 
+        # Extract message data BEFORE commit to avoid detached instance errors
+        llm_messages = [
+            {'role': m.role, 'content': m.content} for m in existing_messages
+        ]
+
         next_seq = (
             1
             if not existing_messages
@@ -191,9 +197,6 @@ class ConversationService:
         await session.refresh(user_message)
 
         # Make LLM call outside of transaction
-        llm_messages = [
-            {'role': m.role, 'content': m.content} for m in existing_messages
-        ]
         llm_messages.append({'role': 'user', 'content': content})
 
         assistant_content = await self._call_llm_chat_completion(
@@ -220,6 +223,7 @@ class ConversationService:
 
         await session.commit()
         await session.refresh(conversation)
+        await session.refresh(user_message)
         await session.refresh(assistant_message)
 
         return ConversationWithMessagesResponse(

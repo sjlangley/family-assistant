@@ -34,3 +34,49 @@ export interface ChatResponse {
   completion_tokens?: number | null;
   total_tokens?: number | null;
 }
+
+/**
+ * Conversation types matching the backend Conversation models
+ */
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sequence_number: number;
+  created_at: string;
+  error: string | null;
+}
+
+export interface CreateConversationRequest {
+  content: string;
+  temperature?: number;
+  max_tokens?: number;
+}
+
+export interface CreateMessageRequest {
+  content: string;
+  temperature?: number;
+  max_tokens?: number;
+}
+
+export interface ConversationWithMessagesResponse {
+  conversation: ConversationSummary;
+  user_message: Message;
+  assistant_message: Message;
+}
+
+export interface ListConversationsResponse {
+  items: ConversationSummary[];
+}
+
+export interface GetConversationMessagesResponse {
+  conversation: ConversationSummary;
+  items: Message[];
+}
