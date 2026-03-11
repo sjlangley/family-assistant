@@ -114,7 +114,9 @@ async def lifespan(application: FastAPI):
     yield
 
     await get_llm_service().aclose()
-    application.state.engine.dispose()
+    engine = getattr(application.state, 'engine', None)
+    if engine is not None:
+        await engine.dispose()
 
 
 app = FastAPI(lifespan=lifespan)
