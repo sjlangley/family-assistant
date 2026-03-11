@@ -8,15 +8,60 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from assistant.enums import Environment
+from assistant.logging import setup_logging
 from assistant.routers import auth, chat, health, user
 from assistant.services import get_llm_service
-from assistant.settings import settings
+from assistant.settings import Settings, settings
 
 logger = logging.getLogger(__name__)
 
 
+def _get_safe_settings_for_logging(settings_to_log: Settings) -> dict:
+    """Get settings with sensitive values redacted for logging.
+
+    Args:
+        settings_to_log: The application settings.
+
+
+    Returns:
+        Dictionary of settings with sensitive values masked.
+    """
+    # Fields that should never be logged
+    sensitive_fields = {
+        'client_id',
+        'session_secret_key',
+    }
+
+    data = settings_to_log.model_dump()
+    safe_data = {}
+
+    for key, value in data.items():
+        if key in sensitive_fields:
+            safe_data[key] = '***REDACTED***'
+        else:
+            safe_data[key] = value
+
+    return safe_data
+
+
+def _log_startup_settings(settings_to_log: Settings) -> None:
+    """Log application settings at startup for debugging.
+
+    Args:
+        settings_to_log: The application settings to log.
+    """
+    safe_settings = _get_safe_settings_for_logging(settings_to_log)
+    logger.info(
+        'Application startup configuration: %s',
+        safe_settings,
+    )
+
+
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    setup_logging()
+    _log_startup_settings(settings)
+
     yield
 
     await get_llm_service().aclose()
