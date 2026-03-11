@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type {
   ConversationSummary,
   Message,
@@ -30,6 +30,9 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
   const [conversationsError, setConversationsError] = useState<string | null>(
     null,
   );
+
+  // Track conversations for which we've just set messages to skip redundant fetches
+  const skipFetchForConversation = useRef<string | null>(null);
 
   // Get user from authState (it should always be present when component is mounted)
   const user = authState.status === "authenticated" ? authState.user : null;
@@ -70,6 +73,12 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
   useEffect(() => {
     if (!activeConversationId) {
       setMessages([]);
+      return;
+    }
+
+    // Skip fetch if we just set messages for this conversation
+    if (skipFetchForConversation.current === activeConversationId) {
+      skipFetchForConversation.current = null;
       return;
     }
 
@@ -125,29 +134,22 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
       const { conversation } = conversationResponse;
       setConversations((prev) => {
         const existing = prev.find((c) => c.id === conversation.id);
+        const updatedConversation = {
+          id: conversation.id,
+          title: conversation.title,
+          created_at: conversation.created_at,
+          updated_at: conversation.updated_at,
+        };
+
         if (existing) {
-          // Update existing conversation
-          return prev.map((c) =>
-            c.id === conversation.id
-              ? {
-                  id: conversation.id,
-                  title: conversation.title,
-                  created_at: conversation.created_at,
-                  updated_at: conversation.updated_at,
-                }
-              : c,
-          );
+          // Update existing conversation and re-sort by updated_at desc
+          return [
+            updatedConversation,
+            ...prev.filter((c) => c.id !== conversation.id),
+          ];
         } else {
           // Add new conversation at the beginning
-          return [
-            {
-              id: conversation.id,
-              title: conversation.title,
-              created_at: conversation.created_at,
-              updated_at: conversation.updated_at,
-            },
-            ...prev,
-          ];
+          return [updatedConversation, ...prev];
         }
       });
     },
@@ -175,11 +177,27 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
         response = await createConversationWithMessage({
           content: trimmedMessage,
         });
-        // Set active conversation to the new one
+
+        // Update conversations list
+        updateConversationsList(response);
+
+        // Set messages before activating (they're not appended, they're the initial messages)
+        setMessages([response.user_message, response.assistant_message]);
+
+        // Mark this conversation to skip the initial fetch
+        skipFetchForConversation.current = response.conversation.id;
+
+        // Set active conversation to the new one (this will trigger useEffect but it will skip fetch)
         setActiveConversationId(response.conversation.id);
+
+        // Clear input
+        setInputMessage("");
+
+        // Early return since we've handled everything for new conversation
+        return;
       }
 
-      // Update conversations list
+      // Update conversations list (for existing conversation)
       updateConversationsList(response);
 
       // Update messages with the response (append the new messages)
