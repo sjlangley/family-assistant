@@ -59,14 +59,13 @@ def _log_startup_settings(settings_to_log: Settings) -> None:
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    setup_logging()
+    _log_startup_settings(settings)
+
     yield
 
     await get_llm_service().aclose()
 
-
-setup_logging()
-
-_log_startup_settings(settings)
 
 app = FastAPI(lifespan=lifespan)
 
