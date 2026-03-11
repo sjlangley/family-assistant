@@ -56,10 +56,10 @@ async def get_conversation_messages(
 
 @router.post(
     '/with-message',
-    response_description='Return HTTP Status Code 200 (OK)',
+    response_description='Return HTTP Status Code 201 (OK)',
     status_code=status.HTTP_201_CREATED,
     response_model=ConversationWithMessagesResponse,
-    include_in_schema=False,
+    include_in_schema=True,
 )
 async def create_conversation_with_message(
     request: Request,

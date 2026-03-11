@@ -21,6 +21,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
+    "aiosqlite==0.20.0",
     "asyncpg==0.31.0",
     "fastapi==0.135.1",
     "cachecontrol==0.14.4",
@@ -37,7 +38,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "aiosqlite==0.20.0",
     "alembic==1.18.4",
     "asgi-lifespan==2.1.0",
     "pydocstyle==6.3.0",

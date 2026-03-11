@@ -53,7 +53,7 @@ jobs:
             -e GOOGLE_OAUTH_CLIENT_ID='not-yet-a-real-client' \
             -e SESSION_SECRET_KEY='not-a-real-secret' \
             -e LLM_BASE_URL='http://localhost:8081' \
-            -e DATABASE_URL='sqlite:///./test.db' \
+            -e DATABASE_URL='sqlite+aiosqlite:///./test.db' \
             assistant-backend:test
 
       - name: Wait for application to start and check health
