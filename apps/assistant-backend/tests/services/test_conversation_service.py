@@ -19,7 +19,7 @@ from assistant.models.conversation import (
     CreateMessageRequest,
 )
 from assistant.models.conversation_sql import Conversation, Message
-from assistant.services.converstation_service import ConversationService
+from assistant.services.conversation_service import ConversationService
 from assistant.services.llm_service import LLMService
 
 pytestmark = pytest.mark.asyncio
