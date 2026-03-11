@@ -1,4 +1,4 @@
-version: '3.8'
+
 
 services:
   postgres:
@@ -22,6 +22,24 @@ services:
     networks:
       - family-assistant-network
 
+  llama-cpp-python:
+    image: 3x3cut0r/llama-cpp-python:latest
+    container_name: llama-cpp-python
+    cap_add:
+      - SYS_RESOURCE
+    environment:
+        MODEL_DOWNLOAD: "False"
+        MODEL_REPO: "local"
+        MODEL: "meta-llama-3.1-8b-instruct-q4_k_m.gguf"
+        MODEL_ALIAS: "meta-llama-3.1-8b-instruct"
+        CHAT_FORMAT: "llama-3"
+    volumes:
+      - ~/models/meta-llama-3.1-8b-instruct-q4_k_m.gguf:/model/meta-llama-3.1-8b-instruct-q4_k_m.gguf
+    ports:
+      - 8000:8000/tcp
+    networks:
+      - family-assistant-network
+
   backend:
     build:
       context: ./apps/assistant-backend
@@ -35,16 +53,16 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
 
       # CORS configuration
-      CLIENT_ORIGINS: ${CLIENT_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      CLIENT_ORIGINS: ${CLIENT_ORIGINS:-["http://localhost:3000","http://localhost:5173"]}
 
       # Authentication
       AUTH_DISABLED: ${AUTH_DISABLED:-false}
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:?GOOGLE_OAUTH_CLIENT_ID must be set}
-      ALLOWED_HOSTED_DOMAINS: ${ALLOWED_HOSTED_DOMAINS:-}
+      ALLOWED_HOSTED_DOMAINS: ${ALLOWED_HOSTED_DOMAINS:-[]}
       SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:?SESSION_SECRET_KEY must be set}
 
       # LLM backend configuration
-      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:8000}
+      LLM_BASE_URL: http://llama-cpp-python:8000
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-120}
       LLM_MODEL: ${LLM_MODEL:-llama-3.1-8b-instruct}
 
