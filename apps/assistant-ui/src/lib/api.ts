@@ -3,7 +3,16 @@
  * All requests include credentials to send session cookies
  */
 
-import type { User, ChatRequest, ChatResponse } from "../types/api";
+import type {
+  User,
+  ChatRequest,
+  ChatResponse,
+  ListConversationsResponse,
+  GetConversationMessagesResponse,
+  ConversationWithMessagesResponse,
+  CreateConversationRequest,
+  CreateMessageRequest,
+} from "../types/api";
 
 function getApiBaseUrl(): string {
   return import.meta.env.VITE_API_BASE_URL || "";
@@ -86,6 +95,115 @@ export async function sendChatCompletion(
       throw new Error("UNAUTHORIZED");
     }
     throw new Error("Chat request failed");
+  }
+
+  return response.json();
+}
+
+/**
+ * List all conversations for the current user
+ */
+export async function listConversations(
+  signal?: AbortSignal,
+): Promise<ListConversationsResponse> {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/conversations`, {
+    credentials: "include",
+    signal,
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error("UNAUTHORIZED");
+    }
+    throw new Error("Failed to fetch conversations");
+  }
+
+  return response.json();
+}
+
+/**
+ * Get messages for a specific conversation
+ */
+export async function getConversationMessages(
+  conversationId: string,
+  signal?: AbortSignal,
+): Promise<GetConversationMessagesResponse> {
+  const response = await fetch(
+    `${getApiBaseUrl()}/api/v1/conversations/${conversationId}/messages`,
+    {
+      credentials: "include",
+      signal,
+    },
+  );
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error("UNAUTHORIZED");
+    }
+    if (response.status === 404) {
+      throw new Error("Conversation not found");
+    }
+    throw new Error("Failed to fetch conversation messages");
+  }
+
+  return response.json();
+}
+
+/**
+ * Create a new conversation with an initial message
+ */
+export async function createConversationWithMessage(
+  request: CreateConversationRequest,
+): Promise<ConversationWithMessagesResponse> {
+  const response = await fetch(
+    `${getApiBaseUrl()}/api/v1/conversations/with-message`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(request),
+    },
+  );
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error("UNAUTHORIZED");
+    }
+    throw new Error("Failed to create conversation");
+  }
+
+  return response.json();
+}
+
+/**
+ * Add a message to an existing conversation
+ */
+export async function addMessageToConversation(
+  conversationId: string,
+  request: CreateMessageRequest,
+): Promise<ConversationWithMessagesResponse> {
+  const response = await fetch(
+    `${getApiBaseUrl()}/api/v1/conversations/${conversationId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(request),
+    },
+  );
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error("UNAUTHORIZED");
+    }
+    if (response.status === 404) {
+      throw new Error("Conversation not found");
+    }
+    throw new Error("Failed to add message");
   }
 
   return response.json();

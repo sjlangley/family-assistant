@@ -24,6 +24,9 @@ beforeEach(() => {
     },
   };
   vi.clearAllMocks();
+
+  // Setup default mock for listConversations (used by ConversationsChat)
+  vi.mocked(api.listConversations).mockResolvedValue({ items: [] });
 });
 
 afterEach(() => {
@@ -73,6 +76,7 @@ describe("App", () => {
     };
 
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser);
+    vi.mocked(api.listConversations).mockResolvedValue({ items: [] });
 
     render(
       <AuthProvider>
@@ -80,14 +84,20 @@ describe("App", () => {
       </AuthProvider>,
     );
 
+    // Should show ConversationsChat component with welcome message
     await waitFor(() => {
-      expect(screen.getByTestId("chat-container")).toBeInTheDocument();
+      expect(
+        screen.getByText(/welcome to family assistant/i),
+      ).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Family Assistant")).toBeInTheDocument();
-    expect(screen.getByTestId("user-display")).toHaveTextContent("Test User");
-    expect(screen.getByTestId("logout-button")).toBeInTheDocument();
-    expect(screen.getByTestId("chat-input")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /new chat/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/logged in as:.*test@example\.com/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /logout/i })).toBeInTheDocument();
   });
 
   it("handles logout button click", async () => {
@@ -99,6 +109,7 @@ describe("App", () => {
     };
 
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser);
+    vi.mocked(api.listConversations).mockResolvedValue({ items: [] });
     vi.mocked(api.logout).mockResolvedValue(undefined);
 
     render(
@@ -108,10 +119,12 @@ describe("App", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("logout-button")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /logout/i }),
+      ).toBeInTheDocument();
     });
 
-    const logoutButton = screen.getByTestId("logout-button");
+    const logoutButton = screen.getByRole("button", { name: /logout/i });
     await user.click(logoutButton);
 
     expect(api.logout).toHaveBeenCalledTimes(1);
@@ -130,6 +143,7 @@ describe("App", () => {
     };
 
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser);
+    vi.mocked(api.listConversations).mockResolvedValue({ items: [] });
 
     render(
       <AuthProvider>
@@ -138,11 +152,14 @@ describe("App", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("chat-container")).toBeInTheDocument();
+      expect(
+        screen.getByText(/welcome to family assistant/i),
+      ).toBeInTheDocument();
     });
 
-    // User display should show "User" as fallback
-    expect(screen.getByTestId("user-display")).toHaveTextContent("User");
+    // Should display userid as fallback when email and name are missing
+    expect(screen.getByText(/logged in as:/i)).toBeInTheDocument();
+    expect(screen.getByText(/user-789/i)).toBeInTheDocument();
   });
 
   it("handles API errors gracefully", async () => {
@@ -172,6 +189,7 @@ describe("App", () => {
     // Start unauthenticated
     vi.mocked(api.getCurrentUser).mockResolvedValue(null);
     vi.mocked(api.login).mockResolvedValue(mockUser);
+    vi.mocked(api.listConversations).mockResolvedValue({ items: [] });
 
     render(
       <AuthProvider>
@@ -197,12 +215,12 @@ describe("App", () => {
         select_by: "btn",
       });
 
-      // After successful login, should show chat interface
+      // After successful login, should show conversations chat interface
       await waitFor(() => {
-        expect(screen.getByTestId("chat-container")).toBeInTheDocument();
+        expect(
+          screen.getByText(/welcome to family assistant/i),
+        ).toBeInTheDocument();
       });
-
-      expect(screen.getByTestId("user-display")).toHaveTextContent("New User");
     }
   });
 
@@ -214,6 +232,7 @@ describe("App", () => {
     };
 
     vi.mocked(api.getCurrentUser).mockResolvedValue(mockUser);
+    vi.mocked(api.listConversations).mockResolvedValue({ items: [] });
 
     render(
       <AuthProvider>
@@ -222,16 +241,22 @@ describe("App", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("chat-container")).toBeInTheDocument();
+      expect(
+        screen.getByText(/welcome to family assistant/i),
+      ).toBeInTheDocument();
     });
 
-    // Should have chat input and submit button
-    expect(screen.getByTestId("chat-input")).toBeInTheDocument();
-    expect(screen.getByTestId("chat-submit")).toBeInTheDocument();
-
-    // Should show empty state message
+    // Should have conversation chat interface elements
     expect(
-      screen.getByText(/Start a conversation by typing a message below/i),
+      screen.getByRole("button", { name: /new chat/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText(
+        /type a message to start a new conversation/i,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/logged in as:.*chat@example\.com/i),
     ).toBeInTheDocument();
   });
 });

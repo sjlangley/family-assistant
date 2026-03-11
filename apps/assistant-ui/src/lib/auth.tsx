@@ -14,7 +14,7 @@ import {
 import type { User } from "../types/api";
 import * as api from "./api";
 
-type AuthState =
+export type AuthState =
   | { status: "loading" }
   | { status: "unauthenticated" }
   | { status: "authenticated"; user: User };
@@ -25,7 +25,7 @@ interface AuthContextValue {
   logout: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+export const AuthContext = createContext<AuthContextValue | null>(null);
 
 interface AuthProviderProps {
   children: ReactNode;
