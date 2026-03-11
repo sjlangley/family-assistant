@@ -157,8 +157,9 @@ describe("App", () => {
       ).toBeInTheDocument();
     });
 
-    // Email should still be displayed (even if null - component shows it)
+    // Email label should still be displayed, with a fallback for missing value
     expect(screen.getByText(/logged in as:/i)).toBeInTheDocument();
+    expect(screen.getByText(/n\/a/i)).toBeInTheDocument();
   });
 
   it("handles API errors gracefully", async () => {

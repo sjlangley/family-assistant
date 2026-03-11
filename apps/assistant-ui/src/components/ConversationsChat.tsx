@@ -290,7 +290,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
 
         <div className="p-4 border-t border-gray-200">
           <div className="text-sm text-gray-600 mb-2">
-            Logged in as: {user?.email}
+            Logged in as: {user?.email ?? user?.name ?? user?.userid}
           </div>
           <button
             onClick={onLogout}
@@ -342,7 +342,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
           ) : (
             <div className="flex items-center justify-center h-full text-gray-400">
               <div className="text-center">
-                <div className="text-6xl mb-4">💬</div>
+                <div className="text-6xl mb-4" aria-hidden="true">💬</div>
                 <div className="text-xl mb-2">Welcome to Family Assistant</div>
                 <div className="text-sm">
                   Select a conversation or start a new chat below
