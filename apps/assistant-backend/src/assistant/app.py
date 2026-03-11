@@ -29,6 +29,7 @@ def _get_safe_settings_for_logging(settings_to_log: Settings) -> dict:
     # Fields that should never be logged
     sensitive_fields = {
         'client_id',
+        'session_secret_key',
     }
 
     data = settings_to_log.model_dump()
