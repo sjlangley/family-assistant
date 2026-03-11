@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from assistant.services.converstation_service import ConversationService
+from assistant.services.conversation_service import ConversationService
 from assistant.services.llm_service import LLMService
 from assistant.settings import settings
 
