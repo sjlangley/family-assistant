@@ -94,9 +94,10 @@ async def lifespan(application: FastAPI):
 
     logger.info(f'Final Database URL: {database_url!r}')
 
-    application.state.engine = create_engine(database_url, pool_pre_ping=True)
+    application.state.engine = create_async_engine(database_url, pool_pre_ping=True)
 
-    SQLModel.metadata.create_all(application.state.engine)
+    async with application.state.engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
 
     logger.info(f'Engine URL after parsing: {application.state.engine.url!r}')
     logger.info(
