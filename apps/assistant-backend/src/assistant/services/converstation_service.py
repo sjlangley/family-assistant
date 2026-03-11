@@ -92,6 +92,7 @@ class ConversationService:
                 detail='Message content cannot be empty',
             )
 
+        # Transaction 1: Create conversation and user message
         conversation = Conversation(
             user_id=user_id,
             title=conversation_title_from_first_message(content),
@@ -106,25 +107,38 @@ class ConversationService:
             sequence_number=1,
         )
         session.add(user_message)
-        await session.flush()
+        await session.commit()
+        await session.refresh(conversation)
+        await session.refresh(user_message)
 
+        conversation_id = conversation.id
+
+        # Make LLM call outside of transaction
         assistant_content = await self._call_llm_chat_completion(
             messages=[{'role': 'user', 'content': content}],
             temperature=payload.temperature,
             max_tokens=payload.max_tokens,
         )
 
+        # Transaction 2: Create assistant message and update conversation
         assistant_message = Message(
-            conversation_id=conversation.id,
+            conversation_id=conversation_id,
             role='assistant',
             content=assistant_content,
             sequence_number=2,
         )
         session.add(assistant_message)
 
+        # Update conversation's updated_at timestamp
+        await session.execute(
+            update(Conversation)
+            # pyrefly: ignore [bad-argument-type]
+            .where(Conversation.id == conversation_id)
+            .values(updated_at=func.now())
+        )
+
         await session.commit()
         await session.refresh(conversation)
-        await session.refresh(user_message)
         await session.refresh(assistant_message)
 
         return ConversationWithMessagesResponse(
@@ -148,6 +162,7 @@ class ConversationService:
                 detail='Message content cannot be empty',
             )
 
+        # Transaction 1: Create user message
         conversation = await self._get_conversation_for_user(
             session,
             user_id=user_id,
@@ -172,8 +187,10 @@ class ConversationService:
             sequence_number=next_seq,
         )
         session.add(user_message)
-        await session.flush()
+        await session.commit()
+        await session.refresh(user_message)
 
+        # Make LLM call outside of transaction
         llm_messages = [
             {'role': m.role, 'content': m.content} for m in existing_messages
         ]
@@ -185,6 +202,7 @@ class ConversationService:
             max_tokens=payload.max_tokens,
         )
 
+        # Transaction 2: Create assistant message and update conversation
         assistant_message = Message(
             conversation_id=conversation_id,
             role='assistant',
@@ -196,13 +214,12 @@ class ConversationService:
         await session.execute(
             update(Conversation)
             # pyrefly: ignore [bad-argument-type]
-            .where(Conversation.id == conversation.id)
+            .where(Conversation.id == conversation_id)
             .values(updated_at=func.now())
         )
 
         await session.commit()
         await session.refresh(conversation)
-        await session.refresh(user_message)
         await session.refresh(assistant_message)
 
         return ConversationWithMessagesResponse(

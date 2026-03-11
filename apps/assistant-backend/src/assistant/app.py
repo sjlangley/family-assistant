@@ -6,7 +6,8 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.engine.url import URL
-from sqlmodel import SQLModel, create_engine
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlmodel import SQLModel
 from starlette.middleware.sessions import SessionMiddleware
 
 from assistant.enums import Environment
@@ -92,9 +93,13 @@ async def lifespan(application: FastAPI):
     else:
         database_url = tcp_connection_url()
 
-    logger.info(f'Final Database URL: {database_url!r}')  # Ensure this is redacted if it's a string
+    logger.info(
+        f'Final Database URL: {database_url!r}'
+    )  # Ensure this is redacted if it's a string
 
-    application.state.engine = create_async_engine(database_url, pool_pre_ping=True)
+    application.state.engine = create_async_engine(
+        database_url, pool_pre_ping=True
+    )
 
     async with application.state.engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)

@@ -3,7 +3,6 @@
 import uuid
 
 from fastapi import APIRouter, Request, status
-from sqlmodel import Session
 
 from assistant.models.conversation import (
     ConversationWithMessagesResponse,
@@ -14,6 +13,7 @@ from assistant.models.conversation import (
 )
 from assistant.security.session_auth import CurrentUser
 from assistant.services import get_conversation_service
+from assistant.utils.database import DBSession
 
 router = APIRouter()
 
@@ -26,15 +26,14 @@ router = APIRouter()
 async def list_conversations(
     request: Request,
     user: CurrentUser,
+    session: DBSession,
 ) -> ListConversationsResponse:
     """List all conversations for the current user."""
     conversation_service = get_conversation_service()
-    with Session(request.app.state.engine) as session:
-        return await conversation_service.list_conversations(
-            # pyrefly: ignore [bad-argument-type]
-            session=session,
-            user_id=user.userid,
-        )
+    return await conversation_service.list_conversations(
+        session=session,
+        user_id=user.userid,
+    )
 
 
 @router.get(
@@ -45,15 +44,14 @@ async def get_conversation_messages(
     request: Request,
     conversation_id: uuid.UUID,
     user: CurrentUser,
+    session: DBSession,
 ) -> GetConversationMessagesResponse:
     conversation_service = get_conversation_service()
-    with Session(request.app.state.engine) as session:
-        return await conversation_service.get_conversation_messages(
-            # pyrefly: ignore [bad-argument-type]
-            session,
-            user_id=user.userid,
-            conversation_id=conversation_id,
-        )
+    return await conversation_service.get_conversation_messages(
+        session=session,
+        user_id=user.userid,
+        conversation_id=conversation_id,
+    )
 
 
 @router.post(
@@ -67,16 +65,15 @@ async def create_conversation_with_message(
     request: Request,
     payload: CreateConversationWithMessageRequest,
     user: CurrentUser,
+    session: DBSession,
 ) -> ConversationWithMessagesResponse:
     """Create a new conversation with an initial user message."""
     conversation_service = get_conversation_service()
-    with Session(request.app.state.engine) as session:
-        return await conversation_service.create_conversation_with_message(
-            # pyrefly: ignore [bad-argument-type]
-            session=session,
-            user_id=user.userid,
-            payload=payload,
-        )
+    return await conversation_service.create_conversation_with_message(
+        session=session,
+        user_id=user.userid,
+        payload=payload,
+    )
 
 
 @router.post(
@@ -89,13 +86,12 @@ async def add_message_to_conversation(
     conversation_id: uuid.UUID,
     payload: CreateMessageRequest,
     user: CurrentUser,
+    session: DBSession,
 ) -> ConversationWithMessagesResponse:
     conversation_service = get_conversation_service()
-    with Session(request.app.state.engine) as session:
-        return await conversation_service.add_message_to_conversation(
-            # pyrefly: ignore [bad-argument-type]
-            session,
-            user_id=user.userid,
-            conversation_id=conversation_id,
-            payload=payload,
-        )
+    return await conversation_service.add_message_to_conversation(
+        session=session,
+        user_id=user.userid,
+        conversation_id=conversation_id,
+        payload=payload,
+    )

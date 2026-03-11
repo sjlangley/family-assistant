@@ -75,7 +75,7 @@ GOOGLE_OAUTH_CLIENT_ID = 'not-a-real-client-id'
 SESSION_SECRET_KEY = 'not-a-real-secret-key'
 ENVIRONMENT = 'development'
 LLM_BASE_URL = 'http://localhost'
-DATABASE_URL = 'sqlite:///:memory:'
+DATABASE_URL = 'sqlite+aiosqlite:///:memory:'
 
 
 
