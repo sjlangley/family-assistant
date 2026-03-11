@@ -342,7 +342,9 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
           ) : (
             <div className="flex items-center justify-center h-full text-gray-400">
               <div className="text-center">
-                <div className="text-6xl mb-4" aria-hidden="true">💬</div>
+                <div className="text-6xl mb-4" aria-hidden="true">
+                  💬
+                </div>
                 <div className="text-xl mb-2">Welcome to Family Assistant</div>
                 <div className="text-sm">
                   Select a conversation or start a new chat below

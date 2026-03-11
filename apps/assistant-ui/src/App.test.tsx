@@ -157,9 +157,9 @@ describe("App", () => {
       ).toBeInTheDocument();
     });
 
-    // Email label should still be displayed, with a fallback for missing value
+    // Should display userid as fallback when email and name are missing
     expect(screen.getByText(/logged in as:/i)).toBeInTheDocument();
-    expect(screen.getByText(/n\/a/i)).toBeInTheDocument();
+    expect(screen.getByText(/user-789/i)).toBeInTheDocument();
   });
 
   it("handles API errors gracefully", async () => {
