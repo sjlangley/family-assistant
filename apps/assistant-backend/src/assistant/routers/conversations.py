@@ -1,4 +1,4 @@
-"""REST API handler for user converstations."""
+"""REST API handler for user conversations."""
 
 import uuid
 
