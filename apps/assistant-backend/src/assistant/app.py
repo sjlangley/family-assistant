@@ -60,7 +60,7 @@ def _log_startup_settings(settings_to_log: Settings) -> None:
 
 
 def tcp_connection_url() -> URL:
-    """Initializes a TCP connection URL for a Cloud SQL instance of MySQL.
+    """Initializes a TCP connection URL for a Cloud SQL instance of PostgreSQL.
 
     Returns:
         URL: The SQLAlchemy URL object configured for TCP connection.
@@ -72,7 +72,7 @@ def tcp_connection_url() -> URL:
     db_port = settings.database_port
 
     return URL.create(
-        drivername='mysql+pymysql',
+        drivername='postgresql+asyncpg',
         username=db_user,
         password=db_pass,
         host=db_host,
