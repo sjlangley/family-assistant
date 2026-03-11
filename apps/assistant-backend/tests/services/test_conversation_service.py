@@ -146,7 +146,11 @@ async def test_create_conversation_with_message_success(
     assert db_conversation.user_id == test_user_id
     assert db_conversation.title == 'Hello, how are you?'
 
-    stmt = select(Message).where(Message.conversation_id == db_conversation.id)
+    stmt = (
+        select(Message)
+        .where(Message.conversation_id == db_conversation.id)
+        .order_by(Message.sequence_number.asc())
+    )
     db_result = await async_session.execute(stmt)
     db_messages = list(db_result.scalars().all())
     assert len(db_messages) == 2
