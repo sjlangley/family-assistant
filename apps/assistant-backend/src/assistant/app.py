@@ -5,11 +5,13 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.engine.url import URL
+from sqlmodel import SQLModel, create_engine
 from starlette.middleware.sessions import SessionMiddleware
 
 from assistant.enums import Environment
 from assistant.logging import setup_logging
-from assistant.routers import auth, chat, health, user
+from assistant.routers import auth, chat, conversations, health, user
 from assistant.services import get_llm_service
 from assistant.settings import Settings, settings
 
@@ -57,14 +59,56 @@ def _log_startup_settings(settings_to_log: Settings) -> None:
     )
 
 
+def tcp_connection_url() -> URL:
+    """Initializes a TCP connection URL for a Cloud SQL instance of MySQL.
+
+    Returns:
+        URL: The SQLAlchemy URL object configured for TCP connection.
+    """
+    db_user = settings.database_user
+    db_pass = settings.database_password
+    db_name = settings.database_name
+    db_host = settings.database_host
+    db_port = settings.database_port
+
+    return URL.create(
+        drivername='mysql+pymysql',
+        username=db_user,
+        password=db_pass,
+        host=db_host,
+        port=db_port,
+        database=db_name,
+    )
+
+
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     setup_logging()
     _log_startup_settings(settings)
 
+    # Connect to the database
+    if settings.database_url is not None:
+        database_url = settings.database_url
+    else:
+        database_url = tcp_connection_url()
+
+    logger.info(f'Final Database URL: {database_url!r}')
+
+    application.state.engine = create_engine(database_url, pool_pre_ping=True)
+
+    SQLModel.metadata.create_all(application.state.engine)
+
+    logger.info(f'Engine URL after parsing: {application.state.engine.url!r}')
+    logger.info(
+        f'Engine URL components -> dialect='
+        f'{application.state.engine.url.get_dialect().name}, '
+        f'driver={application.state.engine.url.get_driver_name()}'
+    )
+
     yield
 
     await get_llm_service().aclose()
+    application.state.engine.dispose()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -92,4 +136,5 @@ app.add_middleware(
 app.include_router(auth.router, prefix='/auth')
 app.include_router(health.router, prefix='/health')
 app.include_router(chat.router, prefix='/api/v1/chat')
+app.include_router(conversations.router, prefix='/api/v1/conversations')
 app.include_router(user.router, prefix='/user')

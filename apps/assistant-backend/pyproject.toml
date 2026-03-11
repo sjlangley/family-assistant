@@ -21,6 +21,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
+    "asyncpg==0.31.0",
     "fastapi==0.135.1",
     "cachecontrol==0.14.4",
     "google-auth==2.48.0",
@@ -29,11 +30,15 @@ dependencies = [
     "itsdangerous==2.2.0",
     "pydantic==2.12.5",
     "pydantic-settings==2.13.1",
+    "sqlalchemy[asyncio]==2.0.48",
+    "sqlmodel==0.0.37",
     "uvicorn==0.41.0",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "aiosqlite==0.20.0",
+    "alembic==1.18.4",
     "asgi-lifespan==2.1.0",
     "pydocstyle==6.3.0",
     "pylint==4.0.5",
@@ -70,6 +75,8 @@ GOOGLE_OAUTH_CLIENT_ID = 'not-a-real-client-id'
 SESSION_SECRET_KEY = 'not-a-real-secret-key'
 ENVIRONMENT = 'development'
 LLM_BASE_URL = 'http://localhost'
+DATABASE_URL = 'sqlite:///:memory:'
+
 
 
 [tool.coverage.run]
