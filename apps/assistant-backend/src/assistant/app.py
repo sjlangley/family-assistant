@@ -92,7 +92,7 @@ async def lifespan(application: FastAPI):
     else:
         database_url = tcp_connection_url()
 
-    logger.info(f'Final Database URL: {database_url!r}')
+    logger.info(f'Final Database URL: {database_url!r}')  # Ensure this is redacted if it's a string
 
     application.state.engine = create_async_engine(database_url, pool_pre_ping=True)
 
