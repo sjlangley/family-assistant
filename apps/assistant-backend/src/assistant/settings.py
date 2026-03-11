@@ -76,5 +76,25 @@ class Settings(BaseSettings):
         alias='LLM_MODEL',
     )
 
+    # Conversation storage
+    database_url: str | None = Field(default=None, alias='DATABASE_URL')
+    database_name: str = Field(
+        default='conversations',
+        description='The database name for storing conversations.',
+        alias='DATABASE_NAME',
+    )
+    database_user: str = Field(
+        default='nobody',
+        description='Database username for storing conversations.',
+        alias='DATABASE_USER',
+    )
+    database_password: str = Field(
+        default='',
+        description='Database password for storing conversations.',
+        alias='DATABASE_PASSWORD',
+    )
+    database_host: str = Field(default='localhost', alias='DATABASE_HOST')
+    database_port: int = Field(default=5432, alias='DATABASE_PORT')
+
 
 settings = Settings()  # pyrefly: ignore[missing-argument]
