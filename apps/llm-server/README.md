@@ -9,6 +9,15 @@ This directory contains instructions for setting up a local LLM server that serv
 models with an OpenAI-compatible HTTP API. The assistant backend (`apps/assistant-backend`)
 communicates with this server via the `/v1/chat/completions` endpoint.
 
+There are two ways to run the LLM server:
+
+1. **Docker Compose** (recommended) — the `docker-compose.yml` in the repository root
+   includes a `llama-cpp-python` service. Place your GGUF model at
+   `~/models/meta-llama-3.1-8b-instruct-q4_k_m.gguf` and run `docker compose up`.
+2. **Manually on the host** — follow the Quick Start below to install and run the server
+   directly. This is useful for GPU-accelerated inference or when running only part of the
+   stack in Docker.
+
 **Key Features:**
 
 - OpenAI-compatible API
@@ -86,13 +95,13 @@ python -m llama_cpp.server \
   --model ./models/meta-llama-3.1-8b-instruct-q4_k_m.gguf \
   --chat_format llama-3 \
   --host 0.0.0.0 \
-  --port 8080
+  --port 8000
 ```
 
-The server will start and be available at `http://localhost:8080`
+The server will start and be available at `http://localhost:8000`
 
 **Important:** The assistant-backend expects the LLM server at the URL specified in
-`LLM_BASE_URL` environment variable (defaults to `http://localhost:8080`).
+`LLM_BASE_URL` environment variable (defaults to `http://host.docker.internal:8000`).
 
 ## Configuration Options
 
@@ -101,7 +110,7 @@ The server will start and be available at `http://localhost:8080`
 - `--model <path>` - Path to the GGUF model file **(required)**
 - `--chat_format <format>` - Chat template format (e.g., `llama-3`, `chatml`, `mistral-instruct`)
 - `--host <host>` - Host to bind to (default: `localhost`, use `0.0.0.0` for remote access)
-- `--port <port>` - Port to listen on (default: `8080`)
+- `--port <port>` - Port to listen on (default: `8000`)
 - `--n_ctx <size>` - Context window size (default: `2048`, increase for longer conversations)
 - `--n_gpu_layers <layers>` - Number of layers to offload to GPU (default: `0`, use `-1` for all)
 - `--n_threads <threads>` - Number of CPU threads to use
@@ -113,7 +122,7 @@ python -m llama_cpp.server \
   --model ./models/meta-llama-3.1-8b-instruct-q4_k_m.gguf \
   --chat_format llama-3 \
   --host 0.0.0.0 \
-  --port 8080 \
+  --port 8000 \
   --n_ctx 4096 \
   --n_gpu_layers -1 \
   --n_threads 8
@@ -124,23 +133,23 @@ python -m llama_cpp.server \
 If running the LLM server on a remote machine, use SSH port forwarding to access it locally:
 
 ```bash
-ssh -L 8080:localhost:8080 user@remote-host
+ssh -L 8000:localhost:8000 user@remote-host
 ```
 
-Then configure your backend to use `http://localhost:8080` as the `LLM_BASE_URL`.
+Then configure your backend to use `http://localhost:8000` as the `LLM_BASE_URL`.
 
 ## Testing the Server
 
 ### Health Check
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:8000/health
 ```
 
 ### Test Chat Completion
 
 ```bash
-curl http://localhost:8080/v1/chat/completions \
+curl http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama-3.1-8b",
@@ -180,16 +189,21 @@ Expected response:
 
 ## Integration with Assistant Backend
 
-Update the backend configuration in `apps/assistant-backend/.env`:
+Update the backend configuration in `apps/assistant-backend/.env` (or the root `.env` for Docker Compose):
 
 ```env
-LLM_BASE_URL=http://localhost:8080
-LLM_MODEL=llama-3.1-8b
-LLM_TIMEOUT_SECONDS=60
+LLM_BASE_URL=http://localhost:8000
+LLM_MODEL=llama-3.1-8b-instruct
+LLM_TIMEOUT_SECONDS=120
 ```
 
+When running via Docker Compose the backend connects to the `llama-cpp-python` service
+automatically; the `LLM_BASE_URL` is set to `http://llama-cpp-python:8000` inside the
+container network. For local development outside Docker, point `LLM_BASE_URL` at the
+host address where the server is running.
+
 The backend will automatically connect to the LLM server and use it for chat completions
-via the `/api/v1/chat/completions` endpoint.
+via the `/v1/chat/completions` endpoint.
 
 ## Troubleshooting
 
@@ -228,7 +242,7 @@ via the `/api/v1/chat/completions` endpoint.
 **Issue**: Backend can't reach LLM server
 
 - **Solution**:
-  - Verify the server is running: `curl http://localhost:8080/health`
+  - Verify the server is running: `curl http://localhost:8000/health`
   - Check `LLM_BASE_URL` in backend `.env` matches the server host/port
   - Ensure firewall allows connections on the specified port
   - For remote servers, verify SSH port forwarding is active

@@ -1,37 +1,31 @@
 # Family AI Assistant
 
-A fully self-hosted, multi-user, multi-modal AI assistant designed for household use.
-Supports **text, image, audio, and video generation**, with **per-user memory**, **customizable personality**, and **tool orchestration**.
+A self-hosted, multi-user AI assistant designed for household use.
+Supports **text chat with a local LLM**, **persistent conversation history**, and **per-user authentication**.
 
 ---
 
 ## Features
 
 - **Multi-user support**
-  Each family member has a separate memory and personality.
-- **Memory system**
-  Persistent user memory and shared household memory stored in vector DB + structured DB.
-- **Multi-modal capabilities**
-  - Text: llama.cpp / Ollama
-  - Images: Stable Diffusion
-  - Audio: TTS (Coqui, Bark)
-  - Video: Gen-1 / Kaiber style models
-- **Tool orchestration**
-  Calendar, grocery lists, home automation, and other household tasks.
+  Each family member authenticates with their Google account and has their own conversation history.
+- **Conversation management**
+  Persistent conversations stored in PostgreSQL — create new chats, resume old ones, and browse history.
+- **LLM chat**
+  Text chat powered by llama.cpp running locally (via Docker or on the host machine).
 - **Authentication & security**
-  Google Workspace OAuth for access control.
+  Google OAuth 2.0 with server-side session cookies. Per-user data isolation enforced at the API layer.
 
 ---
 
 ## Tech Stack
 
-- **Backend:** Python + FastAPI
-- **Frontend:** TypeScript + Node + React
-- **LLM Runtime:** llama.cpp / Ollama
-- **Memory:** Qdrant / Chroma for semantic memory, SQLite/Postgres for structured memory
-- **Multi-modal Models:** Stable Diffusion, Coqui/Bark TTS, Gen-1 video
-- **Authentication:** Google OAuth 2.0
-- **Linting & Formatting:** Google Python style, `pyproject.toml`, ESLint/Prettier for TS
+- **Backend:** Python 3.13+ / FastAPI
+- **Frontend:** TypeScript / React 18 / Vite
+- **LLM Runtime:** llama.cpp (llama-cpp-python server, OpenAI-compatible API)
+- **Database:** PostgreSQL 16 (SQLModel / SQLAlchemy async)
+- **Authentication:** Google OAuth 2.0 (server-side sessions)
+- **Linting & Formatting:** Ruff + Pyrefly (backend), ESLint + Prettier (frontend)
 
 ---
 
@@ -57,11 +51,10 @@ See [DOCKER.md](DOCKER.md) for detailed Docker setup instructions.
 ### Manual Development Setup
 
 1. Clone the repo
-2. Install Python dependencies (poetry / pip)
-3. Install Node dependencies for frontend
+2. Install Python 3.13+ dependencies via pip
+3. Install Node.js 22+ dependencies for the frontend
 4. Configure Google OAuth credentials
-5. Set up vector DB for memory
-6. Start backend + frontend servers
+5. Start PostgreSQL, the LLM server, the backend, and the frontend
 
 See individual READMEs for detailed instructions:
 

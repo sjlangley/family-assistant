@@ -37,7 +37,7 @@ cp .env.example .env
 Edit `.env` with your configuration:
 
 ```
-VITE_API_BASE_URL=http://localhost:8000
+VITE_API_BASE_URL=http://localhost:8080
 VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 ```
 
@@ -150,17 +150,19 @@ npm run preview
 ```
 src/
 ├── lib/
-│   ├── api.ts            # Backend API client
-│   └── auth.tsx          # Auth state management (React Context)
+│   ├── api.ts                    # Backend API client
+│   └── auth.tsx                  # Auth state management (React Context)
 ├── components/
-│   └── GoogleSignInButton.tsx  # Google Sign-In button
+│   ├── GoogleSignInButton.tsx    # Google Sign-In button
+│   ├── ConversationsChat.tsx     # Main chat interface with conversation sidebar
+│   └── Chat.tsx                  # Individual chat message display component
 ├── types/
-│   ├── api.ts            # API type definitions
-│   └── google.d.ts       # Google Identity Services types
-├── App.tsx               # Main app component
-├── App.test.tsx          # App tests
-├── main.tsx              # Entry point
-└── index.css             # Global styles
+│   ├── api.ts                    # API type definitions
+│   └── google.d.ts               # Google Identity Services types
+├── App.tsx                       # Main app component (routes between auth states)
+├── App.test.tsx                  # App tests
+├── main.tsx                      # Entry point
+└── index.css                     # Global styles
 ```
 
 ## UI States
@@ -174,11 +176,17 @@ Displayed while checking authentication status on app startup.
 - Title: "Family Assistant"
 - Google Sign-In button
 
-### Logged In
+### Logged In — Conversations Chat
 
-- Title: "Family Assistant"
-- User information (email, name, user ID)
-- Logout button
+A two-panel chat interface:
+
+- **Left sidebar**: List of past conversations with a "+ New Chat" button and a Logout button
+  showing the logged-in user's email, name, or user ID.
+- **Main panel**: Message history for the selected conversation and a message composer
+  (text input + Send button). Typing and pressing Enter or clicking Send sends the message
+  to the LLM and appends both the user message and the assistant reply.
+
+Starting a new message without an active conversation automatically creates a new conversation.
 
 ## Docker
 
@@ -188,7 +196,7 @@ Build with configuration:
 
 ```bash
 docker build \
-  --build-arg VITE_API_BASE_URL=http://localhost:8000 \
+  --build-arg VITE_API_BASE_URL=http://localhost:8080 \
   --build-arg VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com \
   -t assistant-ui .
 ```
