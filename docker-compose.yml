@@ -41,18 +41,18 @@ services:
       - family-assistant-network
 
   chroma:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:1.5.5
     volumes:
       - chroma_data:/data
     ports:
-      - 8100:8100/tcp
+      - "${CHROMA_HOST_PORT:-8100}:${CHROMA_HOST_PORT:-8100}/tcp"
     networks:
       - family-assistant-network
     environment:
-      - CHROMA_LISTEN_ADDRESS=0.0.0.0
-      - CHROMA_PORT=8100
+      CHROMA_LISTEN_ADDRESS: 0.0.0.0
+      CHROMA_PORT: ${CHROMA_HOST_PORT:-8100}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8100/api/v2/heartbeat"]
+      test: ["CMD", "curl", "-f", "http://localhost:${CHROMA_HOST_PORT:-8100}/api/v1/heartbeat"]
       interval: 30s
       timeout: 10s
       retries: 3
