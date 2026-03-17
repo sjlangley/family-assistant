@@ -21,6 +21,7 @@ from assistant.models.conversation import (
 from assistant.models.conversation_sql import Conversation, Message
 from assistant.services.conversation_service import ConversationService
 from assistant.services.llm_service import LLMService
+from assistant.services.memory_storage import MemoryStorage
 
 pytestmark = pytest.mark.asyncio
 
@@ -53,9 +54,17 @@ def mock_llm_service():
 
 
 @pytest.fixture
-def conversation_service(mock_llm_service):
+def mock_memory_storage():
+    """Create a mock MemoryStorage."""
+    return AsyncMock(spec=MemoryStorage)
+
+
+@pytest.fixture
+def conversation_service(mock_llm_service, mock_memory_storage):
     """Create a ConversationService with mocked LLM service."""
-    return ConversationService(llm_service=mock_llm_service)
+    return ConversationService(
+        llm_service=mock_llm_service, memory_storage=mock_memory_storage
+    )
 
 
 @pytest.fixture

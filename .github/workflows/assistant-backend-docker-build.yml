@@ -54,6 +54,7 @@ jobs:
             -e SESSION_SECRET_KEY='not-a-real-secret' \
             -e LLM_BASE_URL='http://localhost:8081' \
             -e DATABASE_URL='sqlite+aiosqlite:///./test.db' \
+            -e CHROMA_HOST='http://localhost' \
             assistant-backend:test
 
       - name: Wait for application to start and check health

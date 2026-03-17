@@ -80,6 +80,12 @@ services:
 
       # Database configuration (for future use)
       DATABASE_URL: postgresql+asyncpg://assistant:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/family_assistant
+
+      # Memory Storage
+      CHROMA_HOST: chroma
+      CHROMA_PORT: ${CHROMA_HOST_PORT:-8100}
+      CHROMA_COLLECTION_NAME: family_assistant_memories
+
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     depends_on:

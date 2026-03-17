@@ -96,5 +96,14 @@ class Settings(BaseSettings):
     database_host: str = Field(default='localhost', alias='DATABASE_HOST')
     database_port: int = Field(default=5432, alias='DATABASE_PORT')
 
+    # Memory storage
+    chroma_host: str = Field(..., alias='CHROMA_HOST')
+    chroma_port: int = Field(default=8100, alias='CHROMA_PORT')
+    chroma_collection_name: str = Field(
+        default='assistant_memory',
+        description='The Chroma collection name for storing assistant memory.',
+        alias='CHROMA_COLLECTION_NAME',
+    )
+
 
 settings = Settings()  # pyrefly: ignore[missing-argument]
