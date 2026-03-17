@@ -23,6 +23,7 @@ classifiers = [
 dependencies = [
     "aiosqlite==0.20.0",
     "asyncpg==0.31.0",
+    "chromadb==1.5.5",
     "fastapi==0.135.1",
     "cachecontrol==0.14.4",
     "google-auth==2.48.0",
@@ -76,6 +77,8 @@ SESSION_SECRET_KEY = 'not-a-real-secret-key'
 ENVIRONMENT = 'development'
 LLM_BASE_URL = 'http://localhost'
 DATABASE_URL = 'sqlite+aiosqlite:///:memory:'
+CHROMA_HOST = 'http://localhost'
+
 
 
 

@@ -24,6 +24,7 @@ from assistant.models.llm import (
     CreateChatCompletionResponse,
 )
 from assistant.services.llm_service import LLMService
+from assistant.services.memory_storage import MemoryStorage
 from assistant.settings import settings
 
 
@@ -33,8 +34,11 @@ def conversation_title_from_first_message(content: str) -> str:
 
 
 class ConversationService:
-    def __init__(self, llm_service: LLMService) -> None:
+    def __init__(
+        self, llm_service: LLMService, memory_storage: MemoryStorage
+    ) -> None:
         self.llm_service = llm_service
+        self.memory_storage = memory_storage
 
     async def list_conversations(
         self,
