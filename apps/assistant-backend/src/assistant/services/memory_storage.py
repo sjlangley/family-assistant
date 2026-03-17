@@ -1,11 +1,8 @@
-import logging
 import uuid
 
 import chromadb
 
 from assistant.utils.datetime_utils import utc_now
-
-logger = logging.getLogger(__name__)
 
 
 class MemoryStorage:
@@ -41,14 +38,15 @@ class MemoryStorage:
             ],
         )
 
-    def query_memory(self, user_id: str, query: str) -> list[str]:
-        """Retrieve a memory entry by its ID."""
+    def query_memory(
+        self, user_id: str, query: str, n_results: int = 5
+    ) -> list[str]:
+        """Retrieve related memories to a query."""
         results = self.collection.query(
             query_texts=[query],
-            n_results=5,
+            n_results=n_results,
             where={'user_id': user_id},
-            include=['documents', 'metadatas', 'embeddings'],
+            include=['documents'],
         )
-        logger.debug(f'Query results: {results}')
         documents = results['documents'][0] if results['documents'] else []
         return documents

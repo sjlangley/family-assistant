@@ -1,18 +1,12 @@
 """Tests for MemoryStorage."""
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 import uuid
 
 import pytest
 
 from assistant.services.memory_storage import MemoryStorage
-
-
-@pytest.fixture
-def mock_chroma_client():
-    """Create a mock ChromaDB client."""
-    return MagicMock()
 
 
 @pytest.fixture
@@ -22,26 +16,24 @@ def mock_collection():
 
 
 @pytest.fixture
-def memory_storage(mock_chroma_client, mock_collection):
-    """Create a MemoryStorage instance with mocked ChromaDB client."""
+def memory_storage(mock_collection):
+    """Create a MemoryStorage instance with mocked internals."""
+    # Create a real MemoryStorage instance but mock the chromadb client
+    # to prevent actual HTTP connections
+    mock_client = Mock()
+    mock_client.get_or_create_collection.return_value = mock_collection
+
     with patch(
         'assistant.services.memory_storage.chromadb.HttpClient'
     ) as mock_http_client:
-        mock_http_client.return_value = mock_chroma_client
-        mock_chroma_client.get_or_create_collection.return_value = (
-            mock_collection
-        )
-
+        mock_http_client.return_value = mock_client
         storage = MemoryStorage(
             chroma_host='localhost',
             chroma_port=8000,
             collection_name='test_collection',
         )
 
-        # Replace the collection with our mock
-        storage.collection = mock_collection
-
-        yield storage
+    return storage
 
 
 @pytest.fixture
@@ -237,9 +229,10 @@ def test_query_memory_success(
 ):
     """It queries memory with correct parameters and returns results."""
     query = 'What did we discuss about Python?'
+    expected_documents = ['doc1', 'doc2', 'doc3']
     mock_results = {
         'ids': [['id1', 'id2', 'id3']],
-        'documents': [['doc1', 'doc2', 'doc3']],
+        'documents': [expected_documents],
         'metadatas': [
             [
                 {
@@ -274,11 +267,11 @@ def test_query_memory_success(
         query_texts=[query],
         n_results=5,
         where={'user_id': test_user_id},
-        include=['documents', 'metadatas', 'embeddings'],
+        include=['documents'],
     )
 
     # Verify results are returned correctly
-    assert results == mock_results['documents'][0]
+    assert results == expected_documents
 
 
 def test_query_memory_filters_by_user_id(
@@ -338,7 +331,7 @@ def test_query_memory_empty_results(
         query=query,
     )
 
-    assert results == mock_empty_results['documents'][0]
+    assert results == []
 
 
 def test_query_memory_with_different_user_ids(
@@ -349,6 +342,13 @@ def test_query_memory_with_different_user_ids(
     user_id_1 = str(uuid.uuid4())
     user_id_2 = str(uuid.uuid4())
     query = 'Same query'
+
+    mock_collection.query.return_value = {
+        'ids': [[]],
+        'documents': [[]],
+        'metadatas': [[]],
+        'distances': [[]],
+    }
 
     # Query with first user
     memory_storage.query_memory(user_id=user_id_1, query=query)
@@ -364,3 +364,28 @@ def test_query_memory_with_different_user_ids(
 
     assert first_call_where == {'user_id': user_id_1}
     assert second_call_where == {'user_id': user_id_2}
+
+
+def test_query_memory_with_custom_n_results(
+    memory_storage,
+    mock_collection,
+    test_user_id,
+):
+    """It allows customizing the number of results returned."""
+    query = 'Test query'
+    mock_collection.query.return_value = {
+        'ids': [[]],
+        'documents': [[]],
+        'metadatas': [[]],
+        'distances': [[]],
+    }
+
+    memory_storage.query_memory(
+        user_id=test_user_id,
+        query=query,
+        n_results=10,
+    )
+
+    # Verify n_results parameter was passed through
+    call_args = mock_collection.query.call_args
+    assert call_args[1]['n_results'] == 10

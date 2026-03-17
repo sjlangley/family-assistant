@@ -286,7 +286,13 @@ async def test_create_conversation_with_message_empty_message(
     authenticated_async_test_client,
 ):
     """Test that empty message is rejected."""
-    with patch('assistant.services.memory_storage.chromadb'):
+    # Mock the memory storage to prevent ChromaDB connection attempts
+    mock_memory_storage = AsyncMock()
+
+    with patch(
+        'assistant.services.get_memory_storage',
+        return_value=mock_memory_storage,
+    ):
         response = await authenticated_async_test_client.post(
             '/api/v1/conversations/with-message',
             json={'content': ''},
@@ -512,7 +518,14 @@ async def test_add_message_to_conversation_empty_content(
 ):
     """Test that empty content is rejected."""
     conv_id = str(uuid4())
-    with patch('assistant.services.memory_storage.chromadb'):
+
+    # Mock the memory storage to prevent ChromaDB connection attempts
+    mock_memory_storage = AsyncMock()
+
+    with patch(
+        'assistant.services.get_memory_storage',
+        return_value=mock_memory_storage,
+    ):
         response = await authenticated_async_test_client.post(
             f'/api/v1/conversations/{conv_id}/messages',
             json={'content': ''},
