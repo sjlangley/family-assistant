@@ -548,13 +548,19 @@ class CreateChatCompletionResponse(BaseModel):
 
 
 class LLMCompletionResult(BaseModel):
-    """Result from a successful LLM completion."""
+    """Result from a successful LLM completion.
+
+    Preserves assistant message metadata including tool_calls and finish_reason
+    for future tool-calling and streaming implementations.
+    """
 
     content: str
     model: str
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
+    tool_calls: list[ChatCompletionMessageToolCall] | None = None
+    finish_reason: str | None = None
 
 
 class LLMCompletionErrorKind(StrEnum):

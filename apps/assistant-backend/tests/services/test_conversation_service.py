@@ -96,6 +96,8 @@ def mock_llm_response():
         prompt_tokens=10,
         completion_tokens=15,
         total_tokens=25,
+        tool_calls=None,
+        finish_reason='stop',
     )
 
 
@@ -347,6 +349,8 @@ async def test_create_conversation_with_message_empty_assistant_content(
         prompt_tokens=10,
         completion_tokens=0,
         total_tokens=10,
+        tool_calls=None,
+        finish_reason='stop',
     )
 
     result = await conversation_service.create_conversation_with_message(

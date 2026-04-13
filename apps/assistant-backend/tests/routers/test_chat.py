@@ -24,6 +24,8 @@ async def test_create_chat_completion_success(
         prompt_tokens=10,
         completion_tokens=15,
         total_tokens=25,
+        tool_calls=None,
+        finish_reason='stop',
     )
 
     mock_service = AsyncMock()
@@ -274,6 +276,8 @@ async def test_create_chat_completion_custom_temperature(
         prompt_tokens=5,
         completion_tokens=3,
         total_tokens=8,
+        tool_calls=None,
+        finish_reason='stop',
     )
 
     mock_service = AsyncMock()
@@ -314,6 +318,8 @@ async def test_create_chat_completion_missing_usage_info(
         prompt_tokens=0,
         completion_tokens=0,
         total_tokens=0,
+        tool_calls=None,
+        finish_reason='stop',
     )
 
     mock_service = AsyncMock()

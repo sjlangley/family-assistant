@@ -109,6 +109,8 @@ class LLMService:
             prompt_tokens=response.usage.prompt_tokens,
             completion_tokens=response.usage.completion_tokens,
             total_tokens=response.usage.total_tokens,
+            tool_calls=choice.message.tool_calls,
+            finish_reason=choice.finish_reason,
         )
 
     async def _post_completion(self, request_body: dict) -> dict:

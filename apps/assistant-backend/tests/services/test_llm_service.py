@@ -74,6 +74,76 @@ async def test_complete_messages_success():
     assert result.prompt_tokens == 10
     assert result.completion_tokens == 15
     assert result.total_tokens == 25
+    assert result.tool_calls is None
+    assert result.finish_reason == 'stop'
+
+
+async def test_complete_messages_with_tool_calls():
+    """It preserves tool_calls metadata in the result."""
+    messages = [{'role': 'user', 'content': 'What is the weather?'}]
+    mock_response = {
+        'id': 'chatcmpl-456',
+        'object': 'chat.completion',
+        'created': 1677652288,
+        'model': 'test-model',
+        'choices': [
+            {
+                'index': 0,
+                'message': {
+                    'role': 'assistant',
+                    'content': None,
+                    'tool_calls': [
+                        {
+                            'id': 'call_abc123',
+                            'type': 'function',
+                            'function': {
+                                'name': 'get_weather',
+                                'arguments': '{"location": "Seattle"}',
+                            },
+                        }
+                    ],
+                },
+                'logprobs': None,
+                'finish_reason': 'tool_calls',
+            }
+        ],
+        'usage': {
+            'prompt_tokens': 20,
+            'completion_tokens': 10,
+            'total_tokens': 30,
+        },
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=mock_response, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(transport=transport, base_url='http://test')
+    service = LLMService(base_url='http://test', timeout_seconds=5)
+    service.client = client
+
+    try:
+        result = await service.complete_messages(
+            messages=messages,
+            model='test-model',
+            temperature=0.7,
+            max_tokens=128,
+        )
+    finally:
+        await client.aclose()
+
+    assert result.content == ''
+    assert result.model == 'test-model'
+    assert result.prompt_tokens == 20
+    assert result.completion_tokens == 10
+    assert result.total_tokens == 30
+    assert result.finish_reason == 'tool_calls'
+    assert result.tool_calls is not None
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0].id == 'call_abc123'
+    assert result.tool_calls[0].type == 'function'
+    assert result.tool_calls[0].function.name == 'get_weather'
+    assert result.tool_calls[0].function.arguments == '{"location": "Seattle"}'
 
 
 async def test_complete_messages_timeout():
