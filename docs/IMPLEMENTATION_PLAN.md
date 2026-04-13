@@ -315,6 +315,8 @@ They keep trust payloads useful instead of bloated.
 
 ### Step 3. Add `ContextAssemblyService`
 
+**Status:** ✅ **COMPLETE**
+
 **New collaborator 1**
 
 - `apps/assistant-backend/src/assistant/services/context_assembly.py`
@@ -337,9 +339,17 @@ They keep trust payloads useful instead of bloated.
 
 **Acceptance criteria**
 
-- no raw full transcript resend once summary exists
-- durable facts are per-user
-- prompt assembly is deterministic under budget pressure
+- ✅ no raw full transcript resend once summary exists
+- ✅ durable facts are per-user
+- ✅ prompt assembly is deterministic under budget pressure
+
+**Completed work:**
+- Added `ContextAssemblyService` with a typed `ContextAssemblyResult` for prepared messages plus small debug metadata
+- Loaded the latest conversation summary, active per-user durable facts, and a capped recent-turn window from canonical Postgres tables
+- Kept Chroma retrieval optional and non-authoritative so prompt assembly still works cleanly when retrieval is absent or empty
+- Enforced explicit prompt budgets for summary length, fact count, fact length, and recent-turn windows
+- Updated `ConversationService` and service wiring so both new and existing conversation replies use assembled context through the shared LLM completion seam
+- Added dedicated `ContextAssemblyService` tests and conversation-service regression coverage, including the follow-up fix that prevents the newest user message from being sent to the LLM twice
 
 ### Step 4. Add a minimal `web_search` tool path
 
@@ -500,7 +510,7 @@ They keep trust payloads useful instead of bloated.
 [x] summary table exists
 [x] durable fact table exists
 [x] shared LLM completion helper exists
-[ ] ContextAssemblyService exists
+[x] ContextAssemblyService exists
 [ ] web_search tool path works
 [ ] AssistantAnnotationService exists
 [ ] terminal assistant failure rows persist on backend failure
