@@ -15,6 +15,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlmodel import Field, Relationship, SQLModel
 
+from assistant.models.annotations import AssistantAnnotations
+
 
 class Conversation(SQLModel, table=True):
     __tablename__ = 'conversations'  # type: ignore[assignment]
@@ -102,7 +104,7 @@ class Message(SQLModel, table=True):
         default=None,
         sa_column=Column(Text, nullable=True),
     )
-    annotations: dict | None = Field(
+    annotations: AssistantAnnotations | None = Field(
         default=None,
         sa_column=Column(JSON, nullable=True),
     )
