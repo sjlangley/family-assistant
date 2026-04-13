@@ -3,6 +3,7 @@ from typing import Literal
 import uuid
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     Column,
     DateTime,
@@ -11,7 +12,6 @@ from sqlalchemy import (
     Text,
     func,
 )
-from sqlalchemy import JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlmodel import Field, Relationship, SQLModel
 
