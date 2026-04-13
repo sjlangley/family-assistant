@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from assistant.services.context_assembly import ContextAssemblyService
 from assistant.services.conversation_service import ConversationService
 from assistant.services.llm_service import LLMService
 from assistant.services.memory_storage import MemoryStorage
@@ -26,8 +27,17 @@ def get_memory_storage() -> MemoryStorage:
 
 
 @lru_cache(maxsize=1)
+def get_context_assembly_service() -> ContextAssemblyService:
+    """Return a lazily initialized singleton instance of ContextAssemblyService."""
+    return ContextAssemblyService(memory_storage=get_memory_storage())
+
+
+@lru_cache(maxsize=1)
 def get_conversation_service() -> ConversationService:
     """Return a lazily initialized singleton instance of ConversationService."""
     return ConversationService(
-        llm_service=get_llm_service(), memory_storage=get_memory_storage()
+        llm_service=get_llm_service(),
+        memory_storage=get_memory_storage(),
+        context_assembly=get_context_assembly_service(),
     )
+

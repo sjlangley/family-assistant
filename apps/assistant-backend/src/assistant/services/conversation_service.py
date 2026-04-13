@@ -21,6 +21,7 @@ from assistant.models.llm import (
     LLMCompletionError,
 )
 from assistant.routers.web_utils import llm_completion_error_to_http_exception
+from assistant.services.context_assembly import ContextAssemblyService
 from assistant.services.llm_service import LLMService
 from assistant.services.memory_storage import MemoryStorage
 from assistant.settings import settings
@@ -33,10 +34,14 @@ def conversation_title_from_first_message(content: str) -> str:
 
 class ConversationService:
     def __init__(
-        self, llm_service: LLMService, memory_storage: MemoryStorage
+        self,
+        llm_service: LLMService,
+        memory_storage: MemoryStorage,
+        context_assembly: ContextAssemblyService,
     ) -> None:
         self.llm_service = llm_service
         self.memory_storage = memory_storage
+        self.context_assembly = context_assembly
 
     async def list_conversations(
         self,
@@ -115,9 +120,16 @@ class ConversationService:
 
         conversation_id = conversation.id
 
+        # Assemble context for new conversation (includes facts if any)
+        context_result = await self.context_assembly.assemble_context_new_conversation(
+            session,
+            user_id=user_id,
+            user_message=content,
+        )
+
         # Make LLM call outside of transaction
         assistant_content = await self._call_llm_chat_completion(
-            messages=[{'role': 'user', 'content': content}],
+            messages=context_result.messages,
             temperature=payload.temperature,
             max_tokens=payload.max_tokens,
         )
@@ -177,11 +189,6 @@ class ConversationService:
             conversation_id=conversation_id,
         )
 
-        # Extract message data BEFORE commit to avoid detached instance errors
-        llm_messages = [
-            {'role': m.role, 'content': m.content} for m in existing_messages
-        ]
-
         next_seq = (
             1
             if not existing_messages
@@ -198,11 +205,17 @@ class ConversationService:
         await session.commit()
         await session.refresh(user_message)
 
-        # Make LLM call outside of transaction
-        llm_messages.append({'role': 'user', 'content': content})
+        # Assemble context using summary, facts, and recent turns
+        context_result = await self.context_assembly.assemble_context(
+            session,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            new_user_message=content,
+        )
 
+        # Make LLM call outside of transaction
         assistant_content = await self._call_llm_chat_completion(
-            messages=llm_messages,
+            messages=context_result.messages,
             temperature=payload.temperature,
             max_tokens=payload.max_tokens,
         )
