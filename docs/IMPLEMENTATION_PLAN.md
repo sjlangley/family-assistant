@@ -497,7 +497,7 @@ npm test
 ### Full repo sanity
 
 ```bash
-cd /Users/stuartlangley/src/sjlangley/family-assistant
+cd family-assistant
 git diff --stat
 ```
 
