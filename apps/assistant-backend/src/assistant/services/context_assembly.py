@@ -92,7 +92,13 @@ class ContextAssemblyService:
             ),
         )
 
-        # Optional: attempt Chroma retrieval as hint (non-authoritative)
+        # TODO: Chroma integration incomplete - query results are discarded
+        # See: https://github.com/sjlangley/family-assistant/issues/72
+        # Currently only tracks metadata (chroma_used flag) but doesn't use
+        # the retrieved context. Need to:
+        # 1. Define how to merge Chroma hints with PostgreSQL data
+        # 2. Stay within prompt budgets when adding Chroma results
+        # 3. Decide if Chroma provides value beyond summaries/facts
         chroma_used = False
         if self.memory_storage and new_user_message:
             try:
@@ -145,7 +151,8 @@ class ContextAssemblyService:
         # Load active durable facts for this user
         facts = await self._load_active_facts(session, user_id=user_id)
 
-        # Optional: attempt Chroma retrieval
+        # TODO: Chroma integration incomplete - query results are discarded
+        # See: https://github.com/sjlangley/family-assistant/issues/72
         chroma_used = False
         if self.memory_storage and user_message:
             try:
