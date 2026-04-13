@@ -17,7 +17,6 @@ from assistant.models.conversation_sql import Message
 from assistant.models.memory_sql import ConversationMemorySummary, DurableFact
 from assistant.services.memory_storage import MemoryStorage
 
-
 # Explicit prompt budget constants
 MAX_RECENT_TURNS_WITH_SUMMARY = 4  # Last N messages when summary exists
 MAX_RECENT_TURNS_NO_SUMMARY = 8  # Last N messages when no summary
@@ -278,9 +277,7 @@ class ContextAssemblyService:
             messages.append(
                 {
                     'role': 'system',
-                    'content': (
-                        f'[Conversation summary]: {summary_text}'
-                    ),
+                    'content': (f'[Conversation summary]: {summary_text}'),
                 }
             )
 

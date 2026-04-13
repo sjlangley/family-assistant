@@ -1,8 +1,5 @@
 """Tests for ContextAssemblyService."""
 
-from datetime import datetime
-import uuid
-
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -299,7 +296,10 @@ async def test_assemble_context_with_summary_and_facts(
     # Check order: summary, facts, recent turn, new message
     assert 'Conversation summary' in result.messages[0]['content']
     assert 'Known facts' in result.messages[1]['content']
-    assert result.messages[2] == {'role': 'user', 'content': 'Previous question'}
+    assert result.messages[2] == {
+        'role': 'user',
+        'content': 'Previous question',
+    }
     assert result.messages[3] == {'role': 'user', 'content': 'New question'}
 
 

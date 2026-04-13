@@ -121,10 +121,12 @@ class ConversationService:
         conversation_id = conversation.id
 
         # Assemble context for new conversation (includes facts if any)
-        context_result = await self.context_assembly.assemble_context_new_conversation(
-            session,
-            user_id=user_id,
-            user_message=content,
+        context_result = (
+            await self.context_assembly.assemble_context_new_conversation(
+                session,
+                user_id=user_id,
+                user_message=content,
+            )
         )
 
         # Make LLM call outside of transaction
