@@ -237,7 +237,7 @@ They keep trust payloads useful instead of bloated.
 
 ### Step 1. Add backend schema and API contracts
 
-**Status:** 🔄 **IN PROGRESS** (~70% complete)
+**Status:** ✅ **COMPLETE**
 
 **Files**
 
@@ -246,7 +246,7 @@ They keep trust payloads useful instead of bloated.
 - ✅ add annotations models: [apps/assistant-backend/src/assistant/models/annotations.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/models/annotations.py)
 - ✅ add memory SQLModel file, for example `apps/assistant-backend/src/assistant/models/memory_sql.py`
 - ✅ add memory API model file, for example `apps/assistant-backend/src/assistant/models/memory.py`
-- ⏳ add Alembic scaffold and migrations under `apps/assistant-backend/`
+- ✅ add Alembic scaffold and migrations under `apps/assistant-backend/`
 - ✅ update [apps/assistant-ui/src/types/api.ts](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-ui/src/types/api.ts)
 
 **Work**
@@ -259,7 +259,7 @@ They keep trust payloads useful instead of bloated.
 **Acceptance criteria**
 
 - ✅ backend can serialize assistant messages with `annotations: null | object`
-- ⏳ schema migration path exists for existing Postgres installs
+- ✅ schema migration path exists for existing Postgres installs
 - ✅ frontend type layer can represent all phase-1 trust payloads
 
 **Completed work:**
@@ -270,9 +270,17 @@ They keep trust payloads useful instead of bloated.
 - Updated frontend test mocks to handle nullable annotations
 - Created conversation summary and durable fact SQLModel tables
 - Created corresponding Pydantic API models for memory operations
+- Scaffolded Alembic migration infrastructure:
+  - Configured `alembic/env.py` with proper SQLModel metadata imports
+  - Set up automatic driver conversion (asyncpg → psycopg for migrations)
+  - Added `psycopg[binary]` dependency for synchronous migrations
+  - Created initial migration (`57bad9ffdeea`) with:
+    - `annotations` JSON column on `messages` table
+    - `conversation_memory_summaries` table with constraints and indexes
+    - `durable_facts` table with constraints and indexes
+    - Proper upgrade/downgrade procedures
+  - Updated `alembic/README` with usage instructions and troubleshooting
 
-**Remaining work:**
-- Create Alembic migration for the `annotations` column addition
 
 ### Step 2. Extract the shared LLM completion seam
 
