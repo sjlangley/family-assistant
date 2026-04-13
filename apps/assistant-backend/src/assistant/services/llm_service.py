@@ -1,4 +1,3 @@
-from fastapi import HTTPException, status
 import httpx
 import pydantic
 
@@ -64,15 +63,18 @@ class LLMService:
         )
 
         try:
-            response_dict = await self._post_completion(
-                request_body.model_dump(exclude_none=True)
+            response = await self.client.post(
+                f'{self.base_url}/v1/chat/completions',
+                json=request_body.model_dump(exclude_none=True),
             )
-        except TimeoutError as exc:
+            response.raise_for_status()
+            response_dict = response.json()
+        except httpx.TimeoutException as exc:
             raise LLMCompletionError(
                 kind=LLMCompletionErrorKind.timeout,
                 message='LLM request timed out',
             ) from exc
-        except ConnectionError as exc:
+        except httpx.ConnectError as exc:
             raise LLMCompletionError(
                 kind=LLMCompletionErrorKind.unreachable,
                 message='Failed to reach LLM backend',
@@ -111,52 +113,4 @@ class LLMService:
             total_tokens=response.usage.total_tokens,
             tool_calls=choice.message.tool_calls,
             finish_reason=choice.finish_reason,
-        )
-
-    async def _post_completion(self, request_body: dict) -> dict:
-        """Private helper for raw HTTP POST to completion endpoint."""
-        try:
-            response = await self.client.post(
-                f'{self.base_url}/v1/chat/completions',
-                json=request_body,
-            )
-            response.raise_for_status()
-            return response.json()
-        except httpx.TimeoutException as exc:
-            raise TimeoutError('LLM request timed out') from exc
-        except httpx.HTTPStatusError:
-            raise
-        except httpx.RequestError as exc:
-            raise ConnectionError('Failed to reach LLM backend') from exc
-
-
-def llm_completion_error_to_http_exception(
-    error: LLMCompletionError,
-) -> HTTPException:
-    """Convert LLMCompletionError to FastAPI HTTPException.
-
-    Preserves current error response behavior for all error kinds.
-    """
-    if error.kind == LLMCompletionErrorKind.timeout:
-        return HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail='LLM request timed out',
-        )
-    elif error.kind == LLMCompletionErrorKind.unreachable:
-        return HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail='Failed to reach LLM backend',
-        )
-    elif error.kind == LLMCompletionErrorKind.backend_error:
-        return HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={
-                'message': 'LLM backend returned an error',
-                'status_code': error.backend_status_code,
-            },
-        )
-    else:  # invalid_response
-        return HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=error.message,
         )

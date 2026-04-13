@@ -20,10 +20,8 @@ from assistant.models.llm import (
     ChatCompletionRequestSystemMessage,
     LLMCompletionError,
 )
-from assistant.services.llm_service import (
-    LLMService,
-    llm_completion_error_to_http_exception,
-)
+from assistant.routers.web_utils import llm_completion_error_to_http_exception
+from assistant.services.llm_service import LLMService
 from assistant.services.memory_storage import MemoryStorage
 from assistant.settings import settings
 

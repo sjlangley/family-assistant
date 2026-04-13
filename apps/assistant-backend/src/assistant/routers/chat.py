@@ -6,11 +6,9 @@ from assistant.models.llm import (
     ChatCompletionRequestSystemMessage,
     LLMCompletionError,
 )
+from assistant.routers.web_utils import llm_completion_error_to_http_exception
 from assistant.security.session_auth import CurrentUser
 from assistant.services import get_llm_service
-from assistant.services.llm_service import (
-    llm_completion_error_to_http_exception,
-)
 from assistant.settings import settings
 
 router = APIRouter()
@@ -34,6 +32,8 @@ async def create_chat_completion(
         message.model_dump() for message in payload.messages
     ]
 
+    # Explicit exception handling pattern - converts service errors to HTTP.
+    # Global exception handler planned for Step 6 to eliminate duplication.
     try:
         result = await get_llm_service().complete_messages(
             messages=messages,
