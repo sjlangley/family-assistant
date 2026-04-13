@@ -157,6 +157,7 @@ describe("ConversationsChat", () => {
           sequence_number: 1,
           created_at: "2024-01-01T00:00:00Z",
           error: null,
+          annotations: null,
         },
         assistant_message: {
           id: "msg-2",
@@ -165,6 +166,7 @@ describe("ConversationsChat", () => {
           sequence_number: 2,
           created_at: "2024-01-01T00:00:00Z",
           error: null,
+          annotations: null,
         },
       };
 
@@ -221,6 +223,7 @@ describe("ConversationsChat", () => {
           sequence_number: 1,
           created_at: "2024-01-01T00:00:00Z",
           error: null,
+          annotations: null,
         },
         assistant_message: {
           id: "msg-2",
@@ -229,6 +232,7 @@ describe("ConversationsChat", () => {
           sequence_number: 2,
           created_at: "2024-01-01T00:00:00Z",
           error: null,
+          annotations: null,
         },
       };
 
@@ -303,6 +307,7 @@ describe("ConversationsChat", () => {
           sequence_number: 1,
           created_at: "2024-01-01T00:00:00Z",
           error: null,
+          annotations: null,
         },
         assistant_message: {
           id: "msg-2",
@@ -311,6 +316,7 @@ describe("ConversationsChat", () => {
           sequence_number: 2,
           created_at: "2024-01-01T00:00:00Z",
           error: null,
+          annotations: null,
         },
       };
 
@@ -369,6 +375,7 @@ describe("ConversationsChat", () => {
             sequence_number: 1,
             created_at: "2024-01-01T00:00:00Z",
             error: null,
+            annotations: null,
           },
           {
             id: "msg-2",
@@ -377,6 +384,7 @@ describe("ConversationsChat", () => {
             sequence_number: 2,
             created_at: "2024-01-01T00:00:00Z",
             error: null,
+            annotations: null,
           },
         ],
       };
@@ -435,6 +443,7 @@ describe("ConversationsChat", () => {
             sequence_number: 1,
             created_at: "2024-01-01T00:00:00Z",
             error: null,
+            annotations: null,
           },
           {
             id: "msg-2",
@@ -443,6 +452,7 @@ describe("ConversationsChat", () => {
             sequence_number: 2,
             created_at: "2024-01-01T00:00:00Z",
             error: null,
+            annotations: null,
           },
         ],
       };
@@ -461,6 +471,7 @@ describe("ConversationsChat", () => {
           sequence_number: 3,
           created_at: "2024-01-01T00:01:00Z",
           error: null,
+          annotations: null,
         },
         assistant_message: {
           id: "msg-4",
@@ -469,6 +480,7 @@ describe("ConversationsChat", () => {
           sequence_number: 4,
           created_at: "2024-01-01T00:01:00Z",
           error: null,
+          annotations: null,
         },
       };
 
@@ -579,6 +591,7 @@ describe("ConversationsChat", () => {
             sequence_number: 1,
             created_at: "2024-01-01T00:00:00Z",
             error: null,
+            annotations: null,
           },
         ],
       };
@@ -691,6 +704,7 @@ describe("ConversationsChat", () => {
           sequence_number: 1,
           created_at: "2024-01-01T00:00:00Z",
           error: null,
+          annotations: null,
         },
         assistant_message: {
           id: "msg-2",
@@ -699,6 +713,7 @@ describe("ConversationsChat", () => {
           sequence_number: 2,
           created_at: "2024-01-01T00:00:00Z",
           error: "LLM service unavailable",
+          annotations: null,
         },
       };
 

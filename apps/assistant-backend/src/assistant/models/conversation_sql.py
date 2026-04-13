@@ -11,6 +11,7 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy import JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -101,5 +102,8 @@ class Message(SQLModel, table=True):
         default=None,
         sa_column=Column(Text, nullable=True),
     )
-
+    annotations: dict | None = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True),
+    )
     conversation: Conversation = Relationship(back_populates='messages')
