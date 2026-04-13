@@ -19,8 +19,8 @@ from assistant.models.conversation_sql import Message
 from assistant.models.memory_sql import ConversationMemorySummary, DurableFact
 
 # Explicit prompt budget constants
-MAX_RECENT_TURNS_WITH_SUMMARY = 4  # Last N messages when summary exists
-MAX_RECENT_TURNS_NO_SUMMARY = 8  # Last N messages when no summary
+MAX_RECENT_MESSAGES_WITH_SUMMARY = 4  # Last N messages when summary exists
+MAX_RECENT_MESSAGES_NO_SUMMARY = 8  # Last N messages when no summary
 MAX_DURABLE_FACTS = 5  # Maximum number of facts to include
 MAX_FACT_TEXT_LENGTH = 200  # Truncate individual fact text
 MAX_SUMMARY_TEXT_LENGTH = 1000  # Truncate summary text
@@ -86,9 +86,9 @@ class ContextAssemblyService:
             session,
             conversation_id=conversation_id,
             max_turns=(
-                MAX_RECENT_TURNS_WITH_SUMMARY
+                MAX_RECENT_MESSAGES_WITH_SUMMARY
                 if summary
-                else MAX_RECENT_TURNS_NO_SUMMARY
+                else MAX_RECENT_MESSAGES_NO_SUMMARY
             ),
         )
 

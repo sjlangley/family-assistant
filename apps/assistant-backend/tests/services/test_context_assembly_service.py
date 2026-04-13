@@ -16,8 +16,8 @@ from assistant.models.memory_sql import (
 from assistant.services.context_assembly import (
     MAX_DURABLE_FACTS,
     MAX_FACT_TEXT_LENGTH,
-    MAX_RECENT_TURNS_NO_SUMMARY,
-    MAX_RECENT_TURNS_WITH_SUMMARY,
+    MAX_RECENT_MESSAGES_NO_SUMMARY,
+    MAX_RECENT_MESSAGES_WITH_SUMMARY,
     MAX_SUMMARY_TEXT_LENGTH,
     ContextAssemblyService,
 )
@@ -138,7 +138,7 @@ async def test_assemble_context_no_summary_uses_recent_turns(
     await db_session.commit()
     await db_session.refresh(conversation)
 
-    # Add 10 messages (should only use last 8 per MAX_RECENT_TURNS_NO_SUMMARY)
+    # Add messages (should only use last MAX_RECENT_MESSAGES_NO_SUMMARY)
     for i in range(1, 11):
         msg = Message(
             conversation_id=conversation.id,
@@ -161,7 +161,7 @@ async def test_assemble_context_no_summary_uses_recent_turns(
     assert len(result.fact_ids) == 0
 
     # Should have last 8 messages + new user message
-    assert len(result.messages) == MAX_RECENT_TURNS_NO_SUMMARY + 1
+    assert len(result.messages) == MAX_RECENT_MESSAGES_NO_SUMMARY + 1
 
     # Check that it's the last 8 messages (messages 3-10)
     for i, msg in enumerate(result.messages[:-1]):
@@ -195,7 +195,7 @@ async def test_assemble_context_with_summary_limits_recent_turns(
     await db_session.commit()
     await db_session.refresh(summary)
 
-    # Add 10 messages (should only use last 4 per MAX_RECENT_TURNS_WITH_SUMMARY)
+    # Add messages (should only use MAX_RECENT_MESSAGES_WITH_SUMMARY)
     for i in range(1, 11):
         msg = Message(
             conversation_id=conversation.id,
@@ -217,7 +217,7 @@ async def test_assemble_context_with_summary_limits_recent_turns(
     assert result.summary_id == summary.id
 
     # Should have: summary + last 4 messages + new user message = 6 total
-    assert len(result.messages) == 1 + MAX_RECENT_TURNS_WITH_SUMMARY + 1
+    assert len(result.messages) == 1 + MAX_RECENT_MESSAGES_WITH_SUMMARY + 1
 
     # First message is summary
     assert result.messages[0]['role'] == 'system'
@@ -559,4 +559,3 @@ async def test_assemble_context_without_new_message_no_duplication(
         1 for msg in result.messages if msg['content'] == 'Latest message'
     )
     assert latest_count == 1
-
