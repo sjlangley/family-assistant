@@ -1,10 +1,12 @@
 """Context assembly for conversation LLM calls.
 
 Prepares the final message list using:
-- Recent conversation turns
-- Latest conversation summary
-- Durable facts for the current user
-- Optional Chroma retrieval hints
+- Recent conversation turns (canonical Postgres)
+- Latest conversation summary (canonical Postgres)
+- Durable facts for the current user (canonical Postgres)
+
+All data comes from authoritative Postgres sources.
+Chroma retrieval support is deferred to future work (Step 6+).
 """
 
 from dataclasses import dataclass
@@ -15,7 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from assistant.models.conversation_sql import Message
 from assistant.models.memory_sql import ConversationMemorySummary, DurableFact
-from assistant.services.memory_storage import MemoryStorage
 
 # Explicit prompt budget constants
 MAX_RECENT_TURNS_WITH_SUMMARY = 4  # Last N messages when summary exists
@@ -33,22 +34,21 @@ class ContextAssemblyResult:
     used_summary: bool  # Whether a saved summary was used
     summary_id: uuid.UUID | None  # ID of the summary if used
     fact_ids: list[uuid.UUID]  # IDs of durable facts included
-    chroma_used: bool  # Whether Chroma retrieval was attempted
 
 
 class ContextAssemblyService:
-    """Assembles context for conversation LLM calls.
+    """Assembles context for conversation LLM calls from Postgres.
 
     Responsibilities:
-    - Load recent conversation turns
-    - Load latest conversation summary
-    - Load active durable facts for user
+    - Load recent conversation turns from Postgres
+    - Load latest conversation summary from Postgres
+    - Load active durable facts for user from Postgres
     - Apply explicit prompt budgets
     - Return prepared message list
     """
 
-    def __init__(self, memory_storage: MemoryStorage | None = None):
-        self.memory_storage = memory_storage
+    def __init__(self) -> None:
+        pass
 
     async def assemble_context(
         self,
@@ -92,27 +92,6 @@ class ContextAssemblyService:
             ),
         )
 
-        # TODO: Chroma integration incomplete - query results are discarded
-        # See: https://github.com/sjlangley/family-assistant/issues/72
-        # Currently only tracks metadata (chroma_used flag) but doesn't use
-        # the retrieved context. Need to:
-        # 1. Define how to merge Chroma hints with PostgreSQL data
-        # 2. Stay within prompt budgets when adding Chroma results
-        # 3. Decide if Chroma provides value beyond summaries/facts
-        chroma_used = False
-        if self.memory_storage and new_user_message:
-            try:
-                # Query Chroma for context hints but don't fail if empty
-                _ = self.memory_storage.query_memory(
-                    user_id=user_id,
-                    query=new_user_message,
-                    n_results=3,
-                )
-                chroma_used = True
-            except Exception:
-                # Degrade gracefully if Chroma unavailable
-                pass
-
         # Build final message list
         messages = self._build_message_list(
             summary=summary,
@@ -126,7 +105,6 @@ class ContextAssemblyService:
             used_summary=summary is not None,
             summary_id=summary.id if summary else None,
             fact_ids=[f.id for f in facts],
-            chroma_used=chroma_used,
         )
 
     async def assemble_context_new_conversation(
@@ -151,20 +129,6 @@ class ContextAssemblyService:
         # Load active durable facts for this user
         facts = await self._load_active_facts(session, user_id=user_id)
 
-        # TODO: Chroma integration incomplete - query results are discarded
-        # See: https://github.com/sjlangley/family-assistant/issues/72
-        chroma_used = False
-        if self.memory_storage and user_message:
-            try:
-                _ = self.memory_storage.query_memory(
-                    user_id=user_id,
-                    query=user_message,
-                    n_results=3,
-                )
-                chroma_used = True
-            except Exception:
-                pass
-
         # Build message list with just facts and the new user message
         messages = self._build_message_list(
             summary=None,
@@ -178,7 +142,6 @@ class ContextAssemblyService:
             used_summary=False,
             summary_id=None,
             fact_ids=[f.id for f in facts],
-            chroma_used=chroma_used,
         )
 
     async def _load_latest_summary(

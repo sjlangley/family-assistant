@@ -317,6 +317,10 @@ They keep trust payloads useful instead of bloated.
 
 **Status:** ✅ **COMPLETE**
 
+**Purpose**
+
+Bounded context assembly from canonical Postgres sources (summaries, facts, recent turns). Uses only authoritative data - no retrieval-backed hints yet.
+
 **New collaborator 1**
 
 - `apps/assistant-backend/src/assistant/services/context_assembly.py`
@@ -326,14 +330,12 @@ They keep trust payloads useful instead of bloated.
 - add `ContextAssemblyService`
 - update [apps/assistant-backend/src/assistant/services/__init__.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/services/__init__.py)
 - update [apps/assistant-backend/src/assistant/services/conversation_service.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/services/conversation_service.py)
-- update [apps/assistant-backend/src/assistant/services/memory_storage.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/services/memory_storage.py) only as needed for retrieval support
 
 **Work**
 
-- load recent turns
-- load latest conversation summary
-- load durable facts for the user
-- optionally use Chroma to rank candidate facts before final fact selection
+- load recent turns from Postgres
+- load latest conversation summary from Postgres
+- load durable facts for the user from Postgres
 - enforce prompt budgets
 - return the exact message list for the LLM helper
 
@@ -344,14 +346,18 @@ They keep trust payloads useful instead of bloated.
 - ✅ prompt assembly is deterministic under budget pressure
 
 **Completed work:**
-- Added `ContextAssemblyService` with a typed `ContextAssemblyResult` for prepared messages plus small debug metadata
-- Loaded the latest conversation summary, active per-user durable facts, and a capped recent-turn window from canonical Postgres tables
-- Kept Chroma retrieval optional and non-authoritative so prompt assembly still works cleanly when retrieval is absent or empty
-- Enforced explicit prompt budgets for summary length, fact count, fact length, and recent-turn windows
-- Updated `ConversationService` and service wiring so both new and existing conversation replies use assembled context through the shared LLM completion seam
-- Added dedicated `ContextAssemblyService` tests and conversation-service regression coverage, including the follow-up fix that prevents the newest user message from being sent to the LLM twice
+- Added `ContextAssemblyService` with a typed `ContextAssemblyResult` for prepared messages and debug metadata
+- Load latest conversation summary, active per-user durable facts, and capped recent-turn window from canonical Postgres tables
+- Enforced explicit prompt budgets: 4 recent turns with summary, 8 without; max 5 facts; text truncation at 200 chars/fact and 1000 chars/summary
+- Updated `ConversationService` to use `ContextAssemblyService` for both new and existing conversation replies  
+- Added regression test preventing duplicate user messages in prompts
+- All code and tests reflect Postgres-only implementation; Chroma retrieval support deferred to Step 6+
 
-### Step 4. Add a minimal `web_search` tool path
+**Note on Chroma**
+
+Chroma retrieval was deliberately excluded from the Step 3 shipped implementation in favor of keeping the code simple and honest. Canonical Postgres summaries + facts + recent turns provide a solid foundation. Once Step 5 has written full summary and fact text to Postgres, Step 6 will add retrieval-backed ranking and context augmentation for candidates.
+
+### Step 4. Extract summary + facts via background job
 
 **Files**
 

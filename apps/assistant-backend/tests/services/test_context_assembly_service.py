@@ -50,7 +50,7 @@ async def test_assemble_context_new_conversation_no_facts(
     db_session: AsyncSession,
 ):
     """It assembles context for new conversation with no facts."""
-    service = ContextAssemblyService(memory_storage=None)
+    service = ContextAssemblyService()
     user_id = 'user-123'
     user_message = 'Hello, assistant!'
 
@@ -63,7 +63,6 @@ async def test_assemble_context_new_conversation_no_facts(
     assert result.used_summary is False
     assert result.summary_id is None
     assert result.fact_ids == []
-    assert result.chroma_used is False
     assert len(result.messages) == 1
     assert result.messages[0] == {'role': 'user', 'content': user_message}
 
@@ -72,7 +71,7 @@ async def test_assemble_context_new_conversation_with_facts(
     db_session: AsyncSession,
 ):
     """It includes durable facts in new conversation context."""
-    service = ContextAssemblyService(memory_storage=None)
+    service = ContextAssemblyService()
     user_id = 'user-123'
 
     # Create some active facts
@@ -130,7 +129,7 @@ async def test_assemble_context_no_summary_uses_recent_turns(
     db_session: AsyncSession,
 ):
     """It uses recent turns when no summary exists."""
-    service = ContextAssemblyService(memory_storage=None)
+    service = ContextAssemblyService()
     user_id = 'user-123'
 
     # Create conversation and messages
@@ -177,7 +176,7 @@ async def test_assemble_context_with_summary_limits_recent_turns(
     db_session: AsyncSession,
 ):
     """It limits recent turns when summary exists."""
-    service = ContextAssemblyService(memory_storage=None)
+    service = ContextAssemblyService()
     user_id = 'user-123'
 
     # Create conversation
@@ -238,7 +237,7 @@ async def test_assemble_context_with_summary_and_facts(
     db_session: AsyncSession,
 ):
     """It includes both summary and facts when available."""
-    service = ContextAssemblyService(memory_storage=None)
+    service = ContextAssemblyService()
     user_id = 'user-123'
 
     # Create conversation
@@ -305,7 +304,7 @@ async def test_assemble_context_with_summary_and_facts(
 
 async def test_facts_filtered_by_user_and_active(db_session: AsyncSession):
     """It only includes facts for the current user that are active."""
-    service = ContextAssemblyService(memory_storage=None)
+    service = ContextAssemblyService()
     user_id = 'user-123'
     other_user_id = 'user-456'
 
@@ -360,7 +359,7 @@ async def test_facts_filtered_by_user_and_active(db_session: AsyncSession):
 
 async def test_facts_limited_to_max(db_session: AsyncSession):
     """It limits facts to MAX_DURABLE_FACTS."""
-    service = ContextAssemblyService(memory_storage=None)
+    service = ContextAssemblyService()
     user_id = 'user-123'
 
     # Create conversation
@@ -395,7 +394,7 @@ async def test_facts_limited_to_max(db_session: AsyncSession):
 
 async def test_summary_text_truncated(db_session: AsyncSession):
     """It truncates summary text to MAX_SUMMARY_TEXT_LENGTH."""
-    service = ContextAssemblyService(memory_storage=None)
+    service = ContextAssemblyService()
     user_id = 'user-123'
 
     # Create conversation
@@ -438,7 +437,7 @@ async def test_summary_text_truncated(db_session: AsyncSession):
 
 async def test_fact_text_truncated(db_session: AsyncSession):
     """It truncates individual fact text to MAX_FACT_TEXT_LENGTH."""
-    service = ContextAssemblyService(memory_storage=None)
+    service = ContextAssemblyService()
     user_id = 'user-123'
 
     # Create fact with very long text
@@ -474,7 +473,7 @@ async def test_fact_text_truncated(db_session: AsyncSession):
 
 async def test_empty_conversation_no_summary(db_session: AsyncSession):
     """It handles empty conversation with no summary gracefully."""
-    service = ContextAssemblyService(memory_storage=None)
+    service = ContextAssemblyService()
     user_id = 'user-123'
 
     # Create empty conversation
@@ -510,7 +509,7 @@ async def test_assemble_context_without_new_message_no_duplication(
     Regression test: when the new user message is already in the DB
     (existing conversation flow), passing None prevents duplication.
     """
-    service = ContextAssemblyService(memory_storage=None)
+    service = ContextAssemblyService()
     user_id = 'user-123'
 
     # Create conversation with existing messages
@@ -561,19 +560,3 @@ async def test_assemble_context_without_new_message_no_duplication(
     )
     assert latest_count == 1
 
-
-async def test_chroma_absence_degrades_gracefully(db_session: AsyncSession):
-    """It degrades gracefully when Chroma is unavailable."""
-    # Create service with no memory_storage
-    service = ContextAssemblyService(memory_storage=None)
-    user_id = 'user-123'
-
-    result = await service.assemble_context_new_conversation(
-        db_session,
-        user_id=user_id,
-        user_message='Hello',
-    )
-
-    # Should work fine without Chroma
-    assert result.chroma_used is False
-    assert len(result.messages) == 1

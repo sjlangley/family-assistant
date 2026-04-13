@@ -80,7 +80,6 @@ def conversation_service(
     """Create a ConversationService with mocked dependencies."""
     return ConversationService(
         llm_service=mock_llm_service,
-        memory_storage=mock_memory_storage,
         context_assembly=mock_context_assembly,
     )
 
@@ -123,7 +122,6 @@ def mock_context_result():
         used_summary=False,
         summary_id=None,
         fact_ids=[],
-        chroma_used=False,
     )
 
 

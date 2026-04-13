@@ -23,7 +23,6 @@ from assistant.models.llm import (
 from assistant.routers.web_utils import llm_completion_error_to_http_exception
 from assistant.services.context_assembly import ContextAssemblyService
 from assistant.services.llm_service import LLMService
-from assistant.services.memory_storage import MemoryStorage
 from assistant.settings import settings
 
 
@@ -36,11 +35,9 @@ class ConversationService:
     def __init__(
         self,
         llm_service: LLMService,
-        memory_storage: MemoryStorage,
         context_assembly: ContextAssemblyService,
     ) -> None:
         self.llm_service = llm_service
-        self.memory_storage = memory_storage
         self.context_assembly = context_assembly
 
     async def list_conversations(
