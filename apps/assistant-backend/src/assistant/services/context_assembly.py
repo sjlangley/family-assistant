@@ -57,7 +57,7 @@ class ContextAssemblyService:
         *,
         user_id: str,
         conversation_id: uuid.UUID,
-        new_user_message: str,
+        new_user_message: str | None,
     ) -> ContextAssemblyResult:
         """Assemble context for an existing conversation.
 
@@ -68,7 +68,8 @@ class ContextAssemblyService:
             session: Database session
             user_id: Current user ID
             conversation_id: Conversation to assemble context for
-            new_user_message: The new user message being added
+            new_user_message: The new user message being added (None if
+                already persisted in database)
 
         Returns:
             ContextAssemblyResult with prepared messages and metadata
@@ -255,14 +256,14 @@ class ContextAssemblyService:
         summary: ConversationMemorySummary | None,
         facts: list[DurableFact],
         recent_turns: list[Message],
-        new_user_message: str,
+        new_user_message: str | None,
     ) -> list[dict]:
         """Build the final message list for the LLM.
 
         Strategy:
         - If summary exists: include compact summary + facts + recent turns
         - If no summary: include facts + recent turns (larger window)
-        - Always include the new user message last
+        - Include new_user_message if provided (new conversations only)
 
         Context blocks use system messages for clarity and compatibility
         with OpenAI-style chat endpoints.
@@ -309,8 +310,9 @@ class ContextAssemblyService:
         for msg in recent_turns:
             messages.append({'role': msg.role, 'content': msg.content})
 
-        # Add the new user message
-        messages.append({'role': 'user', 'content': new_user_message})
+        # Add the new user message if provided (for new conversations)
+        if new_user_message:
+            messages.append({'role': 'user', 'content': new_user_message})
 
         return messages
 

@@ -502,6 +502,66 @@ async def test_empty_conversation_no_summary(db_session: AsyncSession):
     }
 
 
+async def test_assemble_context_without_new_message_no_duplication(
+    db_session: AsyncSession,
+):
+    """It doesn't duplicate messages when new_user_message=None.
+
+    Regression test: when the new user message is already in the DB
+    (existing conversation flow), passing None prevents duplication.
+    """
+    service = ContextAssemblyService(memory_storage=None)
+    user_id = 'user-123'
+
+    # Create conversation with existing messages
+    conversation = Conversation(user_id=user_id, title='Test')
+    db_session.add(conversation)
+    await db_session.commit()
+    await db_session.refresh(conversation)
+
+    # Add messages including the "new" one that's already persisted
+    msg1 = Message(
+        conversation_id=conversation.id,
+        role='user',
+        content='First message',
+        sequence_number=1,
+    )
+    msg2 = Message(
+        conversation_id=conversation.id,
+        role='assistant',
+        content='First response',
+        sequence_number=2,
+    )
+    msg3 = Message(
+        conversation_id=conversation.id,
+        role='user',
+        content='Latest message',
+        sequence_number=3,
+    )
+    db_session.add_all([msg1, msg2, msg3])
+    await db_session.commit()
+
+    # Call with new_user_message=None (existing conversation case)
+    result = await service.assemble_context(
+        db_session,
+        user_id=user_id,
+        conversation_id=conversation.id,
+        new_user_message=None,
+    )
+
+    # Should have exactly 3 messages from DB, no duplication
+    assert len(result.messages) == 3
+    assert result.messages[0]['content'] == 'First message'
+    assert result.messages[1]['content'] == 'First response'
+    assert result.messages[2]['content'] == 'Latest message'
+
+    # Verify "Latest message" appears exactly once
+    latest_count = sum(
+        1 for msg in result.messages if msg['content'] == 'Latest message'
+    )
+    assert latest_count == 1
+
+
 async def test_chroma_absence_degrades_gracefully(db_session: AsyncSession):
     """It degrades gracefully when Chroma is unavailable."""
     # Create service with no memory_storage

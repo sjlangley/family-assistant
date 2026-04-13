@@ -206,11 +206,12 @@ class ConversationService:
         await session.refresh(user_message)
 
         # Assemble context using summary, facts, and recent turns
+        # Note: new_user_message=None because it's already in the DB
         context_result = await self.context_assembly.assemble_context(
             session,
             user_id=user_id,
             conversation_id=conversation_id,
-            new_user_message=content,
+            new_user_message=None,
         )
 
         # Make LLM call outside of transaction
