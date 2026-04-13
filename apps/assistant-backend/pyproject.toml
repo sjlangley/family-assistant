@@ -30,7 +30,7 @@ dependencies = [
     "gunicorn==25.1.0",
     "httpx==0.28.1",
     "itsdangerous==2.2.0",
-    "psycopg[binary]==3.2.3",  # Synchronous PostgreSQL driver for Alembic migrations
+    "psycopg[binary]==3.3.3",  # Synchronous PostgreSQL driver for Alembic migrations
     "pydantic==2.12.5",
     "pydantic-settings==2.13.1",
     "sqlalchemy[asyncio]==2.0.48",
