@@ -35,17 +35,17 @@ It assumes the reviewed decisions are already locked:
 
 ## Existing Foundations To Reuse
 
-- [apps/assistant-backend/src/assistant/services/conversation_service.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/services/conversation_service.py)
+- [apps/assistant-backend/src/assistant/services/conversation_service.py](../apps/assistant-backend/src/assistant/services/conversation_service.py)
   Current request/response conversation orchestration.
-- [apps/assistant-backend/src/assistant/models/conversation_sql.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/models/conversation_sql.py)
+- [apps/assistant-backend/src/assistant/models/conversation_sql.py](../apps/assistant-backend/src/assistant/models/conversation_sql.py)
   Current persisted conversation and message schema.
-- [apps/assistant-backend/src/assistant/services/llm_service.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/services/llm_service.py)
+- [apps/assistant-backend/src/assistant/services/llm_service.py](../apps/assistant-backend/src/assistant/services/llm_service.py)
   Current LLM transport.
-- [apps/assistant-backend/src/assistant/services/memory_storage.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/services/memory_storage.py)
+- [apps/assistant-backend/src/assistant/services/memory_storage.py](../apps/assistant-backend/src/assistant/services/memory_storage.py)
   Current Chroma integration.
-- [apps/assistant-ui/src/components/ConversationsChat.tsx](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-ui/src/components/ConversationsChat.tsx)
+- [apps/assistant-ui/src/components/ConversationsChat.tsx](../apps/assistant-ui/src/components/ConversationsChat.tsx)
   Current chat shell and message flow.
-- [DESIGN.md](/Users/stuartlangley/src/sjlangley/family-assistant/DESIGN.md)
+- [DESIGN.md](../DESIGN.md)
   Source of truth for the UI system.
 
 ## High-Level Delivery Order
