@@ -129,13 +129,6 @@ class LLMService:
         except httpx.RequestError as exc:
             raise ConnectionError('Failed to reach LLM backend') from exc
 
-    async def create_chat_completion(self, request_body: dict) -> dict:
-        """Legacy method for backward compatibility.
-
-        Deprecated: Use complete_messages() for new code.
-        """
-        return await self._post_completion(request_body)
-
 
 def llm_completion_error_to_http_exception(
     error: LLMCompletionError,
