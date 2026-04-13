@@ -2,8 +2,6 @@ from typing import cast
 import uuid
 
 from fastapi import HTTPException, status
-import httpx
-import pydantic
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,9 +18,9 @@ from assistant.models.conversation import (
 from assistant.models.conversation_sql import Conversation, Message
 from assistant.models.llm import (
     ChatCompletionRequestSystemMessage,
-    CreateChatCompletionRequest,
-    CreateChatCompletionResponse,
+    LLMCompletionError,
 )
+from assistant.routers.web_utils import llm_completion_error_to_http_exception
 from assistant.services.llm_service import LLMService
 from assistant.services.memory_storage import MemoryStorage
 from assistant.settings import settings
@@ -282,56 +280,26 @@ class ConversationService:
         temperature: float,
         max_tokens: int | None,
     ) -> str:
+        """Call LLM completion and return assistant content.
+
+        Prepares system prompt and delegates to the shared LLM completion seam.
+        """
         system_message = ChatCompletionRequestSystemMessage(
             role='system', content=SYSTEM_PROMPT
         )
         llm_messages = [system_message.model_dump()] + messages
-        request_body: CreateChatCompletionRequest = CreateChatCompletionRequest(
-            model=settings.llm_model,
-            messages=llm_messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=False,
-        )
-        try:
-            response = await self.llm_service.create_chat_completion(
-                request_body.model_dump(exclude_none=True)
-            )
-        except TimeoutError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-                detail='LLM request timed out',
-            ) from exc
-        except ConnectionError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail='Failed to reach LLM backend',
-            ) from exc
-        except httpx.HTTPStatusError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail={
-                    'message': 'LLM backend returned an error',
-                    'status_code': exc.response.status_code,
-                },
-            ) from exc
 
         try:
-            llm_response = CreateChatCompletionResponse.model_validate(response)
-        except pydantic.ValidationError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail='LLM backend returned an unexpected response shape',
-            ) from exc
-
-        if not llm_response.choices:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail='LLM backend did not return any choices',
+            result = await self.llm_service.complete_messages(
+                messages=llm_messages,
+                model=settings.llm_model,
+                temperature=temperature,
+                max_tokens=max_tokens,
             )
+        except LLMCompletionError as exc:
+            raise llm_completion_error_to_http_exception(exc) from exc
 
-        choice = llm_response.choices[0]
-        return choice.message.content or ''
+        return result.content
 
     @staticmethod
     def _conversation_summary(

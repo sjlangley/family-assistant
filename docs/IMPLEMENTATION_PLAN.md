@@ -284,6 +284,8 @@ They keep trust payloads useful instead of bloated.
 
 ### Step 2. Extract the shared LLM completion seam
 
+**Status:** ✅ **COMPLETE**
+
 **Files**
 
 - update [apps/assistant-backend/src/assistant/services/llm_service.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/services/llm_service.py)
@@ -295,11 +297,21 @@ They keep trust payloads useful instead of bloated.
 - move shared request construction, response validation, and error mapping into one backend helper
 - keep `/api/v1/chat/completions` behavior unchanged
 - make conversation flow use the same seam
+- preserve first-response metadata needed for native tool calling, including `tool_calls` and `finish_reason`
+- remove the deprecated raw completion bypass so new callers do not drift back to duplicated validation logic
 
 **Acceptance criteria**
 
 - both chat entry points share one request/response mapping path
 - `/api/v1/chat/completions` remains a regression-protected route
+
+**Completed work:**
+- Added typed seam models for shared completion results and service-level error classification
+- Refactored `LLMService` to own canonical request construction, transport, response validation, and first-choice extraction
+- Updated the chat router and `ConversationService` to use the shared seam instead of duplicating response parsing
+- Preserved `tool_calls` and `finish_reason` in the seam result so the upcoming `web_search` tool path can build on it cleanly
+- Removed the deprecated public raw completion wrapper to keep one supported backend completion path
+- Expanded backend regression coverage around seam parsing, error mapping, and both existing callers
 
 ### Step 3. Add `ContextAssemblyService`
 
@@ -483,11 +495,11 @@ They keep trust payloads useful instead of bloated.
 ## Implementation Checklist
 
 ```text
-[ ] schema migration support exists
-[ ] assistant messages persist annotations
-[ ] summary table exists
-[ ] durable fact table exists
-[ ] shared LLM completion helper exists
+[x] schema migration support exists
+[x] assistant messages persist annotations
+[x] summary table exists
+[x] durable fact table exists
+[x] shared LLM completion helper exists
 [ ] ContextAssemblyService exists
 [ ] web_search tool path works
 [ ] AssistantAnnotationService exists
@@ -497,7 +509,7 @@ They keep trust payloads useful instead of bloated.
 [ ] pending placeholder UI works
 [ ] trust row renders from persisted annotations
 [ ] evidence panel works on desktop and mobile
-[ ] backend tests updated
+[x] backend tests updated
 [ ] frontend tests updated
 ```
 

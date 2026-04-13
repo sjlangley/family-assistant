@@ -1,14 +1,12 @@
 from fastapi import APIRouter, HTTPException, status
-import httpx
-import pydantic
 
 from assistant.constants import SYSTEM_PROMPT
 from assistant.models.chat import ChatRequest, ChatResponse
 from assistant.models.llm import (
     ChatCompletionRequestSystemMessage,
-    CreateChatCompletionRequest,
-    CreateChatCompletionResponse,
+    LLMCompletionError,
 )
+from assistant.routers.web_utils import llm_completion_error_to_http_exception
 from assistant.security.session_auth import CurrentUser
 from assistant.services import get_llm_service
 from assistant.settings import settings
@@ -33,57 +31,23 @@ async def create_chat_completion(
     messages = [system_message.model_dump()] + [
         message.model_dump() for message in payload.messages
     ]
-    request_body: CreateChatCompletionRequest = CreateChatCompletionRequest(
-        model=settings.llm_model,
-        messages=messages,
-        temperature=payload.temperature,
-        max_tokens=payload.max_tokens,
-        stream=False,
-    )
 
+    # Explicit exception handling pattern - converts service errors to HTTP.
+    # Global exception handler planned for Step 6 to eliminate duplication.
     try:
-        response = await get_llm_service().create_chat_completion(
-            request_body.model_dump(exclude_none=True)
+        result = await get_llm_service().complete_messages(
+            messages=messages,
+            model=settings.llm_model,
+            temperature=payload.temperature,
+            max_tokens=payload.max_tokens,
         )
-    except TimeoutError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail='LLM request timed out',
-        ) from exc
-    except ConnectionError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail='Failed to reach LLM backend',
-        ) from exc
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={
-                'message': 'LLM backend returned an error',
-                'status_code': exc.response.status_code,
-            },
-        ) from exc
+    except LLMCompletionError as exc:
+        raise llm_completion_error_to_http_exception(exc) from exc
 
-    try:
-        llm_response = CreateChatCompletionResponse.model_validate(response)
-    except pydantic.ValidationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail='LLM backend returned an unexpected response shape',
-        ) from exc
-
-    if not llm_response.choices:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail='LLM backend did not return any choices',
-        )
-
-    choice = llm_response.choices[0]
     return ChatResponse(
-        # pyrefly: ignore [bad-argument-type]
-        content=choice.message.content or '',
-        model=llm_response.model,
-        prompt_tokens=llm_response.usage.prompt_tokens,
-        completion_tokens=llm_response.usage.completion_tokens,
-        total_tokens=llm_response.usage.total_tokens,
+        content=result.content,
+        model=result.model,
+        prompt_tokens=result.prompt_tokens,
+        completion_tokens=result.completion_tokens,
+        total_tokens=result.total_tokens,
     )

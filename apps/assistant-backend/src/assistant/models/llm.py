@@ -542,3 +542,46 @@ class CreateChatCompletionResponse(BaseModel):
     model: str = Field(..., title='Model')
     choices: list[ChatCompletionResponseChoice] = Field(..., title='Choices')
     usage: CompletionUsage
+
+
+# Shared LLM completion seam types
+
+
+class LLMCompletionResult(BaseModel):
+    """Result from a successful LLM completion.
+
+    Preserves assistant message metadata including tool_calls and finish_reason
+    for future tool-calling and streaming implementations.
+    """
+
+    content: str
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    tool_calls: list[ChatCompletionMessageToolCall] | None = None
+    finish_reason: str | None = None
+
+
+class LLMCompletionErrorKind(StrEnum):
+    """Classification of LLM completion errors."""
+
+    timeout = 'timeout'
+    unreachable = 'unreachable'
+    backend_error = 'backend_error'
+    invalid_response = 'invalid_response'
+
+
+class LLMCompletionError(Exception):
+    """Service-level error for LLM completion failures."""
+
+    def __init__(
+        self,
+        kind: LLMCompletionErrorKind,
+        message: str,
+        backend_status_code: int | None = None,
+    ):
+        super().__init__(message)
+        self.kind = kind
+        self.message = message
+        self.backend_status_code = backend_status_code

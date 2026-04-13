@@ -14,6 +14,7 @@ and an external llama.cpp server for LLM inference.
 * **Session management** — cookie-based sessions via Starlette `SessionMiddleware`
 * **User API** — retrieve the currently authenticated user
 * **LLM chat completions** — proxies chat requests to a local llama.cpp server
+* **Shared LLM completion seam** — one typed backend path now powers both the direct chat endpoint and conversation replies, with common response validation and error handling
 * **Conversation management** — create conversations, add messages, list and retrieve history
 * **Health check endpoint**
 * **PostgreSQL storage** — async SQLModel / SQLAlchemy with automatic schema creation
