@@ -8,8 +8,6 @@ from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine.url import URL
 from sqlmodel import SQLModel
 
-from assistant.settings import settings
-
 # Add the src directory to the path so we can import our models
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
@@ -33,9 +31,17 @@ if not os.getenv('LLM_BASE_URL'):
 if not os.getenv('CHROMA_HOST'):
     os.environ['CHROMA_HOST'] = 'http://localhost:8100'
 
-
+# Import settings after sys.path and env var setup
 # Import all models to ensure they're registered with SQLModel metadata
-
+from assistant.models.conversation_sql import (  # noqa: E402, F401
+    Conversation,
+    Message,
+)
+from assistant.models.memory_sql import (  # noqa: E402, F401
+    ConversationMemorySummary,
+    DurableFact,
+)
+from assistant.settings import settings  # noqa: E402
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -62,7 +68,7 @@ def get_url() -> str:
         url_str = settings.database_url
         # Convert async driver to sync for migrations
         if '+aiosqlite://' in url_str:
-            return url_str.replace('+aiosqlite://', ':///')
+            return url_str.replace('+aiosqlite://', '://')
         elif 'postgresql+asyncpg://' in url_str:
             return url_str.replace(
                 'postgresql+asyncpg://', 'postgresql+psycopg://'

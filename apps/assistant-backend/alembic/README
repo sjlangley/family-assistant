@@ -61,13 +61,46 @@ Before running migrations:
 ## Initial Migration
 
 The first migration (`57bad9ffdeea_add_annotations_to_messages_and_create_`)
-creates the initial schema for conversation memory:
+depends on existing `conversations` and `messages` tables. It:
 
 1. Adds `annotations` JSON column to `messages` table
 2. Creates `conversation_memory_summaries` table (conversational memory)
 3. Creates `durable_facts` table (persistent user knowledge)
 
-Apply it with:
+### For Existing Databases
+
+If your database already has the `conversations` and `messages` tables
+(created via `SQLModel.metadata.create_all()` or previous setup), simply run:
+
 ```bash
 alembic upgrade head
 ```
+
+### For Fresh Databases
+
+For brand-new database environments (CI, new local setups), you need to bootstrap
+the base schema first:
+
+**Option 1: Use SQLModel.metadata.create_all() then stamp**
+```python
+# In a Python script or interactive session
+from assistant.database import engine
+from sqlmodel import SQLModel
+
+# Import all models to register them
+from assistant.models.conversation_sql import Conversation, Message
+from assistant.models.memory_sql import ConversationMemorySummary, DurableFact
+
+# Create all tables
+SQLModel.metadata.create_all(engine)
+```
+
+Then mark the migration as applied:
+```bash
+alembic stamp head
+```
+
+**Option 2: Create a baseline migration (recommended for production)**
+
+Create a new migration before this one that includes the `conversations` and
+`messages` table definitions. This ensures Alembic tracks the full schema history.
