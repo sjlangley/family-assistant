@@ -237,27 +237,42 @@ They keep trust payloads useful instead of bloated.
 
 ### Step 1. Add backend schema and API contracts
 
+**Status:** 🔄 **IN PROGRESS** (~70% complete)
+
 **Files**
 
-- update [apps/assistant-backend/src/assistant/models/conversation_sql.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/models/conversation_sql.py)
-- update [apps/assistant-backend/src/assistant/models/conversation.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/models/conversation.py)
-- add memory SQLModel file, for example `apps/assistant-backend/src/assistant/models/memory_sql.py`
-- add memory API model file, for example `apps/assistant-backend/src/assistant/models/memory.py`
-- add Alembic scaffold and migrations under `apps/assistant-backend/`
-- update [apps/assistant-ui/src/types/api.ts](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-ui/src/types/api.ts)
+- ✅ update [apps/assistant-backend/src/assistant/models/conversation_sql.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/models/conversation_sql.py)
+- ✅ update [apps/assistant-backend/src/assistant/models/conversation.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/models/conversation.py)
+- ✅ add annotations models: [apps/assistant-backend/src/assistant/models/annotations.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/models/annotations.py)
+- ✅ add memory SQLModel file, for example `apps/assistant-backend/src/assistant/models/memory_sql.py`
+- ✅ add memory API model file, for example `apps/assistant-backend/src/assistant/models/memory.py`
+- ⏳ add Alembic scaffold and migrations under `apps/assistant-backend/`
+- ✅ update [apps/assistant-ui/src/types/api.ts](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-ui/src/types/api.ts)
 
 **Work**
 
-- add `annotations` to persisted assistant messages
-- add Pydantic models for annotation payloads
-- add summary and durable-fact tables
-- extend TypeScript `Message` shape to include `annotations`
+- ✅ add `annotations` to persisted assistant messages
+- ✅ add Pydantic models for annotation payloads (`AssistantAnnotations`, `SourceAnnotation`, `ToolAnnotation`, `MemoryHitAnnotation`, `MemorySavedAnnotation`, `FailureAnnotation`)
+- ✅ add summary and durable-fact tables
+- ✅ extend TypeScript `Message` shape to include `annotations`
 
 **Acceptance criteria**
 
-- backend can serialize assistant messages with `annotations: null | object`
-- schema migration path exists for existing Postgres installs
-- frontend type layer can represent all phase-1 trust payloads
+- ✅ backend can serialize assistant messages with `annotations: null | object`
+- ⏳ schema migration path exists for existing Postgres installs
+- ✅ frontend type layer can represent all phase-1 trust payloads
+
+**Completed work:**
+- Added nullable `annotations` JSON field to `Message` table (conversation_sql.py)
+- Created comprehensive annotation models with proper type enums and Pydantic validation
+- Extended `MessageRead` API contract to include annotations
+- Added matching TypeScript types for all annotation structures
+- Updated frontend test mocks to handle nullable annotations
+- Created conversation summary and durable fact SQLModel tables
+- Created corresponding Pydantic API models for memory operations
+
+**Remaining work:**
+- Create Alembic migration for the `annotations` column addition
 
 ### Step 2. Extract the shared LLM completion seam
 

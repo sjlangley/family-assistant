@@ -3,6 +3,7 @@ from typing import Literal
 import uuid
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     Column,
     DateTime,
@@ -13,6 +14,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlmodel import Field, Relationship, SQLModel
+
+from assistant.models.annotations import AssistantAnnotations
 
 
 class Conversation(SQLModel, table=True):
@@ -101,5 +104,8 @@ class Message(SQLModel, table=True):
         default=None,
         sa_column=Column(Text, nullable=True),
     )
-
+    annotations: AssistantAnnotations | None = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True),
+    )
     conversation: Conversation = Relationship(back_populates='messages')

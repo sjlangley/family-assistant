@@ -353,4 +353,5 @@ class ConversationService:
             sequence_number=message.sequence_number,
             created_at=message.created_at,
             error=message.error,
+            annotations=message.annotations,
         )

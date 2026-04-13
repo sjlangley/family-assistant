@@ -4,6 +4,8 @@ import uuid
 
 from pydantic import BaseModel, Field
 
+from assistant.models.annotations import AssistantAnnotations
+
 
 class ConversationSummary(BaseModel):
     id: uuid.UUID
@@ -19,6 +21,7 @@ class MessageRead(BaseModel):
     sequence_number: int
     created_at: datetime
     error: str | None = None
+    annotations: AssistantAnnotations | None = None
 
 
 class CreateConversationWithMessageRequest(BaseModel):

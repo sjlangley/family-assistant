@@ -78,6 +78,7 @@ ENVIRONMENT = 'development'
 LLM_BASE_URL = 'http://localhost'
 DATABASE_URL = 'sqlite+aiosqlite:///:memory:'
 CHROMA_HOST = 'http://localhost'
+CLIENT_ORIGINS = []
 
 
 

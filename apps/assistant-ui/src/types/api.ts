@@ -36,6 +36,46 @@ export interface ChatResponse {
 }
 
 /**
+ * Annotations for message responses.
+ */
+
+export interface SourceAnnotation {
+  title: string;
+  url: string;
+  snippet: string;
+  rationale: string;
+}
+
+export interface ToolAnnotation {
+  name: string;
+  status: "completed" | "failed";
+}
+
+export interface MemoryHitAnnotation {
+  label: string;
+  summary: string;
+}
+
+export interface MemorySavedAnnotation {
+  label: string;
+  summary: string;
+}
+
+export interface FailureAnnotation {
+  stage: "llm" | "tool" | "annotation" | "unknown";
+  retryable: boolean;
+  detail: string | null;
+}
+
+export interface AssistantAnnotations {
+  sources: SourceAnnotation[];
+  tools: ToolAnnotation[];
+  memory_hits: MemoryHitAnnotation[];
+  memory_saved: MemorySavedAnnotation[];
+  failure: FailureAnnotation | null;
+}
+
+/**
  * Conversation types matching the backend Conversation models
  */
 export interface ConversationSummary {
@@ -52,6 +92,7 @@ export interface Message {
   sequence_number: number;
   created_at: string;
   error: string | null;
+  annotations: AssistantAnnotations | null;
 }
 
 export interface CreateConversationRequest {
