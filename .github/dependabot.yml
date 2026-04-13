@@ -20,6 +20,16 @@ updates:
     schedule:
       interval: monthly
 
+  - package-ecosystem: pip
+    directory: /apps/worker
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: docker
+    directory: /apps/worker
+    schedule:
+      interval: monthly
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
