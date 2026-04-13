@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock
 import uuid
 
 from fastapi import HTTPException
-import httpx
 import pytest
 import pytest_asyncio
 from sqlalchemy import select
@@ -19,6 +18,11 @@ from assistant.models.conversation import (
     CreateMessageRequest,
 )
 from assistant.models.conversation_sql import Conversation, Message
+from assistant.models.llm import (
+    LLMCompletionError,
+    LLMCompletionErrorKind,
+    LLMCompletionResult,
+)
 from assistant.services.conversation_service import ConversationService
 from assistant.services.llm_service import LLMService
 from assistant.services.memory_storage import MemoryStorage
@@ -86,28 +90,13 @@ def valid_request():
 @pytest.fixture
 def mock_llm_response():
     """Create a mock LLM response."""
-    return {
-        'id': 'chatcmpl-123',
-        'object': 'chat.completion',
-        'created': 1677652288,
-        'model': 'test-model',
-        'choices': [
-            {
-                'index': 0,
-                'message': {
-                    'role': 'assistant',
-                    'content': 'I am doing well, thank you!',
-                },
-                'logprobs': None,
-                'finish_reason': 'stop',
-            }
-        ],
-        'usage': {
-            'prompt_tokens': 10,
-            'completion_tokens': 15,
-            'total_tokens': 25,
-        },
-    }
+    return LLMCompletionResult(
+        content='I am doing well, thank you!',
+        model='llama3.2',
+        prompt_tokens=10,
+        completion_tokens=15,
+        total_tokens=25,
+    )
 
 
 async def test_create_conversation_with_message_success(
@@ -119,7 +108,7 @@ async def test_create_conversation_with_message_success(
     mock_llm_response,
 ):
     """It creates a conversation with user and assistant messages."""
-    mock_llm_service.create_chat_completion.return_value = mock_llm_response
+    mock_llm_service.complete_messages.return_value = mock_llm_response
 
     result = await conversation_service.create_conversation_with_message(
         session=async_session,
@@ -138,13 +127,12 @@ async def test_create_conversation_with_message_success(
     assert result.assistant_message.sequence_number == 2
 
     # Verify LLM service was called correctly
-    mock_llm_service.create_chat_completion.assert_called_once()
-    call_args = mock_llm_service.create_chat_completion.call_args[0][0]
-    assert call_args['model'] is not None
-    assert call_args['temperature'] == 0.7
-    assert call_args['max_tokens'] == 512
-    assert call_args['stream'] is False
-    assert len(call_args['messages']) == 2  # system + user message
+    mock_llm_service.complete_messages.assert_called_once()
+    call_kwargs = mock_llm_service.complete_messages.call_args.kwargs
+    assert call_kwargs['model'] is not None
+    assert call_kwargs['temperature'] == 0.7
+    assert call_kwargs['max_tokens'] == 512
+    assert len(call_kwargs['messages']) == 2  # system + user message
 
     # Verify data was saved to database
     # Re-query to ensure persistence
@@ -198,8 +186,9 @@ async def test_create_conversation_with_message_llm_timeout(
     valid_request,
 ):
     """It raises HTTPException when LLM times out."""
-    mock_llm_service.create_chat_completion.side_effect = TimeoutError(
-        'LLM request timed out'
+    mock_llm_service.complete_messages.side_effect = LLMCompletionError(
+        kind=LLMCompletionErrorKind.timeout,
+        message='LLM request timed out',
     )
 
     with pytest.raises(HTTPException) as exc_info:
@@ -227,8 +216,9 @@ async def test_create_conversation_with_message_llm_connection_error(
     valid_request,
 ):
     """It raises HTTPException when LLM connection fails."""
-    mock_llm_service.create_chat_completion.side_effect = ConnectionError(
-        'Failed to reach LLM backend'
+    mock_llm_service.complete_messages.side_effect = LLMCompletionError(
+        kind=LLMCompletionErrorKind.unreachable,
+        message='Failed to reach LLM backend',
     )
 
     with pytest.raises(HTTPException) as exc_info:
@@ -250,15 +240,10 @@ async def test_create_conversation_with_message_llm_http_error(
     valid_request,
 ):
     """It raises HTTPException when LLM returns HTTP error."""
-    mock_response = httpx.Response(
-        500,
-        json={'error': 'Internal server error'},
-        request=httpx.Request('POST', 'http://test'),
-    )
-    mock_llm_service.create_chat_completion.side_effect = httpx.HTTPStatusError(
-        'Server error',
-        request=mock_response.request,
-        response=mock_response,
+    mock_llm_service.complete_messages.side_effect = LLMCompletionError(
+        kind=LLMCompletionErrorKind.backend_error,
+        message='LLM backend returned an error',
+        backend_status_code=500,
     )
 
     with pytest.raises(HTTPException) as exc_info:
@@ -281,9 +266,10 @@ async def test_create_conversation_with_message_invalid_llm_response(
 ):
     """It raises HTTPException when LLM response is invalid."""
     # Return an invalid response structure
-    mock_llm_service.create_chat_completion.return_value = {
-        'invalid': 'response',
-    }
+    mock_llm_service.complete_messages.side_effect = LLMCompletionError(
+        kind=LLMCompletionErrorKind.invalid_response,
+        message='LLM response has unexpected response shape',
+    )
 
     with pytest.raises(HTTPException) as exc_info:
         await conversation_service.create_conversation_with_message(
@@ -304,18 +290,10 @@ async def test_create_conversation_with_message_empty_choices(
     valid_request,
 ):
     """It raises HTTPException when LLM returns no choices."""
-    mock_llm_service.create_chat_completion.return_value = {
-        'id': 'chatcmpl-123',
-        'object': 'chat.completion',
-        'created': 1677652288,
-        'model': 'test-model',
-        'choices': [],  # Empty choices
-        'usage': {
-            'prompt_tokens': 10,
-            'completion_tokens': 0,
-            'total_tokens': 10,
-        },
-    }
+    mock_llm_service.complete_messages.side_effect = LLMCompletionError(
+        kind=LLMCompletionErrorKind.invalid_response,
+        message='LLM backend did not return any choices',
+    )
 
     with pytest.raises(HTTPException) as exc_info:
         await conversation_service.create_conversation_with_message(
@@ -342,7 +320,7 @@ async def test_create_conversation_with_message_long_content_title(
         temperature=0.7,
         max_tokens=512,
     )
-    mock_llm_service.create_chat_completion.return_value = mock_llm_response
+    mock_llm_service.complete_messages.return_value = mock_llm_response
 
     result = await conversation_service.create_conversation_with_message(
         session=async_session,
@@ -363,28 +341,13 @@ async def test_create_conversation_with_message_empty_assistant_content(
     valid_request,
 ):
     """It handles empty assistant content gracefully."""
-    mock_llm_service.create_chat_completion.return_value = {
-        'id': 'chatcmpl-123',
-        'object': 'chat.completion',
-        'created': 1677652288,
-        'model': 'test-model',
-        'choices': [
-            {
-                'index': 0,
-                'message': {
-                    'role': 'assistant',
-                    'content': None,  # or empty string
-                },
-                'logprobs': None,
-                'finish_reason': 'stop',
-            }
-        ],
-        'usage': {
-            'prompt_tokens': 10,
-            'completion_tokens': 0,
-            'total_tokens': 10,
-        },
-    }
+    mock_llm_service.complete_messages.return_value = LLMCompletionResult(
+        content='',
+        model='llama3.2',
+        prompt_tokens=10,
+        completion_tokens=0,
+        total_tokens=10,
+    )
 
     result = await conversation_service.create_conversation_with_message(
         session=async_session,
@@ -852,7 +815,7 @@ async def test_add_message_to_conversation_success(
         temperature=0.7,
         max_tokens=512,
     )
-    mock_llm_service.create_chat_completion.return_value = mock_llm_response
+    mock_llm_service.complete_messages.return_value = mock_llm_response
 
     result = await conversation_service.add_message_to_conversation(
         session=async_session,
@@ -870,13 +833,13 @@ async def test_add_message_to_conversation_success(
     assert result.assistant_message.role == 'assistant'
 
     # Verify LLM was called with all messages
-    mock_llm_service.create_chat_completion.assert_called_once()
-    call_args = mock_llm_service.create_chat_completion.call_args[0][0]
+    mock_llm_service.complete_messages.assert_called_once()
+    call_kwargs = mock_llm_service.complete_messages.call_args.kwargs
     # Should have system message + 2 existing + 1 new = 4 messages
-    assert len(call_args['messages']) == 4
-    assert call_args['messages'][1]['content'] == 'Hello'
-    assert call_args['messages'][2]['content'] == 'Hi there!'
-    assert call_args['messages'][3]['content'] == 'How are you?'
+    assert len(call_kwargs['messages']) == 4
+    assert call_kwargs['messages'][1]['content'] == 'Hello'
+    assert call_kwargs['messages'][2]['content'] == 'Hi there!'
+    assert call_kwargs['messages'][3]['content'] == 'How are you?'
 
     # Verify messages were saved to database
     stmt = (
@@ -1008,7 +971,7 @@ async def test_add_message_to_conversation_with_no_existing_messages(
         temperature=0.7,
         max_tokens=512,
     )
-    mock_llm_service.create_chat_completion.return_value = mock_llm_response
+    mock_llm_service.complete_messages.return_value = mock_llm_response
 
     result = await conversation_service.add_message_to_conversation(
         session=async_session,
@@ -1042,8 +1005,9 @@ async def test_add_message_to_conversation_llm_timeout(
         temperature=0.7,
         max_tokens=512,
     )
-    mock_llm_service.create_chat_completion.side_effect = TimeoutError(
-        'LLM request timed out'
+    mock_llm_service.complete_messages.side_effect = LLMCompletionError(
+        kind=LLMCompletionErrorKind.timeout,
+        message='LLM request timed out',
     )
 
     with pytest.raises(HTTPException) as exc_info:
@@ -1078,8 +1042,9 @@ async def test_add_message_to_conversation_llm_connection_error(
         temperature=0.7,
         max_tokens=512,
     )
-    mock_llm_service.create_chat_completion.side_effect = ConnectionError(
-        'Failed to reach LLM backend'
+    mock_llm_service.complete_messages.side_effect = LLMCompletionError(
+        kind=LLMCompletionErrorKind.unreachable,
+        message='Failed to reach LLM backend',
     )
 
     with pytest.raises(HTTPException) as exc_info:
@@ -1114,15 +1079,10 @@ async def test_add_message_to_conversation_llm_http_error(
         temperature=0.7,
         max_tokens=512,
     )
-    mock_response = httpx.Response(
-        500,
-        json={'error': 'Internal server error'},
-        request=httpx.Request('POST', 'http://test'),
-    )
-    mock_llm_service.create_chat_completion.side_effect = httpx.HTTPStatusError(
-        'Server error',
-        request=mock_response.request,
-        response=mock_response,
+    mock_llm_service.complete_messages.side_effect = LLMCompletionError(
+        kind=LLMCompletionErrorKind.backend_error,
+        message='LLM backend returned an error',
+        backend_status_code=500,
     )
 
     with pytest.raises(HTTPException) as exc_info:
@@ -1157,9 +1117,10 @@ async def test_add_message_to_conversation_invalid_llm_response(
         temperature=0.7,
         max_tokens=512,
     )
-    mock_llm_service.create_chat_completion.return_value = {
-        'invalid': 'response',
-    }
+    mock_llm_service.complete_messages.side_effect = LLMCompletionError(
+        kind=LLMCompletionErrorKind.invalid_response,
+        message='LLM response has unexpected response shape',
+    )
 
     with pytest.raises(HTTPException) as exc_info:
         await conversation_service.add_message_to_conversation(
@@ -1193,18 +1154,10 @@ async def test_add_message_to_conversation_empty_llm_choices(
         temperature=0.7,
         max_tokens=512,
     )
-    mock_llm_service.create_chat_completion.return_value = {
-        'id': 'chatcmpl-123',
-        'object': 'chat.completion',
-        'created': 1677652288,
-        'model': 'test-model',
-        'choices': [],
-        'usage': {
-            'prompt_tokens': 10,
-            'completion_tokens': 0,
-            'total_tokens': 10,
-        },
-    }
+    mock_llm_service.complete_messages.side_effect = LLMCompletionError(
+        kind=LLMCompletionErrorKind.invalid_response,
+        message='LLM backend did not return any choices',
+    )
 
     with pytest.raises(HTTPException) as exc_info:
         await conversation_service.add_message_to_conversation(
