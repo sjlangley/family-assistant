@@ -244,8 +244,8 @@ They keep trust payloads useful instead of bloated.
 - ✅ update [apps/assistant-backend/src/assistant/models/conversation_sql.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/models/conversation_sql.py)
 - ✅ update [apps/assistant-backend/src/assistant/models/conversation.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/models/conversation.py)
 - ✅ add annotations models: [apps/assistant-backend/src/assistant/models/annotations.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/models/annotations.py)
-- ⏳ add memory SQLModel file, for example `apps/assistant-backend/src/assistant/models/memory_sql.py`
-- ⏳ add memory API model file, for example `apps/assistant-backend/src/assistant/models/memory.py`
+- ✅ add memory SQLModel file, for example `apps/assistant-backend/src/assistant/models/memory_sql.py`
+- ✅ add memory API model file, for example `apps/assistant-backend/src/assistant/models/memory.py`
 - ⏳ add Alembic scaffold and migrations under `apps/assistant-backend/`
 - ✅ update [apps/assistant-ui/src/types/api.ts](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-ui/src/types/api.ts)
 
@@ -253,7 +253,7 @@ They keep trust payloads useful instead of bloated.
 
 - ✅ add `annotations` to persisted assistant messages
 - ✅ add Pydantic models for annotation payloads (`AssistantAnnotations`, `SourceAnnotation`, `ToolAnnotation`, `MemoryHitAnnotation`, `MemorySavedAnnotation`, `FailureAnnotation`)
-- ⏳ add summary and durable-fact tables
+- ✅ add summary and durable-fact tables
 - ✅ extend TypeScript `Message` shape to include `annotations`
 
 **Acceptance criteria**
@@ -268,11 +268,11 @@ They keep trust payloads useful instead of bloated.
 - Extended `MessageRead` API contract to include annotations
 - Added matching TypeScript types for all annotation structures
 - Updated frontend test mocks to handle nullable annotations
+- Created conversation summary and durable fact SQLModel tables
+- Created corresponding Pydantic API models for memory operations
 
 **Remaining work:**
 - Create Alembic migration for the `annotations` column addition
-- Add conversation summary and durable fact SQLModel tables
-- Add corresponding Pydantic API models for memory operations
 
 ### Step 2. Extract the shared LLM completion seam
 
