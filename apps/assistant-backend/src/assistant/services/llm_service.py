@@ -13,10 +13,15 @@ from assistant.models.llm import (
 class LLMService:
     """Service for interacting with the LLM backend."""
 
-    def __init__(self, base_url: str, timeout_seconds: int):
+    def __init__(
+        self,
+        base_url: str,
+        timeout_seconds: int,
+        client: httpx.AsyncClient | None = None,
+    ):
         self.base_url = base_url
         self.timeout_seconds = timeout_seconds
-        self.client = httpx.AsyncClient(timeout=timeout_seconds)
+        self.client = client or httpx.AsyncClient(timeout=timeout_seconds)
 
     async def aclose(self) -> None:
         """Close the underlying HTTP client and release network resources."""
@@ -68,7 +73,6 @@ class LLMService:
                 json=request_body.model_dump(exclude_none=True),
             )
             response.raise_for_status()
-            response_dict = response.json()
         except httpx.TimeoutException as exc:
             raise LLMCompletionError(
                 kind=LLMCompletionErrorKind.timeout,
@@ -86,6 +90,15 @@ class LLMService:
                 backend_status_code=exc.response.status_code,
             ) from exc
 
+        # Parse JSON response
+        try:
+            response_dict = response.json()
+        except Exception as exc:
+            raise LLMCompletionError(
+                kind=LLMCompletionErrorKind.invalid_response,
+                message='LLM response has unexpected response shape',
+            ) from exc
+
         # Validate response shape
         try:
             response = CreateChatCompletionResponse.model_validate(
@@ -94,7 +107,7 @@ class LLMService:
         except pydantic.ValidationError as exc:
             raise LLMCompletionError(
                 kind=LLMCompletionErrorKind.invalid_response,
-                message='LLM backend returned an unexpected response shape',
+                message='LLM response has unexpected response shape',
             ) from exc
 
         # Extract first choice

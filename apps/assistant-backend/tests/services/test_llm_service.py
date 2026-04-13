@@ -56,8 +56,9 @@ async def test_complete_messages_success():
 
     transport = httpx.MockTransport(handler)
     client = httpx.AsyncClient(transport=transport, base_url='http://test')
-    service = LLMService(base_url='http://test', timeout_seconds=5)
-    service.client = client
+    service = LLMService(
+        base_url='http://test', timeout_seconds=5, client=client
+    )
 
     try:
         result = await service.complete_messages(
@@ -67,7 +68,7 @@ async def test_complete_messages_success():
             max_tokens=128,
         )
     finally:
-        await client.aclose()
+        await service.aclose()
 
     assert result.content == 'Hello! How can I help you?'
     assert result.model == 'test-model'
@@ -119,8 +120,9 @@ async def test_complete_messages_with_tool_calls():
 
     transport = httpx.MockTransport(handler)
     client = httpx.AsyncClient(transport=transport, base_url='http://test')
-    service = LLMService(base_url='http://test', timeout_seconds=5)
-    service.client = client
+    service = LLMService(
+        base_url='http://test', timeout_seconds=5, client=client
+    )
 
     try:
         result = await service.complete_messages(
@@ -130,7 +132,7 @@ async def test_complete_messages_with_tool_calls():
             max_tokens=128,
         )
     finally:
-        await client.aclose()
+        await service.aclose()
 
     assert result.content == ''
     assert result.model == 'test-model'
@@ -148,10 +150,10 @@ async def test_complete_messages_with_tool_calls():
 
 async def test_complete_messages_timeout():
     """It raises LLMCompletionError with timeout kind."""
-    service = LLMService(base_url='http://test', timeout_seconds=5)
-    service.client = httpx.AsyncClient(base_url='http://test')
-    service.client.post = AsyncMock(
-        side_effect=httpx.TimeoutException('Timeout')
+    client = httpx.AsyncClient(base_url='http://test')
+    client.post = AsyncMock(side_effect=httpx.TimeoutException('Timeout'))
+    service = LLMService(
+        base_url='http://test', timeout_seconds=5, client=client
     )
 
     try:
@@ -167,15 +169,17 @@ async def test_complete_messages_timeout():
         assert exc_info.value.message == 'LLM request timed out'
         assert exc_info.value.backend_status_code is None
     finally:
-        await service.client.aclose()
+        await service.aclose()
 
 
 async def test_complete_messages_unreachable():
     """It raises LLMCompletionError with unreachable kind."""
-    service = LLMService(base_url='http://test', timeout_seconds=5)
-    service.client = httpx.AsyncClient(base_url='http://test')
-    service.client.post = AsyncMock(
+    client = httpx.AsyncClient(base_url='http://test')
+    client.post = AsyncMock(
         side_effect=httpx.ConnectError('Connection failed')
+    )
+    service = LLMService(
+        base_url='http://test', timeout_seconds=5, client=client
     )
 
     try:
@@ -191,7 +195,7 @@ async def test_complete_messages_unreachable():
         assert exc_info.value.message == 'Failed to reach LLM backend'
         assert exc_info.value.backend_status_code is None
     finally:
-        await service.client.aclose()
+        await service.aclose()
 
 
 async def test_complete_messages_backend_error():
@@ -206,9 +210,11 @@ async def test_complete_messages_backend_error():
         response=response,
     )
 
-    service = LLMService(base_url='http://test', timeout_seconds=5)
-    service.client = httpx.AsyncClient(base_url='http://test')
-    service.client.post = AsyncMock(side_effect=error)
+    client = httpx.AsyncClient(base_url='http://test')
+    client.post = AsyncMock(side_effect=error)
+    service = LLMService(
+        base_url='http://test', timeout_seconds=5, client=client
+    )
 
     try:
         with pytest.raises(LLMCompletionError) as exc_info:
@@ -223,7 +229,7 @@ async def test_complete_messages_backend_error():
         assert exc_info.value.message == 'LLM backend returned an error'
         assert exc_info.value.backend_status_code == 500
     finally:
-        await service.client.aclose()
+        await service.aclose()
 
 
 async def test_complete_messages_invalid_response_shape():
@@ -238,8 +244,9 @@ async def test_complete_messages_invalid_response_shape():
 
     transport = httpx.MockTransport(handler)
     client = httpx.AsyncClient(transport=transport, base_url='http://test')
-    service = LLMService(base_url='http://test', timeout_seconds=5)
-    service.client = client
+    service = LLMService(
+        base_url='http://test', timeout_seconds=5, client=client
+    )
 
     try:
         with pytest.raises(LLMCompletionError) as exc_info:
@@ -253,7 +260,7 @@ async def test_complete_messages_invalid_response_shape():
         assert exc_info.value.kind == LLMCompletionErrorKind.invalid_response
         assert 'unexpected response shape' in exc_info.value.message.lower()
     finally:
-        await client.aclose()
+        await service.aclose()
 
 
 async def test_complete_messages_empty_choices():
@@ -276,8 +283,9 @@ async def test_complete_messages_empty_choices():
 
     transport = httpx.MockTransport(handler)
     client = httpx.AsyncClient(transport=transport, base_url='http://test')
-    service = LLMService(base_url='http://test', timeout_seconds=5)
-    service.client = client
+    service = LLMService(
+        base_url='http://test', timeout_seconds=5, client=client
+    )
 
     try:
         with pytest.raises(LLMCompletionError) as exc_info:
@@ -291,4 +299,36 @@ async def test_complete_messages_empty_choices():
         assert exc_info.value.kind == LLMCompletionErrorKind.invalid_response
         assert 'did not return any choices' in exc_info.value.message
     finally:
-        await client.aclose()
+        await service.aclose()
+
+
+async def test_complete_messages_invalid_json():
+    """It raises LLMCompletionError when response is not valid JSON."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b'not valid json',
+            headers={'content-type': 'application/json'},
+            request=request,
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(transport=transport, base_url='http://test')
+    service = LLMService(
+        base_url='http://test', timeout_seconds=5, client=client
+    )
+
+    try:
+        with pytest.raises(LLMCompletionError) as exc_info:
+            await service.complete_messages(
+                messages=[],
+                model='test',
+                temperature=0.7,
+                max_tokens=100,
+            )
+
+        assert exc_info.value.kind == LLMCompletionErrorKind.invalid_response
+        assert 'unexpected response shape' in exc_info.value.message.lower()
+    finally:
+        await service.aclose()
