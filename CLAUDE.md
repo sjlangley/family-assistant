@@ -59,7 +59,7 @@ See `apps/assistant-backend/alembic/README` for detailed bootstrap instructions.
    ```python
    def _has_table(table_name: str) -> bool:
        return table_name in sa.inspect(op.get_bind()).get_table_names()
-   
+
    if not _has_table('new_table'):
        op.create_table(...)
    ```
@@ -86,7 +86,7 @@ See `apps/assistant-backend/alembic/README` for detailed bootstrap instructions.
 
 ### Common Issues
 
-**"No module named 'assistant'"**: 
+**"No module named 'assistant'"**:
 - Run from `apps/assistant-backend/` directory
 - Ensure dev dependencies installed: `pip install -e ".[dev]"`
 
