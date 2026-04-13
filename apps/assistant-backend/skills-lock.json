@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "claude-md-improver": {
+      "source": "smithery.ai",
+      "sourceType": "well-known",
+      "computedHash": "d6707ed0467d9664d0f9d2c44724c8fb1814475ec6d3c62a5d54bbbe807e0775"
+    },
+    "conventional-commits": {
+      "source": "smithery.ai",
+      "sourceType": "well-known",
+      "computedHash": "e6c97f289f216cdd1465683e4c1aa0728ad60198725d62edb26d5b390ebc59d3"
+    },
+    "gh-cli": {
+      "source": "smithery.ai",
+      "sourceType": "well-known",
+      "computedHash": "cbe644b0c6760ae2a1eaafa39133920d889331327065d92a131675a665273e56"
+    },
+    "humanizer": {
+      "source": "smithery.ai",
+      "sourceType": "well-known",
+      "computedHash": "34a38e6acc60d4529612d41ffe740bca0060d3c5e89e2a0d24ae795f67157fbb"
+    },
+    "python-expert": {
+      "source": "smithery.ai",
+      "sourceType": "well-known",
+      "computedHash": "7ddc44800aef275b3252ffa65369e214ef2a56603842e3f6721363816eb6b45f"
+    },
+    "refactor": {
+      "source": "smithery.ai",
+      "sourceType": "well-known",
+      "computedHash": "87789a786b96f99ba0680e89345a975106e10e7db1071c7cdc2e76d507c449d6"
+    }
+  }
+}
