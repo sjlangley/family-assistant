@@ -15,6 +15,7 @@ and an external llama.cpp server for LLM inference.
 * **User API** — retrieve the currently authenticated user
 * **LLM chat completions** — proxies chat requests to a local llama.cpp server
 * **Shared LLM completion seam** — one typed backend path now powers both the direct chat endpoint and conversation replies, with common response validation and error handling
+* **Bounded conversation context assembly** — existing conversation replies now use the latest saved summary, active per-user durable facts, and a capped recent-turn window instead of blindly resending the full transcript
 * **Conversation management** — create conversations, add messages, list and retrieve history
 * **Health check endpoint**
 * **PostgreSQL storage** — async SQLModel / SQLAlchemy with automatic schema creation

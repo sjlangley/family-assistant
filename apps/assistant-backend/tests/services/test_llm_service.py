@@ -175,9 +175,7 @@ async def test_complete_messages_timeout():
 async def test_complete_messages_unreachable():
     """It raises LLMCompletionError with unreachable kind."""
     client = httpx.AsyncClient(base_url='http://test')
-    client.post = AsyncMock(
-        side_effect=httpx.ConnectError('Connection failed')
-    )
+    client.post = AsyncMock(side_effect=httpx.ConnectError('Connection failed'))
     service = LLMService(
         base_url='http://test', timeout_seconds=5, client=client
     )

@@ -23,6 +23,10 @@ from assistant.models.llm import (
     LLMCompletionErrorKind,
     LLMCompletionResult,
 )
+from assistant.services.context_assembly import (
+    ContextAssemblyResult,
+    ContextAssemblyService,
+)
 from assistant.services.conversation_service import ConversationService
 from assistant.services.llm_service import LLMService
 from assistant.services.memory_storage import MemoryStorage
@@ -64,10 +68,19 @@ def mock_memory_storage():
 
 
 @pytest.fixture
-def conversation_service(mock_llm_service, mock_memory_storage):
-    """Create a ConversationService with mocked LLM service."""
+def mock_context_assembly():
+    """Create a mock ContextAssemblyService."""
+    return AsyncMock(spec=ContextAssemblyService)
+
+
+@pytest.fixture
+def conversation_service(
+    mock_llm_service, mock_memory_storage, mock_context_assembly
+):
+    """Create a ConversationService with mocked dependencies."""
     return ConversationService(
-        llm_service=mock_llm_service, memory_storage=mock_memory_storage
+        llm_service=mock_llm_service,
+        context_assembly=mock_context_assembly,
     )
 
 
@@ -101,15 +114,31 @@ def mock_llm_response():
     )
 
 
+@pytest.fixture
+def mock_context_result():
+    """Create a mock context assembly result for new conversation."""
+    return ContextAssemblyResult(
+        messages=[{'role': 'user', 'content': 'Hello, how are you?'}],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+
+
 async def test_create_conversation_with_message_success(
     conversation_service,
     mock_llm_service,
+    mock_context_assembly,
     async_session,
     test_user_id,
     valid_request,
     mock_llm_response,
+    mock_context_result,
 ):
     """It creates a conversation with user and assistant messages."""
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        mock_context_result
+    )
     mock_llm_service.complete_messages.return_value = mock_llm_response
 
     result = await conversation_service.create_conversation_with_message(
@@ -128,13 +157,19 @@ async def test_create_conversation_with_message_success(
     assert result.assistant_message.role == 'assistant'
     assert result.assistant_message.sequence_number == 2
 
+    # Verify context assembly was called
+    mock_context_assembly.assemble_context_new_conversation.assert_called_once()
+
     # Verify LLM service was called correctly
     mock_llm_service.complete_messages.assert_called_once()
     call_kwargs = mock_llm_service.complete_messages.call_args.kwargs
     assert call_kwargs['model'] is not None
     assert call_kwargs['temperature'] == 0.7
     assert call_kwargs['max_tokens'] == 512
-    assert len(call_kwargs['messages']) == 2  # system + user message
+    # Messages should have system message + context assembly messages
+    assert len(call_kwargs['messages']) == 2  # system + user
+    assert call_kwargs['messages'][0]['role'] == 'system'
+    assert call_kwargs['messages'][1] == mock_context_result.messages[0]
 
     # Verify data was saved to database
     # Re-query to ensure persistence
@@ -161,6 +196,8 @@ async def test_create_conversation_with_message_empty_content(
     conversation_service,
     async_session,
     test_user_id,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It raises HTTPException when content is empty."""
     request = CreateConversationWithMessageRequest(
@@ -186,8 +223,13 @@ async def test_create_conversation_with_message_llm_timeout(
     async_session,
     test_user_id,
     valid_request,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It raises HTTPException when LLM times out."""
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        mock_context_result
+    )
     mock_llm_service.complete_messages.side_effect = LLMCompletionError(
         kind=LLMCompletionErrorKind.timeout,
         message='LLM request timed out',
@@ -216,8 +258,13 @@ async def test_create_conversation_with_message_llm_connection_error(
     async_session,
     test_user_id,
     valid_request,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It raises HTTPException when LLM connection fails."""
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        mock_context_result
+    )
     mock_llm_service.complete_messages.side_effect = LLMCompletionError(
         kind=LLMCompletionErrorKind.unreachable,
         message='Failed to reach LLM backend',
@@ -240,8 +287,13 @@ async def test_create_conversation_with_message_llm_http_error(
     async_session,
     test_user_id,
     valid_request,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It raises HTTPException when LLM returns HTTP error."""
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        mock_context_result
+    )
     mock_llm_service.complete_messages.side_effect = LLMCompletionError(
         kind=LLMCompletionErrorKind.backend_error,
         message='LLM backend returned an error',
@@ -265,8 +317,13 @@ async def test_create_conversation_with_message_invalid_llm_response(
     async_session,
     test_user_id,
     valid_request,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It raises HTTPException when LLM response is invalid."""
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        mock_context_result
+    )
     # Return an invalid response structure
     mock_llm_service.complete_messages.side_effect = LLMCompletionError(
         kind=LLMCompletionErrorKind.invalid_response,
@@ -290,8 +347,13 @@ async def test_create_conversation_with_message_empty_choices(
     async_session,
     test_user_id,
     valid_request,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It raises HTTPException when LLM returns no choices."""
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        mock_context_result
+    )
     mock_llm_service.complete_messages.side_effect = LLMCompletionError(
         kind=LLMCompletionErrorKind.invalid_response,
         message='LLM backend did not return any choices',
@@ -314,8 +376,13 @@ async def test_create_conversation_with_message_long_content_title(
     async_session,
     test_user_id,
     mock_llm_response,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It truncates long messages for conversation title."""
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        mock_context_result
+    )
     long_content = 'A' * 100  # More than 60 characters
     request = CreateConversationWithMessageRequest(
         content=long_content,
@@ -341,8 +408,13 @@ async def test_create_conversation_with_message_empty_assistant_content(
     async_session,
     test_user_id,
     valid_request,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It handles empty assistant content gracefully."""
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        mock_context_result
+    )
     mock_llm_service.complete_messages.return_value = LLMCompletionResult(
         content='',
         model='llama3.2',
@@ -782,8 +854,11 @@ async def test_add_message_to_conversation_success(
     async_session,
     test_user_id,
     mock_llm_response,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It adds a message to an existing conversation."""
+    mock_context_assembly.assemble_context.return_value = mock_context_result
     # Create a conversation with initial messages
     conversation = Conversation(
         user_id=test_user_id,
@@ -839,11 +914,10 @@ async def test_add_message_to_conversation_success(
     # Verify LLM was called with all messages
     mock_llm_service.complete_messages.assert_called_once()
     call_kwargs = mock_llm_service.complete_messages.call_args.kwargs
-    # Should have system message + 2 existing + 1 new = 4 messages
-    assert len(call_kwargs['messages']) == 4
-    assert call_kwargs['messages'][1]['content'] == 'Hello'
-    assert call_kwargs['messages'][2]['content'] == 'Hi there!'
-    assert call_kwargs['messages'][3]['content'] == 'How are you?'
+    # Should have system message + context assembly messages
+    assert len(call_kwargs['messages']) == 2  # system + user
+    assert call_kwargs['messages'][0]['role'] == 'system'
+    assert call_kwargs['messages'][1] == mock_context_result.messages[0]
 
     # Verify messages were saved to database
     stmt = (
@@ -866,6 +940,8 @@ async def test_add_message_to_conversation_empty_content(
     conversation_service,
     async_session,
     test_user_id,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It raises HTTPException when content is empty."""
 
@@ -898,6 +974,8 @@ async def test_add_message_to_conversation_not_found(
     conversation_service,
     async_session,
     test_user_id,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It raises HTTPException when conversation doesn't exist."""
 
@@ -924,6 +1002,8 @@ async def test_add_message_to_conversation_wrong_user(
     conversation_service,
     async_session,
     test_user_id,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It raises HTTPException when user doesn't own the conversation."""
 
@@ -960,8 +1040,11 @@ async def test_add_message_to_conversation_with_no_existing_messages(
     async_session,
     test_user_id,
     mock_llm_response,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It handles adding a message to a conversation with no messages."""
+    mock_context_assembly.assemble_context.return_value = mock_context_result
 
     conversation = Conversation(
         user_id=test_user_id,
@@ -994,8 +1077,11 @@ async def test_add_message_to_conversation_llm_timeout(
     mock_llm_service,
     async_session,
     test_user_id,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It raises HTTPException when LLM times out."""
+    mock_context_assembly.assemble_context.return_value = mock_context_result
 
     conversation = Conversation(
         user_id=test_user_id,
@@ -1031,8 +1117,11 @@ async def test_add_message_to_conversation_llm_connection_error(
     mock_llm_service,
     async_session,
     test_user_id,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It raises HTTPException when LLM connection fails."""
+    mock_context_assembly.assemble_context.return_value = mock_context_result
 
     conversation = Conversation(
         user_id=test_user_id,
@@ -1068,8 +1157,11 @@ async def test_add_message_to_conversation_llm_http_error(
     mock_llm_service,
     async_session,
     test_user_id,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It raises HTTPException when LLM returns HTTP error."""
+    mock_context_assembly.assemble_context.return_value = mock_context_result
 
     conversation = Conversation(
         user_id=test_user_id,
@@ -1106,8 +1198,11 @@ async def test_add_message_to_conversation_invalid_llm_response(
     mock_llm_service,
     async_session,
     test_user_id,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It raises HTTPException when LLM response is invalid."""
+    mock_context_assembly.assemble_context.return_value = mock_context_result
 
     conversation = Conversation(
         user_id=test_user_id,
@@ -1143,8 +1238,11 @@ async def test_add_message_to_conversation_empty_llm_choices(
     mock_llm_service,
     async_session,
     test_user_id,
+    mock_context_assembly,
+    mock_context_result,
 ):
     """It raises HTTPException when LLM returns no choices."""
+    mock_context_assembly.assemble_context.return_value = mock_context_result
 
     conversation = Conversation(
         user_id=test_user_id,

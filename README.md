@@ -61,3 +61,9 @@ See individual READMEs for detailed instructions:
 - [Backend Setup](apps/assistant-backend/README.md)
 - [Frontend Setup](apps/assistant-ui/README.md)
 - [LLM Server Setup](apps/llm-server/README.md)
+
+## Project Docs
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
+- [Design System](DESIGN.md)
