@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 
+from assistant.models.llm import ChatCompletionTool
 from assistant.models.tool import ToolExecutionResult
 
 
@@ -11,7 +12,7 @@ class BaseTool(ABC):
     name: str
 
     @abstractmethod
-    def definition(self) -> dict:
+    def definition(self) -> ChatCompletionTool:
         """Return the OpenAI-compatible tool definition exposed to the model."""
         ...
 

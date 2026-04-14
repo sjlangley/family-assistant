@@ -20,6 +20,7 @@ from assistant.models.conversation_sql import Conversation, Message
 from assistant.models.llm import (
     ChatCompletionRequestSystemMessage,
     LLMCompletionError,
+    ToolChoice,
 )
 from assistant.routers.web_utils import llm_completion_error_to_http_exception
 from assistant.services.context_assembly import ContextAssemblyService
@@ -318,7 +319,7 @@ class ConversationService:
                 }
                 if tools:
                     completion_kwargs['tools'] = tools
-                    completion_kwargs['tool_choice'] = 'auto'
+                    completion_kwargs['tool_choice'] = ToolChoice.auto
 
                 result = await self.llm_service.complete_messages(
                     **completion_kwargs

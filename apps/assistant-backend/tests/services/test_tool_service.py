@@ -15,7 +15,7 @@ def test_get_available_tools_returns_current_time_definition():
     tools = service.get_available_tools()
 
     assert len(tools) == 1
-    assert tools[0]['function']['name'] == 'get_current_time'
+    assert tools[0].function.name == 'get_current_time'
 
 
 @pytest.mark.asyncio
