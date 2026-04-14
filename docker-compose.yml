@@ -67,7 +67,7 @@ services:
       SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:?SESSION_SECRET_KEY must be set}
 
       # LLM backend configuration
-      LLM_BASE_URL: http://ollama:11434
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434}
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-120}
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
 
