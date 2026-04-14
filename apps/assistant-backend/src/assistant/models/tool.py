@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -18,7 +18,7 @@ class ToolCallRecord(BaseModel):
     """Metadata about one concrete tool execution."""
 
     name: str
-    arguments: dict
+    arguments: dict[str, Any]
     started_at: datetime
     finished_at: datetime
     status: ToolExecutionStatus
@@ -81,6 +81,6 @@ class ToolExecutionResult(BaseModel):
     status: ToolExecutionStatus
     tool_call: ToolCallRecord
     llm_context: str | None = None
-    annotation_inputs: dict | None = None
+    annotation_inputs: dict[str, Any] | None = None
     payload: ToolPayload | None = None
     error: ToolError | None = None
