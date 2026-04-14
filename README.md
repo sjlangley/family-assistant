@@ -43,7 +43,7 @@ cp .env.example .env
 # Edit .env with your Google OAuth credentials and other settings
 
 # 3. Start all services
-docker compose up --build
+docker compose up -d --build
 
 # 4. Pull the default local model once
 docker compose exec ollama ollama pull qwen2.5:7b
