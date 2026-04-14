@@ -1,5 +1,6 @@
 """Exceptions used by the shared tool layer."""
 
+
 class UnsupportedToolError(Exception):
     """Raised when the model requests a tool that is not in the allowlist."""
 
