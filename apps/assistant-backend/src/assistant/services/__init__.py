@@ -13,7 +13,7 @@ from assistant.settings import settings
 @lru_cache(maxsize=1)
 def get_tool_service() -> ToolService:
     """Return a lazily initialized singleton instance of ToolService."""
-    # Initialize tools here - for now we have none, but this is where you'd add them.
+    # Register tools here. Currently, only CurrentTimeTool is wired in.
     factory = ToolFactory(tools=[CurrentTimeTool()])
     return ToolService(factory=factory)
 
