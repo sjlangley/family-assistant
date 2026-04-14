@@ -375,6 +375,17 @@ Chroma retrieval was deliberately excluded from the Step 3 shipped implementatio
 
 Create a small reusable tool layer that supports the first research path now and future tools, such as image generation, soon after.
 
+**Completed groundwork**
+
+The initial Step 4 foundation has already landed:
+
+- added a shared `ToolService` plus explicit `BaseTool` and `ToolFactory` seams
+- added typed tool execution models so `ConversationService` and future annotation work can share one normalized result contract
+- added a deterministic `get_current_time` validation tool to prove the tool path end to end without mixing in search/fetch complexity
+- updated `ConversationService` and `LLMService` to support a bounded model-native tool loop with shared tool definitions
+
+The remaining Step 4 work is the first real research path: `web_search` for discovery and `web_fetch` for grounded page reads.
+
 **Files**
 
 - add `apps/assistant-backend/src/assistant/services/tool_service.py`
@@ -560,6 +571,8 @@ Create a small reusable tool layer that supports the first research path now and
 [x] durable fact table exists
 [x] shared LLM completion helper exists
 [x] ContextAssemblyService exists
+[x] reusable backend tool layer exists
+[x] deterministic validation tool exists
 [ ] web_search + web_fetch tool path works
 [ ] AssistantAnnotationService exists
 [ ] terminal assistant failure rows persist on backend failure
