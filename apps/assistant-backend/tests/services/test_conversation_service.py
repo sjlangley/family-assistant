@@ -1,7 +1,7 @@
 """Tests for ConversationService."""
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 import uuid
 
 from fastapi import HTTPException
@@ -86,7 +86,9 @@ def mock_context_assembly():
 @pytest.fixture
 def mock_tool_service():
     """Create a mock ToolService."""
-    return AsyncMock(spec=ToolService)
+    mock_service = Mock(spec=ToolService)
+    mock_service.execute_tool = AsyncMock()
+    return mock_service
 
 
 @pytest.fixture
