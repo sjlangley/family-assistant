@@ -4,6 +4,14 @@ from assistant.services.tools.base import BaseTool
 from assistant.services.tools.errors import UnsupportedToolError
 
 
+class DisabledToolError(Exception):
+    """Raised when a supported tool is currently disabled."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        super().__init__(f'Tool is disabled: {name}')
+
+
 class ToolFactory:
     """Own the enabled tool set for the current backend process."""
 
@@ -20,9 +28,14 @@ class ToolFactory:
         ]
 
     def get(self, name: str) -> BaseTool:
-        """Resolve one tool by name or raise a typed lookup error."""
+        """Resolve one enabled tool by name or raise a typed error."""
 
         try:
-            return self._tools[name]
+            tool = self._tools[name]
         except KeyError as exc:
             raise UnsupportedToolError(name) from exc
+
+        if not tool.is_enabled():
+            raise DisabledToolError(name)
+
+        return tool
