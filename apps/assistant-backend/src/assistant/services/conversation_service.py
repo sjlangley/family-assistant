@@ -312,13 +312,18 @@ class ConversationService:
 
         for _ in range(MAXIMUM_TOOL_ROUNDS):
             try:
+                completion_kwargs = {
+                    'messages': llm_messages,
+                    'model': settings.llm_model,
+                    'temperature': temperature,
+                    'max_tokens': max_tokens,
+                }
+                if tools:
+                    completion_kwargs['tools'] = tools
+                    completion_kwargs['tool_choice'] = 'auto'
+
                 result = await self.llm_service.complete_messages(
-                    messages=llm_messages,
-                    model=settings.llm_model,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    tools=tools,
-                    tool_choice='auto',
+                    **completion_kwargs
                 )
                 if not result.tool_calls:
                     return result.content
