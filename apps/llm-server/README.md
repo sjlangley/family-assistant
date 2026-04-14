@@ -60,6 +60,20 @@ uvx hf download \
   --local-dir ./models
 ```
 
+```bash
+uvx hf download \
+  bartowski/Qwen2.5-7B-Instruct-GGUF \
+  Qwen2.5-7B-Instruct-Q4_K_M.gguf \
+  --local-dir ~/models
+```
+
+```bash
+uvx hf download \
+  bartowski/Qwen2.5-7B-Instruct-GGUF \
+  Qwen2.5-7B-Instruct-Q5_K_M.gguf \
+  --local-dir ~/models
+```
+
 **Option B: Using huggingface-cli**
 
 Use the hugging face UI.
