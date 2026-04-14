@@ -531,7 +531,7 @@ class HTTPValidationError(BaseModel):
 class ChatCompletionResponseChoice(BaseModel):
     index: int = Field(..., title='Index')
     message: ChatCompletionResponseMessage
-    logprobs: ChatCompletionLogprobs | None
+    logprobs: ChatCompletionLogprobs | None = None
     finish_reason: str | None = Field(..., title='Finish Reason')
 
 

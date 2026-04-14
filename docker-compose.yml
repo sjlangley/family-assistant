@@ -22,23 +22,16 @@ services:
     networks:
       - family-assistant-network
 
-  llama-cpp-python:
-    image: 3x3cut0r/llama-cpp-python:latest
-    container_name: llama-cpp-python
-    cap_add:
-      - SYS_RESOURCE
-    environment:
-        MODEL_DOWNLOAD: "False"
-        MODEL_REPO: "local"
-        MODEL: "meta-llama-3.1-8b-instruct-q4_k_m.gguf"
-        MODEL_ALIAS: "meta-llama-3.1-8b-instruct"
-        CHAT_FORMAT: "llama-3"
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
     volumes:
-      - ~/models/meta-llama-3.1-8b-instruct-q4_k_m.gguf:/model/meta-llama-3.1-8b-instruct-q4_k_m.gguf
+      - ollama_data:/root/.ollama
     ports:
-      - 8000:8000/tcp
+      - "11434:11434"
     networks:
       - family-assistant-network
+    restart: unless-stopped
 
   chroma:
     image: chromadb/chroma:1.5.5
@@ -74,9 +67,9 @@ services:
       SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:?SESSION_SECRET_KEY must be set}
 
       # LLM backend configuration
-      LLM_BASE_URL: http://llama-cpp-python:8000
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434}
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-120}
-      LLM_MODEL: ${LLM_MODEL:-llama-3.1-8b-instruct}
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
 
       # Database configuration (for future use)
       DATABASE_URL: postgresql+asyncpg://assistant:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/family_assistant
@@ -127,6 +120,8 @@ volumes:
   postgres_data:
     driver: local
   chroma_data:
+    driver: local
+  ollama_data:
     driver: local
 
 networks:

@@ -4,7 +4,7 @@ Backend service for the Family Assistant application.
 
 Provides authenticated REST APIs for user management, conversation history, and LLM chat
 completions. Uses Google OAuth 2.0 for authentication, PostgreSQL for persistent storage,
-and an external llama.cpp server for LLM inference.
+and an external OpenAI-compatible LLM server for inference.
 
 ---
 
@@ -13,7 +13,7 @@ and an external llama.cpp server for LLM inference.
 * **Google OAuth 2.0 authentication** — verifies Google ID tokens and manages server-side sessions
 * **Session management** — cookie-based sessions via Starlette `SessionMiddleware`
 * **User API** — retrieve the currently authenticated user
-* **LLM chat completions** — proxies chat requests to a local llama.cpp server
+* **LLM chat completions** — proxies chat requests to a local OpenAI-compatible LLM server
 * **Shared LLM completion seam** — one typed backend path now powers both the direct chat endpoint and conversation replies, with common response validation and error handling
 * **Bounded conversation context assembly** — existing conversation replies now use the latest saved summary, active per-user durable facts, and a capped recent-turn window instead of blindly resending the full transcript
 * **Initial tool layer** — `BaseTool`, `ToolFactory`, and `ToolService` now provide one explicit backend tool seam with typed execution results and shared allowlist-based dispatch
@@ -48,7 +48,7 @@ and an external llama.cpp server for LLM inference.
 
 * Python 3.13+
 * PostgreSQL 16 (or SQLite for tests via `DATABASE_URL=sqlite+aiosqlite:///:memory:`)
-* A running llama.cpp server (see `apps/llm-server/README.md`)
+* A running OpenAI-compatible LLM server such as Ollama (see `apps/llm-server/README.md`)
 
 Install dependencies:
 
@@ -64,8 +64,8 @@ Copy `.env.example` to `.env` and configure:
 |---|---|---|
 | `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth 2.0 client ID | Yes |
 | `SESSION_SECRET_KEY` | Secret for signing session cookies | Yes |
-| `LLM_BASE_URL` | Base URL of the llama.cpp server | Yes |
-| `LLM_MODEL` | Model name to pass to the LLM API | No (default: `gpt-4`) |
+| `LLM_BASE_URL` | Base URL of the local OpenAI-compatible LLM server | Yes |
+| `LLM_MODEL` | Model name to pass to the LLM API | No (default in Docker Compose: `qwen2.5:7b`) |
 | `LLM_TIMEOUT_SECONDS` | Request timeout for LLM calls | No (default: `120`) |
 | `DATABASE_URL` | Full SQLAlchemy database URL | No (uses TCP params below) |
 | `DATABASE_HOST` | PostgreSQL host | No (default: `localhost`) |

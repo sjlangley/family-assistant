@@ -10,12 +10,14 @@ The Docker Compose setup includes:
 - **Backend** - FastAPI application serving the API (`assistant-backend`)
 - **Frontend** - React application serving the UI (`assistant-ui`)
 
-**Note:** The LLM server runs separately on your host machine. See `apps/llm-server/README.md` for setup instructions.
+**Note:** Docker Compose now includes an `ollama` service by default. You can still point
+the backend at another host-run OpenAI-compatible server if you want; see
+`apps/llm-server/README.md` for setup details.
 
 ## Prerequisites
 
 - **Docker** and **Docker Compose** installed
-- **LLM Server** running on your host machine (see `apps/llm-server/README.md`)
+- **Local LLM runtime** available either through the bundled Ollama service or a host-run server (see `apps/llm-server/README.md`)
 - **Google OAuth credentials** (see setup instructions below)
 
 ## Quick Start
@@ -53,18 +55,18 @@ openssl rand -hex 32
    - `http://localhost:3000`
 5. Copy the Client ID to both `GOOGLE_OAUTH_CLIENT_ID` and `VITE_GOOGLE_CLIENT_ID` in `.env`
 
-### 4. Start the LLM Server
+### 4. Start the LLM Runtime
 
-The backend needs an LLM server to be running. Follow the instructions in `apps/llm-server/README.md` to:
+Docker Compose now includes an `ollama` service by default. After the stack is up,
+pull the default model once:
 
 ```bash
-# Example: Start llama.cpp server (adjust based on your setup)
-# See apps/llm-server/README.md for detailed instructions
-./llama-server \
-  --model path/to/model.gguf \
-  --port 8000 \
-  --chat-template llama3
+docker compose up -d ollama
+docker compose exec ollama ollama pull qwen2.5:7b
 ```
+
+If you want to use a different local server instead, follow the instructions in
+`apps/llm-server/README.md` and update `LLM_BASE_URL` / `LLM_MODEL` accordingly.
 
 ### 5. Build and Start Services
 
@@ -82,6 +84,7 @@ The services will be available at:
 - **Backend API**: http://localhost:8080
 - **Backend Health**: http://localhost:8080/health
 - **PostgreSQL**: localhost:5432
+- **Ollama API**: http://localhost:11434
 
 ### 6. View Logs
 
@@ -197,10 +200,10 @@ npm run dev  # Runs on port 5173
 
 ### Backend can't connect to LLM server
 
-- Ensure LLM server is running on your host machine
-- Check `LLM_BASE_URL` uses `host.docker.internal` for Docker setup
-- Verify the port matches your LLM server port (default: 8000)
-- Test: `curl http://localhost:8000/v1/models`
+- Ensure the Ollama service is running: `docker compose ps ollama`
+- Pull the configured model: `docker compose exec ollama ollama pull qwen2.5:7b`
+- Check `LLM_BASE_URL` matches the runtime you want to use
+- Test: `curl http://localhost:11434/api/tags`
 
 ### Google OAuth errors
 
@@ -230,7 +233,7 @@ POSTGRES_PORT=5433
 Services communicate via a private Docker network (`family-assistant-network`). The backend connects to:
 
 - PostgreSQL at `postgres:5432` (internal network)
-- LLM server at `host.docker.internal:8000` (host machine)
+- Ollama at `ollama:11434` (internal network)
 
 ### Health Checks
 

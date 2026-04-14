@@ -12,7 +12,7 @@ Supports **text chat with a local LLM**, **persistent conversation history**, an
 - **Conversation management**
   Persistent conversations stored in PostgreSQL — create new chats, resume old ones, and browse history.
 - **LLM chat**
-  Text chat powered by llama.cpp running locally (via Docker or on the host machine).
+  Text chat powered by a local OpenAI-compatible LLM runtime, with Docker Compose now defaulting to Ollama.
 - **Authentication & security**
   Google OAuth 2.0 with server-side session cookies. Per-user data isolation enforced at the API layer.
 
@@ -22,7 +22,7 @@ Supports **text chat with a local LLM**, **persistent conversation history**, an
 
 - **Backend:** Python 3.13+ / FastAPI
 - **Frontend:** TypeScript / React 18 / Vite
-- **LLM Runtime:** llama.cpp (llama-cpp-python server, OpenAI-compatible API)
+- **LLM Runtime:** Ollama by default in Docker Compose, or another local OpenAI-compatible server
 - **Database:** PostgreSQL 16 (SQLModel / SQLAlchemy async)
 - **Authentication:** Google OAuth 2.0 (server-side sessions)
 - **Linting & Formatting:** Ruff + Pyrefly (backend), ESLint + Prettier (frontend)
@@ -43,7 +43,10 @@ cp .env.example .env
 # Edit .env with your Google OAuth credentials and other settings
 
 # 3. Start all services
-docker compose up --build
+docker compose up -d --build
+
+# 4. Pull the default local model once
+docker compose exec ollama ollama pull qwen2.5:7b
 ```
 
 See [DOCKER.md](DOCKER.md) for detailed Docker setup instructions.
