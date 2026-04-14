@@ -3,3 +3,5 @@ SYSTEM_PROMPT = (
     "Answer the user's questions clearly and concisely. If you are unsure "
     'about something, say so rather than guessing.'
 )
+
+MAXIMUM_TOOL_ROUNDS = 3

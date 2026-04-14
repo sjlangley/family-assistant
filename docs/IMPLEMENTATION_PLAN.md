@@ -6,7 +6,7 @@ Ship the first trustworthy-assistant upgrade on top of the existing chat app:
 
 - context compression
 - durable fact memory
-- one controlled tool, `web_search`
+- one controlled research tool path, `web_search` + `web_fetch`
 - message-level trust annotations in the chat UI
 
 This plan is the implementation spec for phase 1.
@@ -81,6 +81,13 @@ ContextAssemblyService
   ->
 shared LLM completion helper
   ->
+ToolService
+  ->  BaseTool
+  ->  ToolFactory
+  ->  web_search
+  ->  web_fetch
+  ->  future tools, for example image generation
+  ->
 assistant result + tool outputs
   ->
 AssistantAnnotationService
@@ -118,6 +125,10 @@ Suggested shape:
     {
       "name": "web_search",
       "label": "Web search"
+    },
+    {
+      "name": "web_fetch",
+      "label": "Web fetch"
     }
   ],
   "sources": [
@@ -224,8 +235,9 @@ They keep trust payloads useful instead of bloated.
 - `source.snippet`: max `240` chars
 - `memory.hits`: max `2`
 - `memory.saved`: max `1`
-- `tools_used`: max `2`, though phase 1 should only use `web_search`
+- `tools_used`: max `2`, with phase 1 limited to `web_search` + `web_fetch`
 - never persist raw full tool outputs in `annotations`
+- never treat raw search snippets as final evidence
 - never inject `annotations` back into model prompt assembly
 - prompt assembly uses:
   - recent turns only
@@ -309,7 +321,7 @@ They keep trust payloads useful instead of bloated.
 - Added typed seam models for shared completion results and service-level error classification
 - Refactored `LLMService` to own canonical request construction, transport, response validation, and first-choice extraction
 - Updated the chat router and `ConversationService` to use the shared seam instead of duplicating response parsing
-- Preserved `tool_calls` and `finish_reason` in the seam result so the upcoming `web_search` tool path can build on it cleanly
+- Preserved `tool_calls` and `finish_reason` in the seam result so the upcoming research tool path can build on it cleanly
 - Removed the deprecated public raw completion wrapper to keep one supported backend completion path
 - Expanded backend regression coverage around seam parsing, error mapping, and both existing callers
 
@@ -349,7 +361,7 @@ Bounded context assembly from canonical Postgres sources (summaries, facts, rece
 - Added `ContextAssemblyService` with a typed `ContextAssemblyResult` for prepared messages and debug metadata
 - Load latest conversation summary, active per-user durable facts, and capped recent-turn window from canonical Postgres tables
 - Enforced explicit prompt budgets: 4 recent turns with summary, 8 without; max 5 facts; text truncation at 200 chars/fact and 1000 chars/summary
-- Updated `ConversationService` to use `ContextAssemblyService` for both new and existing conversation replies  
+- Updated `ConversationService` to use `ContextAssemblyService` for both new and existing conversation replies
 - Added regression test preventing duplicate user messages in prompts
 - All code and tests reflect Postgres-only implementation; Chroma retrieval support deferred to Step 6+
 
@@ -357,28 +369,70 @@ Bounded context assembly from canonical Postgres sources (summaries, facts, rece
 
 Chroma retrieval was deliberately excluded from the Step 3 shipped implementation in favor of keeping the code simple and honest. Canonical Postgres summaries + facts + recent turns provide a solid foundation. Once Step 5 has written full summary and fact text to Postgres, Step 6 will add retrieval-backed ranking and context augmentation for candidates.
 
-### Step 4. Extract summary + facts via background job
+### Step 4. Add the first research tool path: `web_search` + `web_fetch`
+
+**Purpose**
+
+Create a small reusable tool layer that supports the first research path now and future tools, such as image generation, soon after.
+
+**Completed groundwork**
+
+The initial Step 4 foundation has already landed:
+
+- added a shared `ToolService` plus explicit `BaseTool` and `ToolFactory` seams
+- added typed tool execution models so `ConversationService` and future annotation work can share one normalized result contract
+- added a deterministic `get_current_time` validation tool to prove the tool path end to end without mixing in search/fetch complexity
+- updated `ConversationService` and `LLMService` to support a bounded model-native tool loop with shared tool definitions
+
+The remaining Step 4 work is the first real research path: `web_search` for discovery and `web_fetch` for grounded page reads.
 
 **Files**
 
-- add a thin backend service such as `apps/assistant-backend/src/assistant/services/web_search_service.py`
+- add `apps/assistant-backend/src/assistant/services/tool_service.py`
+- add `apps/assistant-backend/src/assistant/services/tools/base.py`
+- add `apps/assistant-backend/src/assistant/services/tools/factory.py`
+- add `apps/assistant-backend/src/assistant/services/tools/web_search.py`
+- add `apps/assistant-backend/src/assistant/services/tools/web_fetch.py`
 - update [apps/assistant-backend/src/assistant/settings.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/settings.py)
 - update [apps/assistant-backend/src/assistant/services/conversation_service.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/services/conversation_service.py)
+- update [apps/assistant-backend/src/assistant/services/context_assembly.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/services/context_assembly.py) only as needed for bounded retrieval support
 
 **Work**
 
-- support one configured `web_search` backend
-- keep it behind a tiny internal wrapper, not a provider registry
-- let the model choose the tool natively
-- convert tool result into:
-  - final answer context
-  - persisted trust annotations
+- support one configured research tool path composed of:
+  - `web_search` to discover candidate sources
+  - `web_fetch` to read selected pages
+- add a small `BaseTool` contract that owns:
+  - tool definition exposed to the model
+  - tool execution
+  - enabled/disabled checks
+- add a `ToolFactory` that is the explicit allowlist and lookup point for supported tools
+- add a `ToolService` that:
+  - exposes the available tool definitions to the model
+  - dispatches tool calls by name
+  - returns normalized tool execution results
+- keep the implementation explicit and hardcoded, not a dynamic plugin system or provider registry
+- let the model use the search/fetch path natively through the shared tool layer
+- require final answers to ground source annotations in fetched page content, not raw search snippets alone
+- keep retrieval support, if used, separate from external web research:
+  - retrieval is bounded prompt context
+  - fetched web pages are external evidence
+- convert fetched results into compact structured source inputs for the annotation step
+- keep the tool layer small enough that future tools, such as image generation, can be added without reshaping `ConversationService`
 
 **Acceptance criteria**
 
-- only `web_search` is exposed in phase 1
-- tool results can produce trust-row and evidence-panel content
-- tool failure can still end in a terminal assistant failure row
+- the assistant can search for candidate sources and fetch the selected pages before answering
+- search snippets alone are not treated as sufficient evidence for trust annotations
+- one explicit tool allowlist exists through `ToolFactory`
+- one shared tool execution/result path exists through `ToolService`
+- fetched page content can produce:
+  - source title
+  - source URL
+  - compact supporting snippet
+  - rationale for why the source matters
+- failures in search or fetch can still produce a clear terminal assistant failure row
+- the implementation remains limited to one controlled research path in phase 1
 
 ### Step 5. Add `AssistantAnnotationService`
 
@@ -517,7 +571,9 @@ Chroma retrieval was deliberately excluded from the Step 3 shipped implementatio
 [x] durable fact table exists
 [x] shared LLM completion helper exists
 [x] ContextAssemblyService exists
-[ ] web_search tool path works
+[x] reusable backend tool layer exists
+[x] deterministic validation tool exists
+[ ] web_search + web_fetch tool path works
 [ ] AssistantAnnotationService exists
 [ ] terminal assistant failure rows persist on backend failure
 [ ] BackgroundTasks extraction writes summaries/facts
@@ -561,7 +617,7 @@ Phase 1 is ready when all of these are true:
 - evidence panel content comes from stored annotations, not regenerated guesses
 - summary and durable fact memory are canonical in Postgres
 - Chroma is only retrieval support
-- `web_search` is the only tool in play
+- `web_search` + `web_fetch` are the only research tools in play
 - tests cover success, failure, reload, and budget edges
 - the UI matches [DESIGN.md](/Users/stuartlangley/src/sjlangley/family-assistant/DESIGN.md)
 

@@ -16,6 +16,9 @@ and an external llama.cpp server for LLM inference.
 * **LLM chat completions** — proxies chat requests to a local llama.cpp server
 * **Shared LLM completion seam** — one typed backend path now powers both the direct chat endpoint and conversation replies, with common response validation and error handling
 * **Bounded conversation context assembly** — existing conversation replies now use the latest saved summary, active per-user durable facts, and a capped recent-turn window instead of blindly resending the full transcript
+* **Initial tool layer** — `BaseTool`, `ToolFactory`, and `ToolService` now provide one explicit backend tool seam with typed execution results and shared allowlist-based dispatch
+* **Bounded native tool loop** — conversation replies can now expose allowed tools to the model, execute requested tool calls, and feed tool outputs back through a capped multi-round completion loop
+* **Deterministic validation tool** — `get_current_time` is shipped as the first backend tool so the tool path can be verified end to end before adding real `web_search` + `web_fetch` research tools
 * **Conversation management** — create conversations, add messages, list and retrieve history
 * **Health check endpoint**
 * **PostgreSQL storage** — async SQLModel / SQLAlchemy with automatic schema creation

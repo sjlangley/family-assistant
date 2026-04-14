@@ -1,3 +1,4 @@
+import json
 from typing import cast
 import uuid
 
@@ -5,7 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from assistant.constants import SYSTEM_PROMPT
+from assistant.constants import MAXIMUM_TOOL_ROUNDS, SYSTEM_PROMPT
 from assistant.models.conversation import (
     ConversationSummary,
     ConversationWithMessagesResponse,
@@ -23,6 +24,7 @@ from assistant.models.llm import (
 from assistant.routers.web_utils import llm_completion_error_to_http_exception
 from assistant.services.context_assembly import ContextAssemblyService
 from assistant.services.llm_service import LLMService
+from assistant.services.tool_service import ToolService
 from assistant.settings import settings
 
 
@@ -36,9 +38,11 @@ class ConversationService:
         self,
         llm_service: LLMService,
         context_assembly: ContextAssemblyService,
+        tool_service: ToolService,
     ) -> None:
         self.llm_service = llm_service
         self.context_assembly = context_assembly
+        self.tool_service = tool_service
 
     async def list_conversations(
         self,
@@ -301,18 +305,86 @@ class ConversationService:
             role='system', content=SYSTEM_PROMPT
         )
         llm_messages = [system_message.model_dump()] + messages
+        available_tools = self.tool_service.get_available_tools()
+        tools = available_tools if available_tools else None
 
-        try:
-            result = await self.llm_service.complete_messages(
-                messages=llm_messages,
-                model=settings.llm_model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-        except LLMCompletionError as exc:
-            raise llm_completion_error_to_http_exception(exc) from exc
+        for _ in range(MAXIMUM_TOOL_ROUNDS):
+            try:
+                completion_kwargs = {
+                    'messages': llm_messages,
+                    'model': settings.llm_model,
+                    'temperature': temperature,
+                    'max_tokens': max_tokens,
+                }
+                if tools:
+                    completion_kwargs['tools'] = tools
+                    completion_kwargs['tool_choice'] = 'auto'
 
-        return result.content
+                result = await self.llm_service.complete_messages(
+                    **completion_kwargs
+                )
+                if not result.tool_calls:
+                    return result.content
+
+                llm_messages.append(
+                    {
+                        'role': 'assistant',
+                        'content': result.content,
+                        'tool_calls': result.tool_calls,
+                    }
+                )
+
+                for tool_call in result.tool_calls:
+                    # Parse and validate tool arguments safely
+                    try:
+                        parsed_arguments = json.loads(
+                            tool_call.function.arguments
+                        )
+                        # Validate parsed arguments are a dict
+                        if not isinstance(parsed_arguments, dict):
+                            raise ValueError(
+                                f'Tool arguments must be a JSON object, '
+                                f'got {type(parsed_arguments).__name__}'
+                            )
+                    except json.JSONDecodeError as exc:
+                        raise HTTPException(
+                            status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail=(
+                                f'Invalid tool arguments JSON: '
+                                f'{tool_call.function.name}'
+                            ),
+                        ) from exc
+                    except ValueError as exc:
+                        raise HTTPException(
+                            status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail=str(exc),
+                        ) from exc
+                    try:
+                        tool_result = await self.tool_service.execute_tool(
+                            name=tool_call.function.name,
+                            arguments=parsed_arguments,
+                        )
+                    except Exception as exc:
+                        raise HTTPException(
+                            status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail=f'Error executing tool {tool_call.function.name}: {str(exc)}',
+                        ) from exc
+
+                    llm_messages.append(
+                        {
+                            'role': 'tool',
+                            'tool_call_id': tool_call.id,
+                            'content': tool_result.llm_context or '',
+                        }
+                    )
+
+            except LLMCompletionError as exc:
+                raise llm_completion_error_to_http_exception(exc) from exc
+
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f'Assistant exceeded maximum tool rounds ({MAXIMUM_TOOL_ROUNDS})',
+        )
 
     @staticmethod
     def _conversation_summary(
