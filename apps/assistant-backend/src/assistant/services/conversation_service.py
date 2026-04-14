@@ -27,6 +27,7 @@ from assistant.services.llm_service import LLMService
 from assistant.services.tool_service import ToolService
 from assistant.services.tools.errors import (
     UnsupportedToolError,
+    ToolLoopExhaustedError,
 )
 from assistant.settings import settings
 
