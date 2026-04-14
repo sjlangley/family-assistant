@@ -25,10 +25,6 @@ from assistant.routers.web_utils import llm_completion_error_to_http_exception
 from assistant.services.context_assembly import ContextAssemblyService
 from assistant.services.llm_service import LLMService
 from assistant.services.tool_service import ToolService
-from assistant.services.tools.errors import (
-    UnsupportedToolError,
-    ToolLoopExhaustedError,
-)
 from assistant.settings import settings
 
 
@@ -363,11 +359,17 @@ class ConversationService:
                             status_code=status.HTTP_502_BAD_GATEWAY,
                             detail=str(exc),
                         ) from exc
+                    try:
+                        tool_result = await self.tool_service.execute_tool(
+                            name=tool_call.function.name,
+                            arguments=parsed_arguments,
+                        )
+                    except Exception as exc:
+                        raise HTTPException(
+                            status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail=f'Error executing tool {tool_call.function.name}: {str(exc)}',
+                        ) from exc
 
-                    tool_result = await self.tool_service.execute_tool(
-                        name=tool_call.function.name,
-                        arguments=parsed_arguments,
-                    )
                     llm_messages.append(
                         {
                             'role': 'tool',
@@ -378,11 +380,6 @@ class ConversationService:
 
             except LLMCompletionError as exc:
                 raise llm_completion_error_to_http_exception(exc) from exc
-            except UnsupportedToolError as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=str(exc),
-                ) from exc
 
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
