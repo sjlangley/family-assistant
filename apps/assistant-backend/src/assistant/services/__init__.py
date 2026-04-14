@@ -4,7 +4,18 @@ from assistant.services.context_assembly import ContextAssemblyService
 from assistant.services.conversation_service import ConversationService
 from assistant.services.llm_service import LLMService
 from assistant.services.memory_storage import MemoryStorage
+from assistant.services.tool_service import ToolService
+from assistant.services.tools.current_time import CurrentTimeTool
+from assistant.services.tools.factory import ToolFactory
 from assistant.settings import settings
+
+
+@lru_cache(maxsize=1)
+def get_tool_service() -> ToolService:
+    """Return a lazily initialized singleton instance of ToolService."""
+    # Initialize tools here - for now we have none, but this is where you'd add them.
+    factory = ToolFactory(tools=[CurrentTimeTool()])
+    return ToolService(factory=factory)
 
 
 @lru_cache(maxsize=1)
@@ -38,4 +49,5 @@ def get_conversation_service() -> ConversationService:
     return ConversationService(
         llm_service=get_llm_service(),
         context_assembly=get_context_assembly_service(),
+        tool_service=get_tool_service(),
     )

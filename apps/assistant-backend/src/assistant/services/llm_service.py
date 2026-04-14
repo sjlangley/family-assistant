@@ -34,6 +34,8 @@ class LLMService:
         model: str,
         temperature: float,
         max_tokens: int | None,
+        tools: list[dict] | None = None,
+        tool_choice: str | dict | None = None,
     ) -> LLMCompletionResult:
         """Execute a chat completion request.
 
@@ -51,7 +53,8 @@ class LLMService:
             model: Model identifier
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
-
+            tools: Optional list of tool definitions to include in the request
+            tool_choice: Optional specification of which tool to use, if any
         Returns:
             LLMCompletionResult with content and usage stats
 
@@ -65,6 +68,8 @@ class LLMService:
             temperature=temperature,
             max_tokens=max_tokens,
             stream=False,
+            tools=tools,
+            tool_choice=tool_choice,
         )
 
         try:
