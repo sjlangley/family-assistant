@@ -308,7 +308,8 @@ class ConversationService:
             role='system', content=SYSTEM_PROMPT
         )
         llm_messages = [system_message.model_dump()] + messages
-        tools = self.tool_service.get_available_tools()
+        available_tools = self.tool_service.get_available_tools()
+        tools = available_tools if available_tools else None
 
         for _ in range(MAXIMUM_TOOL_ROUNDS):
             try:
