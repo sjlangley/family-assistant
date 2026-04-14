@@ -371,7 +371,7 @@ class ConversationService:
                         {
                             'role': 'tool',
                             'tool_call_id': tool_call.id,
-                            'content': tool_result.llm_context,
+                            'content': tool_result.llm_context or '',
                         }
                     )
 
