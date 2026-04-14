@@ -13,8 +13,10 @@ models with an OpenAI-compatible HTTP API. The assistant backend
 There are two ways to run the LLM server:
 
 1. **Docker Compose** (recommended) — the `docker-compose.yml` in the repository root
-   includes an `ollama` service. Pull `qwen2.5:7b` into Ollama and run
-   `docker compose up`.
+   includes an `ollama` service. Start the container first with
+   `docker compose up -d ollama`, pull `qwen2.5:7b` with
+   `docker compose exec ollama ollama pull qwen2.5:7b`, and then run
+   `docker compose up` for the full stack.
 2. **Manually on the host** — follow the Quick Start below to install and run a local
    server directly. This is useful for GPU-accelerated inference or when running only
    part of the stack in Docker.
