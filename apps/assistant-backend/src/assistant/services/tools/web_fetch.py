@@ -97,7 +97,14 @@ class WebFetchTool(BaseTool):
 
         finished_at = datetime.now(UTC)
 
-        logger.debug('Web fetch payload: %s', payload)
+        logger.debug(
+            'Web fetch completed for url=%s title=%r content_length=%d '
+            'excerpt_length=%d',
+            payload.url,
+            payload.title,
+            len(payload.content),
+            len(payload.excerpt),
+        )
 
         return ToolExecutionResult(
             tool_name=self.name,
