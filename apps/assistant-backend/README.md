@@ -18,7 +18,9 @@ and an external OpenAI-compatible LLM server for inference.
 * **Bounded conversation context assembly** — existing conversation replies now use the latest saved summary, active per-user durable facts, and a capped recent-turn window instead of blindly resending the full transcript
 * **Initial tool layer** — `BaseTool`, `ToolFactory`, and `ToolService` now provide one explicit backend tool seam with typed execution results and shared allowlist-based dispatch
 * **Bounded native tool loop** — conversation replies can now expose allowed tools to the model, execute requested tool calls, and feed tool outputs back through a capped multi-round completion loop
-* **Deterministic validation tool** — `get_current_time` is shipped as the first backend tool so the tool path can be verified end to end before adding real `web_search` + `web_fetch` research tools
+* **Built-in backend tools** — `get_current_time` ships as the deterministic validation tool, and the first real research path is now live through `web_search` and `web_fetch`
+* **Grounded web research path** — `web_search` uses DuckDuckGo result discovery and `web_fetch` returns cleaned HTML content so the model can read selected pages before answering
+* **Fetch safety** — `web_fetch` is limited to public `http` and `https` targets, validates redirect hops, and rejects localhost and private-network destinations
 * **Conversation management** — create conversations, add messages, list and retrieve history
 * **Health check endpoint**
 * **PostgreSQL storage** — async SQLModel / SQLAlchemy with automatic schema creation
@@ -77,6 +79,8 @@ Copy `.env.example` to `.env` and configure:
 | `AUTH_DISABLED` | Disable auth for local development | No (default: `false`) |
 | `ENVIRONMENT` | `development`, `staging`, or `production` | No (default: `production`) |
 | `LOG_LEVEL` | Logging level | No (default: `INFO`) |
+
+Tool-specific defaults such as search result caps and fetch timeouts are currently code-local inside the tool implementations.
 
 ### Start the development server
 

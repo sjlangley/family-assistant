@@ -27,7 +27,8 @@ apps/
       routers/         # API route handlers
       models/          # Pydantic models
       security/        # Auth & session management
-      services/        # Business logic (LLM, etc.)
+      services/        # Business logic (LLM, tool loop, etc.)
+        tools/         # Concrete backend tools: current time, web search, web fetch
     tests/             # Pytest test suite
   assistant-ui/        # React TypeScript frontend
     src/
@@ -84,6 +85,15 @@ pyrefly check src/             # type checking
 - Docstrings required for all public classes and functions
 - Single quotes for strings
 - Imports sorted per `ruff.toml` isort configuration (`known-first-party = ["assistant"]`)
+
+### Backend capabilities to keep in mind
+- Conversation replies use one bounded native tool loop through `ConversationService`
+- Tool definitions and dispatch live in `src/assistant/services/tools/`
+- The currently shipped backend tools are:
+  - `get_current_time`
+  - `web_search`
+  - `web_fetch`
+- `web_fetch` is intentionally limited to public web targets and must keep its SSRF protections intact
 
 ---
 

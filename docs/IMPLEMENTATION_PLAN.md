@@ -371,20 +371,22 @@ Chroma retrieval was deliberately excluded from the Step 3 shipped implementatio
 
 ### Step 4. Add the first research tool path: `web_search` + `web_fetch`
 
+**Status:** ✅ **COMPLETE**
+
 **Purpose**
 
 Create a small reusable tool layer that supports the first research path now and future tools, such as image generation, soon after.
 
 **Completed groundwork**
 
-The initial Step 4 foundation has already landed:
+The initial Step 4 foundation had already landed before the research tools:
 
 - added a shared `ToolService` plus explicit `BaseTool` and `ToolFactory` seams
 - added typed tool execution models so `ConversationService` and future annotation work can share one normalized result contract
 - added a deterministic `get_current_time` validation tool to prove the tool path end to end without mixing in search/fetch complexity
 - updated `ConversationService` and `LLMService` to support a bounded model-native tool loop with shared tool definitions
 
-The remaining Step 4 work is the first real research path: `web_search` for discovery and `web_fetch` for grounded page reads.
+This branch finished the first real research path: `web_search` for discovery and `web_fetch` for grounded page reads.
 
 **Files**
 
@@ -393,9 +395,9 @@ The remaining Step 4 work is the first real research path: `web_search` for disc
 - add `apps/assistant-backend/src/assistant/services/tools/factory.py`
 - add `apps/assistant-backend/src/assistant/services/tools/web_search.py`
 - add `apps/assistant-backend/src/assistant/services/tools/web_fetch.py`
-- update [apps/assistant-backend/src/assistant/settings.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/settings.py)
 - update [apps/assistant-backend/src/assistant/services/conversation_service.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/services/conversation_service.py)
-- update [apps/assistant-backend/src/assistant/services/context_assembly.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/services/context_assembly.py) only as needed for bounded retrieval support
+- update [apps/assistant-backend/src/assistant/models/tool.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/models/tool.py)
+- update [apps/assistant-backend/pyproject.toml](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/pyproject.toml)
 
 **Work**
 
@@ -433,6 +435,14 @@ The remaining Step 4 work is the first real research path: `web_search` for disc
   - rationale for why the source matters
 - failures in search or fetch can still produce a clear terminal assistant failure row
 - the implementation remains limited to one controlled research path in phase 1
+
+**Completed work:**
+- Added concrete `web_search` and `web_fetch` tools and registered them in the shared backend tool factory
+- Extended the typed tool payload models so search can return multiple result rows
+- Wired tool outputs back into the bounded native tool loop through model-facing `llm_context` strings instead of success-only placeholders
+- Implemented DuckDuckGo-backed search via `ddgs` and HTML extraction via BeautifulSoup
+- Added public-web-only safeguards to `web_fetch`, including scheme validation, hostname/IP screening, and redirect re-validation to block SSRF-style fetches
+- Added focused backend tests for the current-time tool split, search results, fetch parsing, redirect handling, and unsafe URL rejection
 
 ### Step 5. Add `AssistantAnnotationService`
 
@@ -573,7 +583,7 @@ The remaining Step 4 work is the first real research path: `web_search` for disc
 [x] ContextAssemblyService exists
 [x] reusable backend tool layer exists
 [x] deterministic validation tool exists
-[ ] web_search + web_fetch tool path works
+[x] web_search + web_fetch tool path works
 [ ] AssistantAnnotationService exists
 [ ] terminal assistant failure rows persist on backend failure
 [ ] BackgroundTasks extraction writes summaries/facts

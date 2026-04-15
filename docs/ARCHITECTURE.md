@@ -57,7 +57,11 @@ All memory is **retrieved and injected dynamically** for LLM prompts.
 ## Tool Orchestration
 
 - LLM decides which **tool or modality** to use per user request
-- Example tools:
+- The backend exposes an explicit allowlist of tools through `ToolFactory` and executes them through `ToolService`
+- Current research tools:
+  - `web_search` for candidate-source discovery
+  - `web_fetch` for grounded page reads with public-web-only URL validation
+- Example future tools:
   - Calendar queries
   - Grocery/shopping list management
   - Home automation endpoints
@@ -69,4 +73,3 @@ All memory is **retrieved and injected dynamically** for LLM prompts.
 - Google OAuth 2.0 authentication
 - Domain-restricted access (Workspace users only)
 - Memory isolation per user
-
