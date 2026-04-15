@@ -1,4 +1,4 @@
-"""Web Search tool for retrieving relevant information from the web."""
+"""Web Fetch tool for retrieving relevant information from the web."""
 
 import asyncio
 from datetime import UTC, datetime
@@ -78,7 +78,6 @@ class WebFetchTool(BaseTool):
 
         started_at = datetime.now(UTC)
 
-        # Placeholder implementation - replace with actual web fetch logic
         url = arguments['url']
 
         result = await self._perform_fetch(url)
@@ -145,6 +144,10 @@ class WebFetchTool(BaseTool):
 
             assert response is not None
 
+            content_type = response.headers.get('Content-Type', '').lower()
+            if 'text/html' not in content_type:
+                raise ValueError('The URL did not return an HTML document')
+
             # Parse HTML content
             soup = BeautifulSoup(response.text, 'html.parser')
 
@@ -153,6 +156,7 @@ class WebFetchTool(BaseTool):
             if soup.title:
                 title = soup.title.string
             elif soup.find('h1'):
+                # pyrefly: ignore [missing-attribute]
                 title = soup.find('h1').get_text(strip=True)
 
             # Extract main content
@@ -201,6 +205,7 @@ class WebFetchTool(BaseTool):
             None,
             type=socket.SOCK_STREAM,
         )
+        # pyrefly: ignore [bad-return]
         return {info[4][0] for info in address_info}
 
     @classmethod
@@ -250,7 +255,6 @@ class WebFetchTool(BaseTool):
         excerpt: str | None,
         content: str,
     ) -> str:
-        body = content[:4000]
         return '\n'.join(
             [
                 'Fetched page',
@@ -261,6 +265,6 @@ class WebFetchTool(BaseTool):
                 excerpt or 'No excerpt available.',
                 '',
                 'Content:',
-                body or 'No readable content extracted.',
+                content or 'No readable content extracted.',
             ]
         ).strip()

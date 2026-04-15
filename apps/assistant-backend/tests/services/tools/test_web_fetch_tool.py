@@ -42,7 +42,7 @@ async def test_web_fetch_tool_basic():
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.is_redirect = False
-        mock_response.headers = {}
+        mock_response.headers = {'Content-Type': 'text/html'}
         mock_response.text = (
             '<html><head><title>Test Page</title></head></html>'
         )
@@ -97,7 +97,7 @@ async def test_web_fetch_tool_with_content():
             '</html>'
         )
         mock_response.raise_for_status = MagicMock()  # Sync method, not async
-        mock_response.headers = {}
+        mock_response.headers = {'Content-Type': 'text/html'}
         mock_instance.get.return_value = mock_response
 
         # Mock the URL validation method
@@ -124,7 +124,7 @@ async def test_web_fetch_client_reuse(web_fetch_tool_fixture, mock_http_client):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.is_redirect = False
-        mock_response.headers = {}
+        mock_response.headers = {'Content-Type': 'text/html'}
         mock_response.text = '<html><title>Test</title></html>'
         mock_response.raise_for_status = MagicMock()
         mock_http_client.get.return_value = mock_response
@@ -154,7 +154,7 @@ async def test_web_fetch_extracts_title(
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.is_redirect = False
-        mock_response.headers = {}
+        mock_response.headers = {'Content-Type': 'text/html'}
         mock_response.text = '<html><title>My Page Title</title></html>'
         mock_response.raise_for_status = MagicMock()
         mock_http_client.get.return_value = mock_response
@@ -177,7 +177,7 @@ async def test_web_fetch_extracts_content(
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.is_redirect = False
-        mock_response.headers = {}
+        mock_response.headers = {'Content-Type': 'text/html'}
         mock_response.text = """
         <html>
             <body>
@@ -209,7 +209,7 @@ async def test_web_fetch_extracts_excerpt(
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.is_redirect = False
-        mock_response.headers = {}
+        mock_response.headers = {'Content-Type': 'text/html'}
         mock_response.text = """
         <html>
             <body>
@@ -239,7 +239,7 @@ async def test_web_fetch_handles_meta_description(
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.is_redirect = False
-        mock_response.headers = {}
+        mock_response.headers = {'Content-Type': 'text/html'}
         mock_response.text = """
         <html>
             <head>

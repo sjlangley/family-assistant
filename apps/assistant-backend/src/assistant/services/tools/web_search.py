@@ -55,7 +55,6 @@ class WebSearchTool(BaseTool):
 
         started_at = datetime.now(UTC)
 
-        # Placeholder implementation - replace with actual web search logic
         query = arguments['query']
         num_results = arguments.get('num_results', DEFAULT_NUMBER_OF_RESULTS)
 
@@ -93,7 +92,8 @@ class WebSearchTool(BaseTool):
     ) -> list[WebSearchResultPayload]:
         """Perform the web search using DuckDuckGo Search API."""
 
-        search_results = DDGS().text(query, max_results=num_results)
+        with DDGS() as ddgs:
+            search_results = ddgs.text(query, max_results=num_results)
 
         results = []
         for result in search_results:
@@ -111,7 +111,7 @@ class WebSearchTool(BaseTool):
         self, query: str, results: list[WebSearchResultPayload]
     ) -> str:
         lines = [f'Web search results for: {query}', '']
-        for index, result in enumerate(results[:5], start=1):
+        for index, result in enumerate(results, start=1):
             lines.extend(
                 [
                     f'{index}. {result.title or "Untitled"}',

@@ -14,7 +14,8 @@ from assistant.services.tools.web_search import WebSearchTool
 def mock_ddgs():
     with patch('assistant.services.tools.web_search.DDGS') as mock:
         mock_instance = MagicMock()
-        mock.return_value = mock_instance
+        mock.return_value.__enter__ = MagicMock(return_value=mock_instance)
+        mock.return_value.__exit__ = MagicMock(return_value=None)
         yield mock_instance
 
 

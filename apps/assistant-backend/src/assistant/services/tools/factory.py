@@ -1,5 +1,6 @@
 """Explicit allowlist and lookup helpers for supported tools."""
 
+from assistant.models.llm import ChatCompletionTool
 from assistant.services.tools.base import BaseTool
 from assistant.services.tools.errors import UnsupportedToolError
 
@@ -18,7 +19,7 @@ class ToolFactory:
     def __init__(self, tools: list[BaseTool]) -> None:
         self._tools = {tool.name: tool for tool in tools}
 
-    def definitions(self) -> list[dict]:
+    def definitions(self) -> list[ChatCompletionTool]:
         """Return model-facing definitions for all enabled tools."""
 
         return [

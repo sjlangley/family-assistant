@@ -318,7 +318,9 @@ class ConversationService:
                     'max_tokens': max_tokens,
                 }
                 if tools:
-                    completion_kwargs['tools'] = tools
+                    completion_kwargs['tools'] = [
+                        tool.model_dump() for tool in tools
+                    ]
                     completion_kwargs['tool_choice'] = ToolChoice.auto
 
                 result = await self.llm_service.complete_messages(
