@@ -446,6 +446,8 @@ This branch finished the first real research path: `web_search` for discovery an
 
 ### Step 5. Add `AssistantAnnotationService`
 
+**Status:** ✅ **COMPLETE**
+
 **New collaborator 2**
 
 - `apps/assistant-backend/src/assistant/services/assistant_annotations.py`
@@ -468,6 +470,13 @@ This branch finished the first real research path: `web_search` for discovery an
 - success rows persist trust metadata
 - failure rows persist clear assistant-side outcome
 - annotations remain compact and reload-safe
+
+**Completed work:**
+- Added `AssistantAnnotationService` as the dedicated backend collaborator for building compact success and failure annotations
+- Refactored `ConversationService` to keep a structured LLM/tool-loop result instead of only final assistant text
+- Persisted success annotations on assistant rows, including bounded tool usage, fetched-source evidence, and memory-hit metadata sourced from context assembly
+- Persisted terminal assistant failure rows for LLM and tool-path failures, preserving clear failure-stage metadata and any truthful tool/source provenance gathered before the error
+- Kept annotation budgeting centralized in the annotation service so reloads use the stored payload instead of regenerating trust metadata
 
 ### Step 6. Add background extraction with canonical Postgres writes
 
@@ -584,10 +593,10 @@ This branch finished the first real research path: `web_search` for discovery an
 [x] reusable backend tool layer exists
 [x] deterministic validation tool exists
 [x] web_search + web_fetch tool path works
-[ ] AssistantAnnotationService exists
-[ ] terminal assistant failure rows persist on backend failure
+[x] AssistantAnnotationService exists
+[x] terminal assistant failure rows persist on backend failure
 [ ] BackgroundTasks extraction writes summaries/facts
-[ ] chat reload returns persisted annotations
+[x] chat reload returns persisted annotations
 [ ] pending placeholder UI works
 [ ] trust row renders from persisted annotations
 [ ] evidence panel works on desktop and mobile

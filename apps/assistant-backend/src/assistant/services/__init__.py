@@ -1,5 +1,8 @@
 from functools import lru_cache
 
+from assistant.services.assistant_annotations import (
+    AssistantAnnotationService,
+)
 from assistant.services.context_assembly import ContextAssemblyService
 from assistant.services.conversation_service import ConversationService
 from assistant.services.llm_service import LLMService
@@ -54,4 +57,5 @@ def get_conversation_service() -> ConversationService:
         llm_service=get_llm_service(),
         context_assembly=get_context_assembly_service(),
         tool_service=get_tool_service(),
+        annotation_service=AssistantAnnotationService(),
     )
