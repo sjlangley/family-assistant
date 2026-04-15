@@ -328,13 +328,13 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
                               : "bg-white text-gray-900 border border-gray-200"
                         }`}
                       >
-                        <div className="whitespace-pre-wrap">
-                          {msg.role === "assistant" ? (
-                            <MarkdownContent content={msg.content} />
-                          ) : (
-                            msg.content
-                          )}
-                        </div>
+                        {msg.role === "assistant" ? (
+                          <MarkdownContent content={msg.content} />
+                        ) : (
+                          <div className="whitespace-pre-wrap">
+                            {msg.content}
+                          </div>
+                        )}
                         {msg.error && (
                           <div className="text-xs mt-2 font-medium">
                             Error: {msg.error}
