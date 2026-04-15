@@ -3,8 +3,54 @@
  * Used for assistant messages in chat interfaces
  */
 
+import { createContext, useContext, type ComponentProps } from "react";
 import ReactMarkdown from "react-markdown";
+import type { ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
+
+/**
+ * Context used to signal that a `code` element is rendered inside a `pre`
+ * block (i.e., it is a fenced code block, not inline code).
+ */
+const BlockCodeContext = createContext(false);
+
+/**
+ * Renders the outer `<pre>` wrapper for fenced code blocks and provides
+ * context so the nested `<code>` renderer knows it is block-level.
+ */
+function PreBlock({ children }: ComponentProps<"pre"> & ExtraProps) {
+  return (
+    <BlockCodeContext.Provider value={true}>
+      <pre className="mb-2 overflow-x-auto">{children}</pre>
+    </BlockCodeContext.Provider>
+  );
+}
+
+/**
+ * Renders a `<code>` element as either block or inline based on whether it
+ * lives inside a `<pre>` (detected via React context).  This correctly
+ * handles fenced code blocks with *and* without a language specifier,
+ * because react-markdown v9+ removed the `inline` prop.
+ */
+function CodeBlock({ children, className }: ComponentProps<"code"> & ExtraProps) {
+  const isBlock = useContext(BlockCodeContext);
+  const language =
+    isBlock && className?.startsWith("language-")
+      ? className.replace("language-", "")
+      : undefined;
+  return isBlock ? (
+    <code
+      className="block bg-black/10 rounded p-2 text-xs font-mono overflow-x-auto whitespace-pre"
+      aria-label={language ? `${language} code` : undefined}
+    >
+      {children}
+    </code>
+  ) : (
+    <code className="bg-black/10 rounded px-1 py-0.5 text-xs font-mono">
+      {children}
+    </code>
+  );
+}
 
 interface MarkdownContentProps {
   content: string;
@@ -43,26 +89,8 @@ export function MarkdownContent({
             </ol>
           ),
           li: ({ children }) => <li className="ml-2">{children}</li>,
-          code: ({ children, className: codeClassName, inline }) => {
-            const language = codeClassName?.startsWith("language-")
-              ? codeClassName.replace("language-", "")
-              : undefined;
-            return inline ? (
-              <code className="bg-black/10 rounded px-1 py-0.5 text-xs font-mono">
-                {children}
-              </code>
-            ) : (
-              <code
-                className="block bg-black/10 rounded p-2 text-xs font-mono overflow-x-auto whitespace-pre"
-                aria-label={language ? `${language} code` : undefined}
-              >
-                {children}
-              </code>
-            );
-          },
-          pre: ({ children }) => (
-            <pre className="mb-2 overflow-x-auto">{children}</pre>
-          ),
+          code: CodeBlock,
+          pre: PreBlock,
           blockquote: ({ children }) => (
             <blockquote className="border-l-4 border-current opacity-70 pl-3 my-2">
               {children}

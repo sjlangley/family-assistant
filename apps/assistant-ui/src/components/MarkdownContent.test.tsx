@@ -97,6 +97,7 @@ describe("MarkdownContent", () => {
     expect(pre).toBeInTheDocument();
     expect(code).toBeInTheDocument();
     expect(code).not.toHaveAttribute("aria-label");
+    expect(code).toHaveClass("block");
     expect(code).toHaveTextContent("plain code");
   });
 
