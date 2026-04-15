@@ -142,7 +142,10 @@ class WebFetchTool(BaseTool):
             else:
                 raise ValueError(f'Failed to fetch {url}: too many redirects')
 
-            assert response is not None
+            if response is None:
+                raise RuntimeError(
+                    'Fetch completed without receiving an HTTP response'
+                )
 
             content_type = response.headers.get('Content-Type', '').lower()
             if 'text/html' not in content_type:
