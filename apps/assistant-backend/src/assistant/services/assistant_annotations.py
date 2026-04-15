@@ -82,7 +82,7 @@ class AssistantAnnotationService:
         failure_annotation = FailureAnnotation(
             stage=stage,
             retryable=self._is_error_retryable(error),
-            detail=self._format_error_detail(error),
+            detail=self.format_error_detail(error),
         )
 
         # Preserve tool metadata and sources even on failure
@@ -238,11 +238,11 @@ class AssistantAnnotationService:
 
         return error.kind in retryable_kinds
 
-    def _format_error_detail(
+    def format_error_detail(
         self,
         error: LLMCompletionError | None,
     ) -> str | None:
-        """Format error message for user display."""
+        """Format error message for user display and storage."""
         if error is None:
             return None
 

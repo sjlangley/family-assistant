@@ -174,7 +174,7 @@ class ConversationService:
                 attempted_tool_execution=loop_result.attempted_tool_execution,
             )
             annotations_dict = annotations_obj.model_dump()
-            error_text = self.annotation_service._format_error_detail(
+            error_text = self.annotation_service.format_error_detail(
                 loop_result.error
             )
         else:
@@ -288,7 +288,7 @@ class ConversationService:
                 attempted_tool_execution=loop_result.attempted_tool_execution,
             )
             annotations_dict = annotations_obj.model_dump()
-            error_text = self.annotation_service._format_error_detail(
+            error_text = self.annotation_service.format_error_detail(
                 loop_result.error
             )
         else:
