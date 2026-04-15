@@ -12,6 +12,7 @@ import {
 } from "react";
 import type { ChatMessage } from "../types/api";
 import * as api from "../lib/api";
+import { MarkdownContent } from "./MarkdownContent";
 
 interface Message extends ChatMessage {
   id: string;
@@ -130,9 +131,16 @@ export function Chat({ onAuthError }: ChatProps) {
                     : "bg-gray-200 text-gray-900"
                 } ${message.status === "error" ? "opacity-50" : ""}`}
               >
-                <div className="text-sm whitespace-pre-wrap break-words">
-                  {message.content}
-                </div>
+                {message.role === "assistant" ? (
+                  <MarkdownContent
+                    content={message.content}
+                    className="text-sm break-words"
+                  />
+                ) : (
+                  <div className="text-sm whitespace-pre-wrap break-words">
+                    {message.content}
+                  </div>
+                )}
                 {message.status === "error" && (
                   <div className="text-xs mt-1 text-red-200">
                     Failed to send
