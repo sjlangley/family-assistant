@@ -111,12 +111,10 @@ async def test_web_fetch_tool_with_content():
             )
             assert result.tool_name == 'web_fetch'
             assert result.status == ToolExecutionStatus.SUCCESS
-            assert (
-                'Fetched page' in result.llm_context
-                and 'Test Page' in result.llm_context
-                and 'This is a test page excerpt' in result.llm_context
-                and 'This is the main content.' in result.llm_context
-            )
+            assert 'Fetched page' in result.llm_context
+            assert 'Test Page' in result.llm_context
+            assert 'This is a test page excerpt' in result.llm_context
+            assert 'This is the main content.' in result.llm_context
 
 
 @pytest.mark.asyncio
@@ -312,9 +310,7 @@ async def test_web_fetch_close_client(web_fetch_tool_fixture):
 @pytest.mark.asyncio
 async def test_web_fetch_rejects_private_ip():
     """It blocks direct requests to private IP ranges."""
-    with pytest.raises(
-        UnsafeUrlError, match='non-public IP address'
-    ):
+    with pytest.raises(UnsafeUrlError, match='non-public IP address'):
         await WebFetchTool._assert_public_url('http://127.0.0.1:8000')
 
 
@@ -341,18 +337,14 @@ async def test_web_fetch_rejects_redirect_to_private_host(
         redirect_response = MagicMock()
         redirect_response.status_code = 302
         redirect_response.is_redirect = True
-        redirect_response.headers = {
-            'location': 'http://127.0.0.1/internal'
-        }
+        redirect_response.headers = {'location': 'http://127.0.0.1/internal'}
 
         mock_http_client.get.return_value = redirect_response
 
         with pytest.raises(
             ValueError, match='Host resolves to a non-public IP address'
         ):
-            await web_fetch_tool_fixture._perform_fetch(
-                'https://example.com'
-            )
+            await web_fetch_tool_fixture._perform_fetch('https://example.com')
     finally:
         await web_fetch_tool_fixture.close()
 
@@ -372,9 +364,5 @@ async def test_web_fetch_rejects_hostname_resolving_to_private_ip():
             )
         ],
     ):
-        with pytest.raises(
-            UnsafeUrlError, match='non-public IP address'
-        ):
-            await WebFetchTool._assert_public_url(
-                'https://internal.example'
-            )
+        with pytest.raises(UnsafeUrlError, match='non-public IP address'):
+            await WebFetchTool._assert_public_url('https://internal.example')

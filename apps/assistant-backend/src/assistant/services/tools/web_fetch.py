@@ -125,9 +125,7 @@ class WebFetchTool(BaseTool):
             response: httpx.Response | None = None
 
             for _ in range(MAXIMUM_REDIRECTS + 1):
-                response = await client.get(
-                    current_url, follow_redirects=False
-                )
+                response = await client.get(current_url, follow_redirects=False)
 
                 if response.is_redirect:
                     location = response.headers.get('location')
@@ -143,9 +141,7 @@ class WebFetchTool(BaseTool):
                 response.raise_for_status()
                 break
             else:
-                raise ValueError(
-                    f'Failed to fetch {url}: too many redirects'
-                )
+                raise ValueError(f'Failed to fetch {url}: too many redirects')
 
             assert response is not None
 
@@ -219,7 +215,9 @@ class WebFetchTool(BaseTool):
             raise UnsafeUrlError('URL must include a hostname')
 
         if parsed.username or parsed.password:
-            raise UnsafeUrlError('URLs with embedded credentials are not allowed')
+            raise UnsafeUrlError(
+                'URLs with embedded credentials are not allowed'
+            )
 
         hostname = parsed.hostname.rstrip('.').lower()
         if hostname == 'localhost':
