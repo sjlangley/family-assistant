@@ -4,6 +4,7 @@ from assistant.models.annotations import (
     AssistantAnnotations,
     FailureAnnotation,
     FailureAnnotationStage,
+    MemoryHitAnnotation,
     SourceAnnotation,
     ToolAnnotation,
     ToolAnnotationStatus,
@@ -175,7 +176,7 @@ class AssistantAnnotationService:
     def _extract_memory_hits(
         self,
         fact_ids: list,
-    ) -> list:
+    ) -> list[MemoryHitAnnotation]:
         """Extract memory facts injected into the prompt.
 
         Budget: max 2 facts. Only includes facts that were actually
@@ -183,7 +184,7 @@ class AssistantAnnotationService:
         """
         # Return count-limited list of fact IDs wrapped in dicts for Pydantic validation
         return [
-            {"label": "Memory Fact", "summary": f"Fact ID: {fid}"}
+            {'label': 'Memory Fact', 'summary': f'Fact ID: {fid}'}
             for fid in fact_ids[: self.MAX_MEMORY_HITS]
         ]
 
