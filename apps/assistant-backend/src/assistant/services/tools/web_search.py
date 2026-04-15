@@ -61,7 +61,11 @@ class WebSearchTool(BaseTool):
         query = arguments['query']
         num_results = arguments.get('num_results', DEFAULT_NUMBER_OF_RESULTS)
 
-        logger.debug('Starting web_search, query = %s', query)
+        logger.debug(
+            'Starting web_search, query_length=%d, num_results=%s',
+            len(query),
+            num_results,
+        )
 
         results = await asyncio.to_thread(
             self._perform_search, query, num_results
