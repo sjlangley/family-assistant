@@ -401,8 +401,8 @@ def test_query_memory_with_custom_n_results(
 @pytest_asyncio.fixture
 async def async_db_session():
     """Create an async SQLite session for Postgres upsert tests."""
-    import tempfile
     import os
+    import tempfile
 
     # Create a temporary directory for the test database
     temp_dir = tempfile.mkdtemp()
@@ -444,7 +444,6 @@ async def test_upsert_conversation_summary_creates_new(
     memory_storage, async_db_session
 ):
     """Create a new summary with version=1 when none exists."""
-    from assistant.models.memory_sql import ConversationMemorySummary
 
     conv_id = uuid.uuid4()
     user_id = 'user@example.com'
@@ -478,7 +477,6 @@ async def test_upsert_conversation_summary_no_op_on_identical(
     memory_storage, async_db_session
 ):
     """Same summary is a no-op; version doesn't change."""
-    from assistant.models.memory_sql import ConversationMemorySummary
 
     conv_id = uuid.uuid4()
     user_id = 'user@example.com'
@@ -547,9 +545,14 @@ async def test_upsert_conversation_summary_updates_and_increments_version(
 
 
 @pytest.mark.asyncio
-async def test_upsert_durable_fact_creates_new(memory_storage, async_db_session):
+async def test_upsert_durable_fact_creates_new(
+    memory_storage, async_db_session
+):
     """Create a new durable fact when none exists."""
-    from assistant.models.memory_sql import DurableFactConfidence, DurableFactSourceType
+    from assistant.models.memory_sql import (
+        DurableFactConfidence,
+        DurableFactSourceType,
+    )
 
     user_id = 'user@example.com'
     subject = 'John Doe'
@@ -580,7 +583,10 @@ async def test_upsert_durable_fact_per_user_isolation(
     memory_storage, async_db_session
 ):
     """Facts are isolated per user."""
-    from assistant.models.memory_sql import DurableFactConfidence, DurableFactSourceType
+    from assistant.models.memory_sql import (
+        DurableFactConfidence,
+        DurableFactSourceType,
+    )
 
     subject = 'Alice'
     fact_text = 'Likes programming'
@@ -620,7 +626,10 @@ async def test_upsert_durable_fact_only_dedupes_active(
     memory_storage, async_db_session
 ):
     """Deduplication only matches active facts."""
-    from assistant.models.memory_sql import DurableFact, DurableFactConfidence, DurableFactSourceType
+    from assistant.models.memory_sql import (
+        DurableFactConfidence,
+        DurableFactSourceType,
+    )
 
     user_id = 'user@example.com'
     fact_key = 'favorite_color'
@@ -656,4 +665,3 @@ async def test_upsert_durable_fact_only_dedupes_active(
     assert second.id != first.id
     assert second.active is True
     assert second.fact_text == 'Red'
-
