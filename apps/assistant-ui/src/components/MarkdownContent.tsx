@@ -43,18 +43,19 @@ export function MarkdownContent({
             </ol>
           ),
           li: ({ children }) => <li className="ml-2">{children}</li>,
-          code: ({ children, className: codeClassName }) => {
-            const isBlock = codeClassName?.startsWith("language-");
-            const language = codeClassName?.replace("language-", "");
-            return isBlock ? (
+          code: ({ children, className: codeClassName, inline }) => {
+            const language = codeClassName?.startsWith("language-")
+              ? codeClassName.replace("language-", "")
+              : undefined;
+            return inline ? (
+              <code className="bg-black/10 rounded px-1 py-0.5 text-xs font-mono">
+                {children}
+              </code>
+            ) : (
               <code
                 className="block bg-black/10 rounded p-2 text-xs font-mono overflow-x-auto whitespace-pre"
                 aria-label={language ? `${language} code` : undefined}
               >
-                {children}
-              </code>
-            ) : (
-              <code className="bg-black/10 rounded px-1 py-0.5 text-xs font-mono">
                 {children}
               </code>
             );
