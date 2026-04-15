@@ -1,4 +1,4 @@
-"""Test the current time tool."""
+"""Test the web search tool."""
 
 from unittest.mock import MagicMock, patch
 
