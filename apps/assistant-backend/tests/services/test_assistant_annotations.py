@@ -10,6 +10,7 @@ from assistant.models.annotations import (
 )
 from assistant.models.llm import (
     LLMCompletionError,
+    LLMCompletionErrorKind,
 )
 from assistant.models.tool import (
     ToolCallRecord,
@@ -252,7 +253,7 @@ class TestFailureAnnotations:
     def test_build_failure_annotations_llm_timeout(self, annotation_service):
         """Map LLM timeout to failure annotation."""
         error = LLMCompletionError(
-            kind='timeout',
+            kind=LLMCompletionErrorKind.timeout,
             message='Request timed out',
         )
 
@@ -268,7 +269,7 @@ class TestFailureAnnotations:
     ):
         """Map LLM unreachable to retryable failure annotation."""
         error = LLMCompletionError(
-            kind='unreachable',
+            kind=LLMCompletionErrorKind.unreachable,
             message='Unable to reach LLM service',
         )
 
@@ -282,7 +283,7 @@ class TestFailureAnnotations:
     ):
         """Map LLM backend error to retryable failure annotation."""
         error = LLMCompletionError(
-            kind='backend_error',
+            kind=LLMCompletionErrorKind.backend_error,
             message='Backend error',
         )
 
@@ -296,7 +297,7 @@ class TestFailureAnnotations:
     ):
         """Map invalid response to non-retryable failure annotation."""
         error = LLMCompletionError(
-            kind='invalid_response',
+            kind=LLMCompletionErrorKind.invalid_response,
             message='Invalid response from LLM',
         )
 
@@ -319,7 +320,7 @@ class TestFailureAnnotations:
     ):
         """Failure annotations should not include sources or tools."""
         error = LLMCompletionError(
-            kind='timeout',
+            kind=LLMCompletionErrorKind.timeout,
             message='Timeout',
         )
 
