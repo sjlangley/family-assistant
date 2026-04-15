@@ -26,11 +26,25 @@ describe("MarkdownContent", () => {
     expect(em).toHaveTextContent("italic text");
   });
 
-  it("renders headings", () => {
+  it("renders h1 heading", () => {
     const { container } = render(<MarkdownContent content="# Heading 1" />);
     const h1 = container.querySelector("h1");
     expect(h1).toBeInTheDocument();
     expect(h1).toHaveTextContent("Heading 1");
+  });
+
+  it("renders h2 heading", () => {
+    const { container } = render(<MarkdownContent content="## Heading 2" />);
+    const h2 = container.querySelector("h2");
+    expect(h2).toBeInTheDocument();
+    expect(h2).toHaveTextContent("Heading 2");
+  });
+
+  it("renders h3 heading", () => {
+    const { container } = render(<MarkdownContent content="### Heading 3" />);
+    const h3 = container.querySelector("h3");
+    expect(h3).toBeInTheDocument();
+    expect(h3).toHaveTextContent("Heading 3");
   });
 
   it("renders unordered lists", () => {
@@ -62,6 +76,30 @@ describe("MarkdownContent", () => {
     expect(code).toHaveTextContent("console.log()");
   });
 
+  it("renders fenced code block with language", () => {
+    const { container } = render(
+      <MarkdownContent content={"```javascript\nconst x = 1;\n```"} />,
+    );
+    const pre = container.querySelector("pre");
+    const code = container.querySelector("pre code");
+    expect(pre).toBeInTheDocument();
+    expect(code).toBeInTheDocument();
+    expect(code).toHaveAttribute("aria-label", "javascript code");
+    expect(code).toHaveTextContent("const x = 1;");
+  });
+
+  it("renders fenced code block without language", () => {
+    const { container } = render(
+      <MarkdownContent content={"```\nplain code\n```"} />,
+    );
+    const pre = container.querySelector("pre");
+    const code = container.querySelector("pre code");
+    expect(pre).toBeInTheDocument();
+    expect(code).toBeInTheDocument();
+    expect(code).not.toHaveAttribute("aria-label");
+    expect(code).toHaveTextContent("plain code");
+  });
+
   it("renders links with correct attributes", () => {
     const { container } = render(
       <MarkdownContent content="[Click here](https://example.com)" />,
@@ -79,6 +117,27 @@ describe("MarkdownContent", () => {
     const blockquote = container.querySelector("blockquote");
     expect(blockquote).toBeInTheDocument();
     expect(blockquote).toHaveTextContent("A quote");
+  });
+
+  it("renders horizontal rules", () => {
+    const { container } = render(<MarkdownContent content="---" />);
+    const hr = container.querySelector("hr");
+    expect(hr).toBeInTheDocument();
+  });
+
+  it("renders GFM tables", () => {
+    const tableMarkdown =
+      "| Name | Age |\n| --- | --- |\n| Alice | 30 |\n| Bob | 25 |";
+    const { container } = render(<MarkdownContent content={tableMarkdown} />);
+    const table = container.querySelector("table");
+    expect(table).toBeInTheDocument();
+    const headers = container.querySelectorAll("th");
+    expect(headers).toHaveLength(2);
+    expect(headers[0]).toHaveTextContent("Name");
+    expect(headers[1]).toHaveTextContent("Age");
+    const cells = container.querySelectorAll("td");
+    expect(cells).toHaveLength(4);
+    expect(cells[0]).toHaveTextContent("Alice");
   });
 
   it("renders GFM strikethrough", () => {
