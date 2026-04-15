@@ -32,6 +32,8 @@ from assistant.services.assistant_annotations import (
 from assistant.services.context_assembly import ContextAssemblyService
 from assistant.services.llm_service import LLMService
 from assistant.services.tool_service import ToolService
+from assistant.services.tools.errors import UnsupportedToolError
+from assistant.services.tools.factory import DisabledToolError
 from assistant.settings import settings
 
 
@@ -457,8 +459,20 @@ class ConversationService:
                             arguments=parsed_arguments,
                         )
                         executed_tools.append(tool_result)
+                    except (UnsupportedToolError, DisabledToolError) as exc:
+                        # Tool config error - deterministic, non-retryable
+                        error = LLMCompletionError(
+                            kind=LLMCompletionErrorKind.invalid_response,
+                            message=f'Tool error: {str(exc)}',
+                        )
+                        return _LLMLoopResult(
+                            content='',
+                            executed_tools=executed_tools,
+                            error=error,
+                            attempted_tool_execution=True,
+                        )
                     except Exception as exc:
-                        # Tool execution error - return as terminal failure
+                        # Other tool execution error - return as terminal failure
                         error = LLMCompletionError(
                             kind=LLMCompletionErrorKind.backend_error,
                             message=f'Error executing tool {tool_call.function.name}: {str(exc)}',
