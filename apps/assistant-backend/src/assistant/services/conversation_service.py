@@ -166,7 +166,8 @@ class ConversationService:
         error_text = None
         if loop_result.error:
             annotations_obj = self.annotation_service.build_failure_annotations(
-                error=loop_result.error
+                error=loop_result.error,
+                executed_tools=loop_result.executed_tools,
             )
             annotations_dict = annotations_obj.model_dump()
             error_text = self.annotation_service._format_error_detail(
@@ -175,6 +176,7 @@ class ConversationService:
         else:
             annotations_obj = self.annotation_service.build_success_annotations(
                 executed_tools=loop_result.executed_tools,
+                fact_ids=context_result.fact_ids,
             )
             annotations_dict = annotations_obj.model_dump()
 
@@ -277,7 +279,8 @@ class ConversationService:
         error_text = None
         if loop_result.error:
             annotations_obj = self.annotation_service.build_failure_annotations(
-                error=loop_result.error
+                error=loop_result.error,
+                executed_tools=loop_result.executed_tools,
             )
             annotations_dict = annotations_obj.model_dump()
             error_text = self.annotation_service._format_error_detail(
@@ -286,6 +289,7 @@ class ConversationService:
         else:
             annotations_obj = self.annotation_service.build_success_annotations(
                 executed_tools=loop_result.executed_tools,
+                fact_ids=context_result.fact_ids,
             )
             annotations_dict = annotations_obj.model_dump()
 

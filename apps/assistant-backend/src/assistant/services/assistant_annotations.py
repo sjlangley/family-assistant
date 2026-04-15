@@ -34,21 +34,25 @@ class AssistantAnnotationService:
         self,
         *,
         executed_tools: list[ToolExecutionResult],
+        fact_ids: list | None = None,
     ) -> AssistantAnnotations:
         """Build success annotations from tool execution results.
 
         Only extracts sources from web_fetch payloads (actual fetched content),
         never from raw web_search snippets alone.
 
+        Includes memory facts that were injected into the prompt context.
+
         Enforces all budget limits.
         """
         sources = self._extract_sources_from_fetches(executed_tools)
         tools = self._extract_tool_annotations(executed_tools)
+        memory_hits = self._extract_memory_hits(fact_ids or [])
 
         return AssistantAnnotations(
             sources=sources,
             tools=tools,
-            memory_hits=[],
+            memory_hits=memory_hits,
             memory_saved=[],
             failure=None,
         )
@@ -57,12 +61,15 @@ class AssistantAnnotationService:
         self,
         *,
         error: LLMCompletionError | None = None,
+        executed_tools: list[ToolExecutionResult] | None = None,
     ) -> AssistantAnnotations:
         """Build failure annotations for terminal assistant error rows.
 
-        Maps LLM error kinds to appropriate failure stages.
+        Maps error origins to appropriate failure stages and preserves
+        tool/source metadata from work accomplished before the failure.
         """
-        stage = self._determine_failure_stage(error)
+        executed = executed_tools or []
+        stage = self._determine_failure_stage(error, executed_tools=executed)
 
         failure_annotation = FailureAnnotation(
             stage=stage,
@@ -70,9 +77,13 @@ class AssistantAnnotationService:
             detail=self._format_error_detail(error),
         )
 
+        # Preserve tool metadata and sources even on failure
+        sources = self._extract_sources_from_fetches(executed)
+        tools = self._extract_tool_annotations(executed)
+
         return AssistantAnnotations(
-            sources=[],
-            tools=[],
+            sources=sources,
+            tools=tools,
             memory_hits=[],
             memory_saved=[],
             failure=failure_annotation,
@@ -161,6 +172,22 @@ class AssistantAnnotationService:
 
         return tools
 
+    def _extract_memory_hits(
+        self,
+        fact_ids: list,
+    ) -> list:
+        """Extract memory facts injected into the prompt.
+
+        Budget: max 2 facts. Only includes facts that were actually
+        used in context assembly.
+        """
+        # For now, we track fact_ids but don't store full content
+        # (full fact retrieval deferred to Step 6+ UI work)
+        # Return count-limited list of fact IDs
+        hit_ids = fact_ids[:self.MAX_MEMORY_HITS]
+        # Placeholder: future steps will hydrate with full fact metadata
+        return hit_ids
+
     # ─────────────────────────────────────────────────────────────────────
     # Private helpers for failure annotations
     # ─────────────────────────────────────────────────────────────────────
@@ -168,14 +195,22 @@ class AssistantAnnotationService:
     def _determine_failure_stage(
         self,
         error: LLMCompletionError | None,
+        executed_tools: list[ToolExecutionResult] | None = None,
     ) -> FailureAnnotationStage:
-        """Map LLM error kind to failure stage."""
+        """Map error origin to appropriate failure stage.
+
+        If tools were executed before the error, it was a tool-phase failure.
+        Otherwise, it was an LLM-phase failure.
+        """
         if error is None:
             return FailureAnnotationStage.UNKNOWN
 
-        # All known error kinds from LLM service are LLM-stage errors
-        # (timeout, unreachable, backend_error, invalid_response)
-        # Tool-stage errors would be caught and mapped differently
+        # If tools ran before the failure, it likely failed during tool phase
+        if executed_tools:
+            return FailureAnnotationStage.TOOL
+
+        # No tools executed = LLM phase error
+        # (timeout, unreachable, backend_error from LLM service)
         return FailureAnnotationStage.LLM
 
     def _is_error_retryable(
