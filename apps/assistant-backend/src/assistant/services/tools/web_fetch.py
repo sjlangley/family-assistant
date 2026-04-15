@@ -3,6 +3,7 @@
 import asyncio
 from datetime import UTC, datetime
 import ipaddress
+import logging
 import socket
 from urllib.parse import urljoin, urlsplit
 
@@ -17,6 +18,8 @@ from assistant.models.tool import (
     WebFetchPayload,
 )
 from assistant.services.tools.base import BaseTool
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_FETCH_TIMEOUT_SECONDS = 10.0
 MAXIMUM_REDIRECTS = 5
@@ -80,6 +83,8 @@ class WebFetchTool(BaseTool):
 
         url = arguments['url']
 
+        logger.debug('Starting web fetch for url: %s', url)
+
         result = await self._perform_fetch(url)
 
         payload = WebFetchPayload(
@@ -91,6 +96,8 @@ class WebFetchTool(BaseTool):
         )
 
         finished_at = datetime.now(UTC)
+
+        logger.debug('Web fetch payload: %s', payload)
 
         return ToolExecutionResult(
             tool_name=self.name,
