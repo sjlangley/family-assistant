@@ -1,6 +1,10 @@
 """Web Search tool for retrieving relevant information from the web."""
 
+import asyncio
 from datetime import UTC, datetime
+import ipaddress
+import socket
+from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 import httpx
@@ -13,6 +17,14 @@ from assistant.models.tool import (
     WebFetchPayload,
 )
 from assistant.services.tools.base import BaseTool
+
+DEFAULT_FETCH_TIMEOUT_SECONDS = 10.0
+MAXIMUM_REDIRECTS = 5
+ALLOWED_FETCH_SCHEMES = {'http', 'https'}
+
+
+class UnsafeUrlError(ValueError):
+    """Raised when a fetch URL is not safe to request from the backend."""
 
 
 class WebFetchTool(BaseTool):
@@ -27,7 +39,10 @@ class WebFetchTool(BaseTool):
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client (lazy initialization)."""
         if self._http_client is None:
-            self._http_client = httpx.AsyncClient(timeout=10.0)
+            self._http_client = httpx.AsyncClient(
+                timeout=DEFAULT_FETCH_TIMEOUT_SECONDS,
+                trust_env=False,
+            )
         return self._http_client
 
     async def close(self) -> None:
@@ -104,9 +119,35 @@ class WebFetchTool(BaseTool):
     async def _perform_fetch(self, url: str) -> dict:
         """Perform the web fetch using a cached async HTTP client."""
         try:
+            await self._assert_public_url(url)
             client = await self._get_client()
-            response = await client.get(url, follow_redirects=True)
-            response.raise_for_status()
+            current_url = url
+            response: httpx.Response | None = None
+
+            for _ in range(MAXIMUM_REDIRECTS + 1):
+                response = await client.get(
+                    current_url, follow_redirects=False
+                )
+
+                if response.is_redirect:
+                    location = response.headers.get('location')
+                    if not location:
+                        raise ValueError(
+                            'Redirect response missing Location header'
+                        )
+
+                    current_url = urljoin(current_url, location)
+                    await self._assert_public_url(current_url)
+                    continue
+
+                response.raise_for_status()
+                break
+            else:
+                raise ValueError(
+                    f'Failed to fetch {url}: too many redirects'
+                )
+
+            assert response is not None
 
             # Parse HTML content
             soup = BeautifulSoup(response.text, 'html.parser')
@@ -154,6 +195,54 @@ class WebFetchTool(BaseTool):
             raise ValueError(f'Failed to fetch {url}: {str(e)}') from e
         except Exception as e:
             raise ValueError(f'Error parsing {url}: {str(e)}') from e
+
+    @staticmethod
+    async def _resolve_host_ips(hostname: str) -> set[str]:
+        """Resolve a hostname to IP addresses without blocking the event loop."""
+        address_info = await asyncio.to_thread(
+            socket.getaddrinfo,
+            hostname,
+            None,
+            type=socket.SOCK_STREAM,
+        )
+        return {info[4][0] for info in address_info}
+
+    @classmethod
+    async def _assert_public_url(cls, url: str) -> None:
+        """Reject URLs that target local or otherwise non-public hosts."""
+        parsed = urlsplit(url)
+
+        if parsed.scheme not in ALLOWED_FETCH_SCHEMES:
+            raise UnsafeUrlError('Only http and https URLs are allowed')
+
+        if not parsed.hostname:
+            raise UnsafeUrlError('URL must include a hostname')
+
+        if parsed.username or parsed.password:
+            raise UnsafeUrlError('URLs with embedded credentials are not allowed')
+
+        hostname = parsed.hostname.rstrip('.').lower()
+        if hostname == 'localhost':
+            raise UnsafeUrlError('Localhost is not allowed')
+
+        try:
+            candidate_ips = {str(ipaddress.ip_address(hostname))}
+        except ValueError:
+            candidate_ips = await cls._resolve_host_ips(hostname)
+
+        for raw_ip in candidate_ips:
+            candidate_ip = ipaddress.ip_address(raw_ip)
+            if (
+                candidate_ip.is_private
+                or candidate_ip.is_loopback
+                or candidate_ip.is_link_local
+                or candidate_ip.is_multicast
+                or candidate_ip.is_reserved
+                or candidate_ip.is_unspecified
+            ):
+                raise UnsafeUrlError(
+                    f'Host resolves to a non-public IP address: {raw_ip}'
+                )
 
     def _build_llm_context(
         self,

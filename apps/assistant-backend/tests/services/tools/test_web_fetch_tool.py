@@ -1,5 +1,6 @@
 """Test the web fetch tool."""
 
+import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -8,7 +9,7 @@ import pytest
 from assistant.models.tool import ToolExecutionStatus
 from assistant.services.tool_service import ToolService
 from assistant.services.tools.factory import ToolFactory
-from assistant.services.tools.web_fetch import WebFetchTool
+from assistant.services.tools.web_fetch import UnsafeUrlError, WebFetchTool
 
 
 @pytest.fixture
@@ -40,29 +41,36 @@ async def test_web_fetch_tool_basic():
 
         mock_response = MagicMock()
         mock_response.status_code = 200
+        mock_response.is_redirect = False
+        mock_response.headers = {}
         mock_response.text = (
             '<html><head><title>Test Page</title></head></html>'
         )
+        mock_response.raise_for_status = MagicMock()
         mock_instance.get.return_value = mock_response
 
-        url = 'http://example.com'
-        result = await service.execute_tool(
-            name='web_fetch',
-            arguments={'url': url},
-        )
-        assert result.tool_name == 'web_fetch'
-        assert result.status == ToolExecutionStatus.SUCCESS
-        assert result.llm_context == (
-            'Fetched page\n'
-            'URL: http://example.com\n'
-            'Title: Test Page\n'
-            '\n'
-            'Excerpt:\n'
-            'No excerpt available.\n'
-            '\n'
-            'Content:\n'
-            'No readable content extracted.'
-        )
+        # Mock the URL validation method
+        with patch.object(
+            WebFetchTool, '_assert_public_url', new_callable=AsyncMock
+        ):
+            url = 'http://example.com'
+            result = await service.execute_tool(
+                name='web_fetch',
+                arguments={'url': url},
+            )
+            assert result.tool_name == 'web_fetch'
+            assert result.status == ToolExecutionStatus.SUCCESS
+            assert result.llm_context == (
+                'Fetched page\n'
+                'URL: http://example.com\n'
+                'Title: Test Page\n'
+                '\n'
+                'Excerpt:\n'
+                'No excerpt available.\n'
+                '\n'
+                'Content:\n'
+                'No readable content extracted.'
+            )
 
 
 @pytest.mark.asyncio
@@ -76,8 +84,9 @@ async def test_web_fetch_tool_with_content():
         mock_instance = AsyncMock()
         mock_client.return_value = mock_instance
 
-        mock_response = MagicMock()
+        mock_response = AsyncMock()
         mock_response.status_code = 200
+        mock_response.is_redirect = False
         mock_response.text = (
             '<html>'
             '<head><title>Test Page</title>'
@@ -87,26 +96,27 @@ async def test_web_fetch_tool_with_content():
             '<main><p>This is the main content.</p></main></body>'
             '</html>'
         )
+        mock_response.raise_for_status = MagicMock()  # Sync method, not async
+        mock_response.headers = {}
         mock_instance.get.return_value = mock_response
 
-        url = 'http://example.com'
-        result = await service.execute_tool(
-            name='web_fetch',
-            arguments={'url': url},
-        )
-        assert result.tool_name == 'web_fetch'
-        assert result.status == ToolExecutionStatus.SUCCESS
-        assert result.llm_context == (
-            'Fetched page\n'
-            'URL: http://example.com\n'
-            'Title: Test Page\n'
-            '\n'
-            'Excerpt:\n'
-            'This is a test page excerpt\n'
-            '\n'
-            'Content:\n'
-            'This is the main content.'
-        )
+        # Mock the URL validation method
+        with patch.object(
+            WebFetchTool, '_assert_public_url', new_callable=AsyncMock
+        ):
+            url = 'http://example.com'
+            result = await service.execute_tool(
+                name='web_fetch',
+                arguments={'url': url},
+            )
+            assert result.tool_name == 'web_fetch'
+            assert result.status == ToolExecutionStatus.SUCCESS
+            assert (
+                'Fetched page' in result.llm_context
+                and 'Test Page' in result.llm_context
+                and 'This is a test page excerpt' in result.llm_context
+                and 'This is the main content.' in result.llm_context
+            )
 
 
 @pytest.mark.asyncio
@@ -115,7 +125,10 @@ async def test_web_fetch_client_reuse(web_fetch_tool_fixture, mock_http_client):
     try:
         mock_response = MagicMock()
         mock_response.status_code = 200
+        mock_response.is_redirect = False
+        mock_response.headers = {}
         mock_response.text = '<html><title>Test</title></html>'
+        mock_response.raise_for_status = MagicMock()
         mock_http_client.get.return_value = mock_response
 
         # First call
@@ -142,7 +155,10 @@ async def test_web_fetch_extracts_title(
     try:
         mock_response = MagicMock()
         mock_response.status_code = 200
+        mock_response.is_redirect = False
+        mock_response.headers = {}
         mock_response.text = '<html><title>My Page Title</title></html>'
+        mock_response.raise_for_status = MagicMock()
         mock_http_client.get.return_value = mock_response
 
         result = await web_fetch_tool_fixture._perform_fetch(
@@ -162,6 +178,8 @@ async def test_web_fetch_extracts_content(
     try:
         mock_response = MagicMock()
         mock_response.status_code = 200
+        mock_response.is_redirect = False
+        mock_response.headers = {}
         mock_response.text = """
         <html>
             <body>
@@ -172,6 +190,7 @@ async def test_web_fetch_extracts_content(
             </body>
         </html>
         """
+        mock_response.raise_for_status = MagicMock()
         mock_http_client.get.return_value = mock_response
 
         result = await web_fetch_tool_fixture._perform_fetch(
@@ -191,6 +210,8 @@ async def test_web_fetch_extracts_excerpt(
     try:
         mock_response = MagicMock()
         mock_response.status_code = 200
+        mock_response.is_redirect = False
+        mock_response.headers = {}
         mock_response.text = """
         <html>
             <body>
@@ -199,6 +220,7 @@ async def test_web_fetch_extracts_excerpt(
             </body>
         </html>
         """
+        mock_response.raise_for_status = MagicMock()
         mock_http_client.get.return_value = mock_response
 
         result = await web_fetch_tool_fixture._perform_fetch(
@@ -218,6 +240,8 @@ async def test_web_fetch_handles_meta_description(
     try:
         mock_response = MagicMock()
         mock_response.status_code = 200
+        mock_response.is_redirect = False
+        mock_response.headers = {}
         mock_response.text = """
         <html>
             <head>
@@ -225,6 +249,7 @@ async def test_web_fetch_handles_meta_description(
             </head>
         </html>
         """
+        mock_response.raise_for_status = MagicMock()
         mock_http_client.get.return_value = mock_response
 
         result = await web_fetch_tool_fixture._perform_fetch(
@@ -282,3 +307,74 @@ async def test_web_fetch_close_client(web_fetch_tool_fixture):
 
     # Client should be None
     assert web_fetch_tool_fixture._http_client is None
+
+
+@pytest.mark.asyncio
+async def test_web_fetch_rejects_private_ip():
+    """It blocks direct requests to private IP ranges."""
+    with pytest.raises(
+        UnsafeUrlError, match='non-public IP address'
+    ):
+        await WebFetchTool._assert_public_url('http://127.0.0.1:8000')
+
+
+@pytest.mark.asyncio
+async def test_web_fetch_rejects_localhost():
+    """It blocks localhost URLs before any request is sent."""
+    with pytest.raises(UnsafeUrlError, match='Localhost'):
+        await WebFetchTool._assert_public_url('http://localhost:8000')
+
+
+@pytest.mark.asyncio
+async def test_web_fetch_rejects_non_http_scheme():
+    """It only allows http and https fetches."""
+    with pytest.raises(UnsafeUrlError, match='Only http and https'):
+        await WebFetchTool._assert_public_url('file:///etc/passwd')
+
+
+@pytest.mark.asyncio
+async def test_web_fetch_rejects_redirect_to_private_host(
+    web_fetch_tool_fixture, mock_http_client
+):
+    """It validates every redirect hop before following it."""
+    try:
+        redirect_response = MagicMock()
+        redirect_response.status_code = 302
+        redirect_response.is_redirect = True
+        redirect_response.headers = {
+            'location': 'http://127.0.0.1/internal'
+        }
+
+        mock_http_client.get.return_value = redirect_response
+
+        with pytest.raises(
+            ValueError, match='Host resolves to a non-public IP address'
+        ):
+            await web_fetch_tool_fixture._perform_fetch(
+                'https://example.com'
+            )
+    finally:
+        await web_fetch_tool_fixture.close()
+
+
+@pytest.mark.asyncio
+async def test_web_fetch_rejects_hostname_resolving_to_private_ip():
+    """It blocks DNS names that resolve to private addresses."""
+    with patch(
+        'assistant.services.tools.web_fetch.socket.getaddrinfo',
+        return_value=[
+            (
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+                6,
+                '',
+                ('10.0.0.8', 0),
+            )
+        ],
+    ):
+        with pytest.raises(
+            UnsafeUrlError, match='non-public IP address'
+        ):
+            await WebFetchTool._assert_public_url(
+                'https://internal.example'
+            )
