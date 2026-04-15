@@ -1,5 +1,7 @@
 """Service for building persisted trust annotations on assistant responses."""
 
+import uuid
+
 from assistant.models.annotations import (
     AssistantAnnotations,
     FailureAnnotation,
@@ -35,7 +37,7 @@ class AssistantAnnotationService:
         self,
         *,
         executed_tools: list[ToolExecutionResult],
-        fact_ids: list | None = None,
+        fact_ids: list[uuid.UUID] | None = None,
     ) -> AssistantAnnotations:
         """Build success annotations from tool execution results.
 
@@ -176,7 +178,7 @@ class AssistantAnnotationService:
 
     def _extract_memory_hits(
         self,
-        fact_ids: list,
+        fact_ids: list[uuid.UUID],
     ) -> list[MemoryHitAnnotation]:
         """Extract memory facts injected into the prompt.
 
