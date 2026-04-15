@@ -39,7 +39,7 @@ class WebSearchResultPayload(BaseModel):
 
 
 class WebSearchPayload(BaseModel):
-    """Structured payload for a single web search result."""
+    """Structured payload for web search results."""
 
     kind: Literal['web_search']
     results: list[WebSearchResultPayload]
