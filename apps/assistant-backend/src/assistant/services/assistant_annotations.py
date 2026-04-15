@@ -184,7 +184,7 @@ class AssistantAnnotationService:
         # For now, we track fact_ids but don't store full content
         # (full fact retrieval deferred to Step 6+ UI work)
         # Return count-limited list of fact IDs
-        hit_ids = fact_ids[:self.MAX_MEMORY_HITS]
+        hit_ids = fact_ids[: self.MAX_MEMORY_HITS]
         # Placeholder: future steps will hydrate with full fact metadata
         return hit_ids
 
