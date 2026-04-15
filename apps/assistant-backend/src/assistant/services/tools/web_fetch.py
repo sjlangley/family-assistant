@@ -88,7 +88,12 @@ class WebFetchTool(BaseTool):
                 finished_at=finished_at,
                 status=ToolExecutionStatus.SUCCESS,
             ),
-            llm_context=f'Web fetch for "{url}" completed successfully.',
+            llm_context=self._build_llm_context(
+                url=url,
+                title=result.get('title'),
+                excerpt=result.get('excerpt'),
+                content=result.get('content', ''),
+            ),
             annotation_inputs={
                 'tool_name': self.name,
                 'label': f'Web fetch for "{url}"',
@@ -149,3 +154,26 @@ class WebFetchTool(BaseTool):
             raise ValueError(f'Failed to fetch {url}: {str(e)}') from e
         except Exception as e:
             raise ValueError(f'Error parsing {url}: {str(e)}') from e
+
+    def _build_llm_context(
+        self,
+        *,
+        url: str,
+        title: str | None,
+        excerpt: str | None,
+        content: str,
+    ) -> str:
+        body = content[:4000]
+        return '\n'.join(
+            [
+                'Fetched page',
+                f'URL: {url}',
+                f'Title: {title or "Untitled"}',
+                '',
+                'Excerpt:',
+                excerpt or 'No excerpt available.',
+                '',
+                'Content:',
+                body or 'No readable content extracted.',
+            ]
+        ).strip()

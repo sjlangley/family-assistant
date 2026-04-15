@@ -52,6 +52,61 @@ async def test_web_fetch_tool_basic():
         )
         assert result.tool_name == 'web_fetch'
         assert result.status == ToolExecutionStatus.SUCCESS
+        assert result.llm_context == (
+            'Fetched page\n'
+            'URL: http://example.com\n'
+            'Title: Test Page\n'
+            '\n'
+            'Excerpt:\n'
+            'No excerpt available.\n'
+            '\n'
+            'Content:\n'
+            'No readable content extracted.'
+        )
+
+
+@pytest.mark.asyncio
+async def test_web_fetch_tool_with_content():
+    """Test basic web fetch tool execution."""
+    service = ToolService(factory=ToolFactory(tools=[WebFetchTool()]))
+
+    with patch(
+        'assistant.services.tools.web_fetch.httpx.AsyncClient'
+    ) as mock_client:
+        mock_instance = AsyncMock()
+        mock_client.return_value = mock_instance
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = (
+            '<html>'
+            '<head><title>Test Page</title>'
+            '<meta name="description" content="This is a test page excerpt">'
+            '</head>'
+            '<body><h1>Main Heading</h1>'
+            '<main><p>This is the main content.</p></main></body>'
+            '</html>'
+        )
+        mock_instance.get.return_value = mock_response
+
+        url = 'http://example.com'
+        result = await service.execute_tool(
+            name='web_fetch',
+            arguments={'url': url},
+        )
+        assert result.tool_name == 'web_fetch'
+        assert result.status == ToolExecutionStatus.SUCCESS
+        assert result.llm_context == (
+            'Fetched page\n'
+            'URL: http://example.com\n'
+            'Title: Test Page\n'
+            '\n'
+            'Excerpt:\n'
+            'This is a test page excerpt\n'
+            '\n'
+            'Content:\n'
+            'This is the main content.'
+        )
 
 
 @pytest.mark.asyncio

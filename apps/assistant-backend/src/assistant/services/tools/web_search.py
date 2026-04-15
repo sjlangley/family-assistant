@@ -80,7 +80,7 @@ class WebSearchTool(BaseTool):
                 finished_at=finished_at,
                 status=ToolExecutionStatus.SUCCESS,
             ),
-            llm_context=f'Web search for "{query}" returned {len(results)} results.',
+            llm_context=self._build_llm_context(query, results),
             annotation_inputs={
                 'tool_name': self.name,
                 'label': f'Web search for "{query}"',
@@ -106,3 +106,18 @@ class WebSearchTool(BaseTool):
             )
 
         return results
+
+    def _build_llm_context(
+        self, query: str, results: list[WebSearchResultPayload]
+    ) -> str:
+        lines = [f'Web search results for: {query}', '']
+        for index, result in enumerate(results[:5], start=1):
+            lines.extend(
+                [
+                    f'{index}. {result.title or "Untitled"}',
+                    f'URL: {result.url}',
+                    f'Snippet: {result.snippet or "No snippet available."}',
+                    '',
+                ]
+            )
+        return '\n'.join(lines).strip()

@@ -44,10 +44,20 @@ async def test_execute_web_search_tool(mock_ddgs):
     assert isinstance(result.payload, WebSearchPayload)
     assert result.payload.kind == 'web_search'
     assert len(result.payload.results) == number_of_results
-    assert 'Web search for "test"' in result.llm_context
     assert result.payload.results[0].title == 'First'
     assert result.payload.results[0].url == 'url1'
     assert result.payload.results[0].snippet == 'snippet1'
+    assert result.llm_context == (
+        'Web search results for: test\n'
+        '\n'
+        '1. First\n'
+        'URL: url1\n'
+        'Snippet: snippet1\n'
+        '\n'
+        '2. Second\n'
+        'URL: url2\n'
+        'Snippet: snippet2'
+    )
 
 
 @pytest.mark.asyncio
@@ -69,4 +79,4 @@ async def test_execute_web_search_tool_no_results(mock_ddgs):
     assert isinstance(result.payload, WebSearchPayload)
     assert result.payload.kind == 'web_search'
     assert len(result.payload.results) == 0
-    assert 'Web search for "test"' in result.llm_context
+    assert result.llm_context == 'Web search results for: test'
