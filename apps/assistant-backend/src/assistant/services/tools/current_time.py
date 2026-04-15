@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 
+from assistant.models.llm import ChatCompletionTool
 from assistant.models.tool import (
     TimePayload,
     ToolCallRecord,
@@ -16,12 +17,12 @@ class CurrentTimeTool(BaseTool):
 
     name = 'get_current_time'
 
-    def definition(self) -> dict:
+    def definition(self) -> ChatCompletionTool:
         """Expose a minimal no-argument tool definition to the model."""
 
-        return {
-            'type': 'function',
-            'function': {
+        return ChatCompletionTool(
+            type='function',
+            function={
                 'name': self.name,
                 'description': 'Return the current server time in ISO 8601 format.',
                 'parameters': {
@@ -31,7 +32,7 @@ class CurrentTimeTool(BaseTool):
                     'additionalProperties': False,
                 },
             },
-        }
+        )
 
     async def execute(self, arguments: dict) -> ToolExecutionResult:
         """Capture the current UTC time and format it for LLM/tool consumers."""

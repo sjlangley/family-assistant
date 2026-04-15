@@ -1,5 +1,6 @@
 """Service layer for exposing and executing allowed tools."""
 
+from assistant.models.llm import ChatCompletionTool
 from assistant.models.tool import ToolExecutionResult
 from assistant.services.tools.factory import ToolFactory
 
@@ -10,7 +11,7 @@ class ToolService:
     def __init__(self, factory: ToolFactory) -> None:
         self.factory = factory
 
-    def get_available_tools(self) -> list[dict]:
+    def get_available_tools(self) -> list[ChatCompletionTool]:
         """Return the tool definitions exposed to the model for this process."""
 
         return self.factory.definitions()

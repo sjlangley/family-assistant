@@ -32,13 +32,17 @@ class TimePayload(BaseModel):
     display_text: str
 
 
-class WebSearchPayload(BaseModel):
-    """Structured payload for a single web search result."""
-
-    kind: Literal['web_search']
+class WebSearchResultPayload(BaseModel):
     title: str
     url: str
     snippet: str | None = None
+
+
+class WebSearchPayload(BaseModel):
+    """Structured payload for web search results."""
+
+    kind: Literal['web_search']
+    results: list[WebSearchResultPayload]
 
 
 class WebFetchPayload(BaseModel):

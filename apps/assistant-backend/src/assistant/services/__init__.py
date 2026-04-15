@@ -7,6 +7,8 @@ from assistant.services.memory_storage import MemoryStorage
 from assistant.services.tool_service import ToolService
 from assistant.services.tools.current_time import CurrentTimeTool
 from assistant.services.tools.factory import ToolFactory
+from assistant.services.tools.web_fetch import WebFetchTool
+from assistant.services.tools.web_search import WebSearchTool
 from assistant.settings import settings
 
 
@@ -14,7 +16,9 @@ from assistant.settings import settings
 def get_tool_service() -> ToolService:
     """Return a lazily initialized singleton instance of ToolService."""
     # Register tools here. Currently, only CurrentTimeTool is wired in.
-    factory = ToolFactory(tools=[CurrentTimeTool()])
+    factory = ToolFactory(
+        tools=[CurrentTimeTool(), WebSearchTool(), WebFetchTool()]
+    )
     return ToolService(factory=factory)
 
 

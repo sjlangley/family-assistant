@@ -23,7 +23,9 @@ classifiers = [
 dependencies = [
     "aiosqlite==0.22.1",
     "asyncpg==0.31.0",
+    "beautifulsoup4==4.14.3",
     "chromadb==1.5.5",
+    "ddgs==9.13.1",
     "fastapi==0.135.2",
     "cachecontrol==0.14.4",
     "google-auth==2.48.0",

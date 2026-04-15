@@ -88,6 +88,7 @@ def mock_tool_service():
     """Create a mock ToolService."""
     mock_service = Mock(spec=ToolService)
     mock_service.execute_tool = AsyncMock()
+    mock_service.get_available_tools.return_value = []
     return mock_service
 
 

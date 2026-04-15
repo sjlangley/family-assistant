@@ -1,7 +1,7 @@
 # Family AI Assistant
 
 A self-hosted, multi-user AI assistant designed for household use.
-Supports **text chat with a local LLM**, **persistent conversation history**, and **per-user authentication**.
+Supports **text chat with a local LLM**, **persistent conversation history**, **bounded web research tools**, and **per-user authentication**.
 
 ---
 
@@ -13,6 +13,8 @@ Supports **text chat with a local LLM**, **persistent conversation history**, an
   Persistent conversations stored in PostgreSQL — create new chats, resume old ones, and browse history.
 - **LLM chat**
   Text chat powered by a local OpenAI-compatible LLM runtime, with Docker Compose now defaulting to Ollama.
+- **Bounded web research**
+  Conversation replies can now use a native tool loop with `web_search` for discovery and `web_fetch` for grounded page reads.
 - **Authentication & security**
   Google OAuth 2.0 with server-side session cookies. Per-user data isolation enforced at the API layer.
 
@@ -70,3 +72,4 @@ See individual READMEs for detailed instructions:
 - [Architecture](docs/ARCHITECTURE.md)
 - [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
 - [Design System](DESIGN.md)
+- [Roadmap / TODOs](TODOS.md)
