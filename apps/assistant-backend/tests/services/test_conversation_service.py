@@ -2125,7 +2125,7 @@ async def test_create_conversation_with_message_llm_failure_persists_error_row(
     stmt = (
         select(Message)
         .where(Message.role == 'assistant')
-        .where(Message.conversation_id is not None)
+        .where(Message.conversation_id.is_not(None))
     )
     result = await async_session.execute(stmt)
     messages = list(result.scalars().all())
