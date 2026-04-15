@@ -32,7 +32,10 @@ function PreBlock({ children }: ComponentProps<"pre"> & ExtraProps) {
  * handles fenced code blocks with *and* without a language specifier,
  * because react-markdown v9+ removed the `inline` prop.
  */
-function CodeBlock({ children, className }: ComponentProps<"code"> & ExtraProps) {
+function CodeBlock({
+  children,
+  className,
+}: ComponentProps<"code"> & ExtraProps) {
   const isBlock = useContext(BlockCodeContext);
   const language =
     isBlock && className?.startsWith("language-")
