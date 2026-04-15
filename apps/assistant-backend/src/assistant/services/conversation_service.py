@@ -46,6 +46,7 @@ class _LLMLoopResult:
     content: str
     executed_tools: list[ToolExecutionResult]
     error: LLMCompletionError | None = None
+    attempted_tool_execution: bool = False  # True if tool loop was entered
 
 
 def conversation_title_from_first_message(content: str) -> str:
@@ -168,6 +169,7 @@ class ConversationService:
             annotations_obj = self.annotation_service.build_failure_annotations(
                 error=loop_result.error,
                 executed_tools=loop_result.executed_tools,
+                attempted_tool_execution=loop_result.attempted_tool_execution,
             )
             annotations_dict = annotations_obj.model_dump()
             error_text = self.annotation_service._format_error_detail(
@@ -281,6 +283,7 @@ class ConversationService:
             annotations_obj = self.annotation_service.build_failure_annotations(
                 error=loop_result.error,
                 executed_tools=loop_result.executed_tools,
+                attempted_tool_execution=loop_result.attempted_tool_execution,
             )
             annotations_dict = annotations_obj.model_dump()
             error_text = self.annotation_service._format_error_detail(
@@ -445,6 +448,7 @@ class ConversationService:
                             content='',
                             executed_tools=executed_tools,
                             error=error,
+                            attempted_tool_execution=True,
                         )
 
                     try:
@@ -463,6 +467,7 @@ class ConversationService:
                             content='',
                             executed_tools=executed_tools,
                             error=error,
+                            attempted_tool_execution=True,
                         )
 
                     llm_messages.append(

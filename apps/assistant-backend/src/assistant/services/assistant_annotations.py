@@ -62,6 +62,7 @@ class AssistantAnnotationService:
         *,
         error: LLMCompletionError | None = None,
         executed_tools: list[ToolExecutionResult] | None = None,
+        attempted_tool_execution: bool = False,
     ) -> AssistantAnnotations:
         """Build failure annotations for terminal assistant error rows.
 
@@ -69,7 +70,11 @@ class AssistantAnnotationService:
         tool/source metadata from work accomplished before the failure.
         """
         executed = executed_tools or []
-        stage = self._determine_failure_stage(error, executed_tools=executed)
+        stage = self._determine_failure_stage(
+            error,
+            executed_tools=executed,
+            attempted_tool_execution=attempted_tool_execution,
+        )
 
         failure_annotation = FailureAnnotation(
             stage=stage,
@@ -138,11 +143,15 @@ class AssistantAnnotationService:
     ) -> list[ToolAnnotation]:
         """Extract tool annotations from executed tools.
 
-        Budget: max 2 tools. Only includes tools that actually ran (not just
-        those that were attempted but failed at parsing level).
+        Budget: max 2 tools. Includes both successful and failed tools
+        for transparency and debugging.
         """
         tools = []
         seen_tool_names = set()
+        status_map = {
+            ToolExecutionStatus.SUCCESS: ToolAnnotationStatus.COMPLETED,
+            ToolExecutionStatus.ERROR: ToolAnnotationStatus.FAILED,
+        }
 
         for tool_result in executed_tools:
             tool_name = tool_result.tool_name
@@ -150,15 +159,6 @@ class AssistantAnnotationService:
             # Skip duplicates (use first occurrence)
             if tool_name in seen_tool_names:
                 continue
-
-            # Only include tools with valid payloads (not failed parses)
-            if tool_result.status == ToolExecutionStatus.ERROR:
-                continue
-
-            status_map = {
-                ToolExecutionStatus.SUCCESS: ToolAnnotationStatus.COMPLETED,
-                ToolExecutionStatus.ERROR: ToolAnnotationStatus.FAILED,
-            }
 
             tool_annotation = ToolAnnotation(
                 name=tool_name,
@@ -181,12 +181,11 @@ class AssistantAnnotationService:
         Budget: max 2 facts. Only includes facts that were actually
         used in context assembly.
         """
-        # For now, we track fact_ids but don't store full content
-        # (full fact retrieval deferred to Step 6+ UI work)
-        # Return count-limited list of fact IDs
-        hit_ids = fact_ids[: self.MAX_MEMORY_HITS]
-        # Placeholder: future steps will hydrate with full fact metadata
-        return hit_ids
+        # Return count-limited list of fact IDs wrapped in dicts for Pydantic validation
+        return [
+            {"label": "Memory Fact", "summary": f"Fact ID: {fid}"}
+            for fid in fact_ids[: self.MAX_MEMORY_HITS]
+        ]
 
     # ─────────────────────────────────────────────────────────────────────
     # Private helpers for failure annotations
@@ -196,17 +195,23 @@ class AssistantAnnotationService:
         self,
         error: LLMCompletionError | None,
         executed_tools: list[ToolExecutionResult] | None = None,
+        attempted_tool_execution: bool = False,
     ) -> FailureAnnotationStage:
         """Map error origin to appropriate failure stage.
 
-        If tools were executed before the error, it was a tool-phase failure.
-        Otherwise, it was an LLM-phase failure.
+        Checks both whether tools were successfully executed and whether
+        the tool loop was attempted (which catches early parsing/execution failures).
         """
         if error is None:
             return FailureAnnotationStage.UNKNOWN
 
-        # If tools ran before the failure, it likely failed during tool phase
+        # If tools ran before the failure, it was a tool-phase failure
         if executed_tools:
+            return FailureAnnotationStage.TOOL
+
+        # If tool execution was attempted but failed early (parsing or first execution),
+        # it's still a tool-phase failure
+        if attempted_tool_execution:
             return FailureAnnotationStage.TOOL
 
         # No tools executed = LLM phase error
