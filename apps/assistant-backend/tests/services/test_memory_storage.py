@@ -5,6 +5,10 @@ from unittest.mock import MagicMock, Mock, patch
 import uuid
 
 import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlmodel import SQLModel
 
 from assistant.services.memory_storage import MemoryStorage
 
@@ -389,3 +393,267 @@ def test_query_memory_with_custom_n_results(
     # Verify n_results parameter was passed through
     call_args = mock_collection.query.call_args
     assert call_args[1]['n_results'] == 10
+
+
+# Postgres-backed upsert tests
+
+
+@pytest_asyncio.fixture
+async def async_db_session():
+    """Create an async SQLite session for Postgres upsert tests."""
+    import tempfile
+    import os
+
+    # Create a temporary directory for the test database
+    temp_dir = tempfile.mkdtemp()
+    db_path = os.path.join(temp_dir, 'test.db')
+    db_url = f'sqlite+aiosqlite:///{db_path}'
+
+    engine = create_async_engine(
+        db_url,
+        echo=False,
+        connect_args={'check_same_thread': False, 'timeout': 30},
+    )
+
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+
+    async_session_maker = sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    async with async_session_maker() as session:
+        await session.begin()
+        yield session
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+
+    await engine.dispose()
+    # Cleanup
+    try:
+        os.remove(db_path)
+        os.rmdir(temp_dir)
+    except Exception:
+        pass
+
+
+@pytest.mark.asyncio
+async def test_upsert_conversation_summary_creates_new(
+    memory_storage, async_db_session
+):
+    """Create a new summary with version=1 when none exists."""
+    from assistant.models.memory_sql import ConversationMemorySummary
+
+    conv_id = uuid.uuid4()
+    user_id = 'user@example.com'
+    summary_text = 'This is a test summary'
+    source_msg_id = uuid.uuid4()
+
+    result = await memory_storage.upsert_conversation_summary(
+        session=async_db_session,
+        conversation_id=conv_id,
+        user_id=user_id,
+        summary_text=summary_text,
+        source_message_id=source_msg_id,
+    )
+    await async_db_session.commit()
+
+    assert result.conversation_id == conv_id
+    assert result.user_id == user_id
+    assert result.summary_text == summary_text
+    assert result.source_message_id == source_msg_id
+    assert result.version == 1
+    assert result.created_at is not None
+    assert result.updated_at is not None
+
+    # Verify it can be queried back
+    await async_db_session.refresh(result)
+    assert result.version == 1
+
+
+@pytest.mark.asyncio
+async def test_upsert_conversation_summary_no_op_on_identical(
+    memory_storage, async_db_session
+):
+    """Same summary is a no-op; version doesn't change."""
+    from assistant.models.memory_sql import ConversationMemorySummary
+
+    conv_id = uuid.uuid4()
+    user_id = 'user@example.com'
+    summary_text = 'This is a test summary'
+    source_msg_id = uuid.uuid4()
+
+    # First upsert
+    first = await memory_storage.upsert_conversation_summary(
+        session=async_db_session,
+        conversation_id=conv_id,
+        user_id=user_id,
+        summary_text=summary_text,
+        source_message_id=source_msg_id,
+    )
+    await async_db_session.commit()
+    first_version = first.version
+
+    # Second upsert with identical content
+    second = await memory_storage.upsert_conversation_summary(
+        session=async_db_session,
+        conversation_id=conv_id,
+        user_id=user_id,
+        summary_text=summary_text,
+        source_message_id=source_msg_id,
+    )
+
+    await async_db_session.commit()
+    assert second.version == first_version
+    assert second.id == first.id
+
+
+@pytest.mark.asyncio
+async def test_upsert_conversation_summary_updates_and_increments_version(
+    memory_storage, async_db_session
+):
+    """Changed summary updates in place and increments version."""
+    conv_id = uuid.uuid4()
+    user_id = 'user@example.com'
+    source_msg_id = uuid.uuid4()
+
+    # First upsert
+    first = await memory_storage.upsert_conversation_summary(
+        session=async_db_session,
+        conversation_id=conv_id,
+        user_id=user_id,
+        summary_text='Original summary',
+        source_message_id=source_msg_id,
+    )
+    await async_db_session.commit()
+    first_id = first.id
+    first_version = first.version
+
+    # Second upsert with different summary
+    second = await memory_storage.upsert_conversation_summary(
+        session=async_db_session,
+        conversation_id=conv_id,
+        user_id=user_id,
+        summary_text='Updated summary',
+        source_message_id=source_msg_id,
+    )
+
+    await async_db_session.commit()
+    assert second.id == first_id
+    assert second.version == first_version + 1
+    assert second.summary_text == 'Updated summary'
+
+
+@pytest.mark.asyncio
+async def test_upsert_durable_fact_creates_new(memory_storage, async_db_session):
+    """Create a new durable fact when none exists."""
+    from assistant.models.memory_sql import DurableFactConfidence, DurableFactSourceType
+
+    user_id = 'user@example.com'
+    subject = 'John Doe'
+    fact_text = 'John works at Acme Corp'
+
+    result = await memory_storage.upsert_durable_fact(
+        session=async_db_session,
+        user_id=user_id,
+        subject=subject,
+        fact_text=fact_text,
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        fact_key='employment_status',
+    )
+    await async_db_session.commit()
+
+    assert result.user_id == user_id
+    assert result.subject == subject
+    assert result.fact_text == fact_text
+    assert result.fact_key == 'employment_status'
+    assert result.confidence == DurableFactConfidence.HIGH
+    assert result.source_type == DurableFactSourceType.CONVERSATION
+    assert result.active is True
+
+
+@pytest.mark.asyncio
+async def test_upsert_durable_fact_per_user_isolation(
+    memory_storage, async_db_session
+):
+    """Facts are isolated per user."""
+    from assistant.models.memory_sql import DurableFactConfidence, DurableFactSourceType
+
+    subject = 'Alice'
+    fact_text = 'Likes programming'
+    fact_key = 'hobby'
+
+    # User 1 creates fact
+    user1_fact = await memory_storage.upsert_durable_fact(
+        session=async_db_session,
+        user_id='user1@example.com',
+        subject=subject,
+        fact_text=fact_text,
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        fact_key=fact_key,
+    )
+    await async_db_session.commit()
+
+    # User 2 creates different fact with same fact_key
+    user2_fact = await memory_storage.upsert_durable_fact(
+        session=async_db_session,
+        user_id='user2@example.com',
+        subject=subject,
+        fact_text='Does not like programming',  # Different
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        fact_key=fact_key,
+    )
+
+    # Facts should be different
+    assert user1_fact.id != user2_fact.id
+    assert user1_fact.fact_text != user2_fact.fact_text
+    assert user1_fact.user_id != user2_fact.user_id
+
+
+@pytest.mark.asyncio
+async def test_upsert_durable_fact_only_dedupes_active(
+    memory_storage, async_db_session
+):
+    """Deduplication only matches active facts."""
+    from assistant.models.memory_sql import DurableFact, DurableFactConfidence, DurableFactSourceType
+
+    user_id = 'user@example.com'
+    fact_key = 'favorite_color'
+
+    # Create first fact
+    first = await memory_storage.upsert_durable_fact(
+        session=async_db_session,
+        user_id=user_id,
+        subject='Color preference',
+        fact_text='Blue',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.USER_EXPLICIT,
+        fact_key=fact_key,
+    )
+    await async_db_session.commit()
+
+    # Mark it as inactive
+    first.active = False
+    await async_db_session.flush()
+    await async_db_session.commit()
+
+    # Upsert attempt with same fact_key should create new (since old is inactive)
+    second = await memory_storage.upsert_durable_fact(
+        session=async_db_session,
+        user_id=user_id,
+        subject='Color preference',
+        fact_text='Red',  # Different
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.USER_EXPLICIT,
+        fact_key=fact_key,
+    )
+
+    assert second.id != first.id
+    assert second.active is True
+    assert second.fact_text == 'Red'
+
