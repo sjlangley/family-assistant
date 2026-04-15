@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import json
 from typing import cast
 import uuid
@@ -20,13 +21,31 @@ from assistant.models.conversation_sql import Conversation, Message
 from assistant.models.llm import (
     ChatCompletionRequestSystemMessage,
     LLMCompletionError,
+    LLMCompletionErrorKind,
     ToolChoice,
 )
+from assistant.models.tool import ToolExecutionResult
 from assistant.routers.web_utils import llm_completion_error_to_http_exception
+from assistant.services.assistant_annotations import (
+    AssistantAnnotationService,
+)
 from assistant.services.context_assembly import ContextAssemblyService
 from assistant.services.llm_service import LLMService
 from assistant.services.tool_service import ToolService
 from assistant.settings import settings
+
+
+@dataclass
+class _LLMLoopResult:
+    """Internal result from the LLM tool loop.
+
+    Wraps the final assistant response along with tool execution history
+    for annotation building and error tracking.
+    """
+
+    content: str
+    executed_tools: list[ToolExecutionResult]
+    error: LLMCompletionError | None = None
 
 
 def conversation_title_from_first_message(content: str) -> str:
@@ -40,10 +59,14 @@ class ConversationService:
         llm_service: LLMService,
         context_assembly: ContextAssemblyService,
         tool_service: ToolService,
+        annotation_service: AssistantAnnotationService | None = None,
     ) -> None:
         self.llm_service = llm_service
         self.context_assembly = context_assembly
         self.tool_service = tool_service
+        self.annotation_service = (
+            annotation_service or AssistantAnnotationService()
+        )
 
     async def list_conversations(
         self,
@@ -132,18 +155,38 @@ class ConversationService:
         )
 
         # Make LLM call outside of transaction
-        assistant_content = await self._call_llm_chat_completion(
+        loop_result = await self._call_llm_chat_completion(
             messages=context_result.messages,
             temperature=payload.temperature,
             max_tokens=payload.max_tokens,
         )
 
+        # Build annotations or failure metadata
+        annotations_dict = None
+        error_text = None
+        if loop_result.error:
+            annotations_obj = self.annotation_service.build_failure_annotations(
+                error=loop_result.error
+            )
+            annotations_dict = annotations_obj.model_dump()
+            error_text = self.annotation_service._format_error_detail(
+                loop_result.error
+            )
+        else:
+            annotations_obj = self.annotation_service.build_success_annotations(
+                executed_tools=loop_result.executed_tools,
+            )
+            annotations_dict = annotations_obj.model_dump()
+
         # Transaction 2: Create assistant message and update conversation
         assistant_message = Message(
             conversation_id=conversation_id,
             role='assistant',
-            content=assistant_content,
+            content=loop_result.content
+            or ('Unable to generate a response. Please try again.'),
             sequence_number=2,
+            error=error_text,
+            annotations=annotations_dict,
         )
         session.add(assistant_message)
 
@@ -159,6 +202,10 @@ class ConversationService:
         await session.refresh(conversation)
         await session.refresh(user_message)
         await session.refresh(assistant_message)
+
+        # If there was a terminal error, raise HTTP exception after persisting
+        if loop_result.error:
+            raise llm_completion_error_to_http_exception(loop_result.error)
 
         return ConversationWithMessagesResponse(
             conversation=self._conversation_summary(conversation),
@@ -219,18 +266,38 @@ class ConversationService:
         )
 
         # Make LLM call outside of transaction
-        assistant_content = await self._call_llm_chat_completion(
+        loop_result = await self._call_llm_chat_completion(
             messages=context_result.messages,
             temperature=payload.temperature,
             max_tokens=payload.max_tokens,
         )
 
+        # Build annotations or failure metadata
+        annotations_dict = None
+        error_text = None
+        if loop_result.error:
+            annotations_obj = self.annotation_service.build_failure_annotations(
+                error=loop_result.error
+            )
+            annotations_dict = annotations_obj.model_dump()
+            error_text = self.annotation_service._format_error_detail(
+                loop_result.error
+            )
+        else:
+            annotations_obj = self.annotation_service.build_success_annotations(
+                executed_tools=loop_result.executed_tools,
+            )
+            annotations_dict = annotations_obj.model_dump()
+
         # Transaction 2: Create assistant message and update conversation
         assistant_message = Message(
             conversation_id=conversation_id,
             role='assistant',
-            content=assistant_content,
+            content=loop_result.content
+            or ('Unable to generate a response. Please try again.'),
             sequence_number=next_seq + 1,
+            error=error_text,
+            annotations=annotations_dict,
         )
         session.add(assistant_message)
 
@@ -245,6 +312,10 @@ class ConversationService:
         await session.refresh(conversation)
         await session.refresh(user_message)
         await session.refresh(assistant_message)
+
+        # If there was a terminal error, raise HTTP exception after persisting
+        if loop_result.error:
+            raise llm_completion_error_to_http_exception(loop_result.error)
 
         return ConversationWithMessagesResponse(
             conversation=self._conversation_summary(conversation),
@@ -297,10 +368,12 @@ class ConversationService:
         messages: list[dict],
         temperature: float,
         max_tokens: int | None,
-    ) -> str:
-        """Call LLM completion and return assistant content.
+    ) -> _LLMLoopResult:
+        """Call LLM completion and execute tools in a bounded loop.
 
-        Prepares system prompt and delegates to the shared LLM completion seam.
+        Returns a structured result with final content, executed tools,
+        and any errors encountered. Does not raise HTTP exceptions for
+        LLM/tool failures - those are handled at the persistence layer.
         """
         system_message = ChatCompletionRequestSystemMessage(
             role='system', content=SYSTEM_PROMPT
@@ -308,6 +381,8 @@ class ConversationService:
         llm_messages = [system_message.model_dump()] + messages
         available_tools = self.tool_service.get_available_tools()
         tools = available_tools if available_tools else None
+
+        executed_tools: list[ToolExecutionResult] = []
 
         for _ in range(MAXIMUM_TOOL_ROUNDS):
             try:
@@ -326,9 +401,16 @@ class ConversationService:
                 result = await self.llm_service.complete_messages(
                     **completion_kwargs
                 )
-                if not result.tool_calls:
-                    return result.content
 
+                # No tool calls - return final response
+                if not result.tool_calls:
+                    return _LLMLoopResult(
+                        content=result.content,
+                        executed_tools=executed_tools,
+                        error=None,
+                    )
+
+                # Tool calls requested - add assistant response and execute
                 llm_messages.append(
                     {
                         'role': 'assistant',
@@ -349,29 +431,35 @@ class ConversationService:
                                 f'Tool arguments must be a JSON object, '
                                 f'got {type(parsed_arguments).__name__}'
                             )
-                    except json.JSONDecodeError as exc:
-                        raise HTTPException(
-                            status_code=status.HTTP_502_BAD_GATEWAY,
-                            detail=(
-                                f'Invalid tool arguments JSON: '
-                                f'{tool_call.function.name}'
-                            ),
-                        ) from exc
-                    except ValueError as exc:
-                        raise HTTPException(
-                            status_code=status.HTTP_502_BAD_GATEWAY,
-                            detail=str(exc),
-                        ) from exc
+                    except (json.JSONDecodeError, ValueError) as exc:
+                        # Tool parsing error - return as terminal failure
+                        error = LLMCompletionError(
+                            kind=LLMCompletionErrorKind.invalid_response,
+                            message=f'Unable to parse tool arguments for {tool_call.function.name}: {str(exc)}',
+                        )
+                        return _LLMLoopResult(
+                            content='',
+                            executed_tools=executed_tools,
+                            error=error,
+                        )
+
                     try:
                         tool_result = await self.tool_service.execute_tool(
                             name=tool_call.function.name,
                             arguments=parsed_arguments,
                         )
+                        executed_tools.append(tool_result)
                     except Exception as exc:
-                        raise HTTPException(
-                            status_code=status.HTTP_502_BAD_GATEWAY,
-                            detail=f'Error executing tool {tool_call.function.name}: {str(exc)}',
-                        ) from exc
+                        # Tool execution error - return as terminal failure
+                        error = LLMCompletionError(
+                            kind=LLMCompletionErrorKind.backend_error,
+                            message=f'Error executing tool {tool_call.function.name}: {str(exc)}',
+                        )
+                        return _LLMLoopResult(
+                            content='',
+                            executed_tools=executed_tools,
+                            error=error,
+                        )
 
                     llm_messages.append(
                         {
@@ -382,11 +470,22 @@ class ConversationService:
                     )
 
             except LLMCompletionError as exc:
-                raise llm_completion_error_to_http_exception(exc) from exc
+                # LLM service error - return as terminal failure
+                return _LLMLoopResult(
+                    content='',
+                    executed_tools=executed_tools,
+                    error=exc,
+                )
 
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f'Assistant exceeded maximum tool rounds ({MAXIMUM_TOOL_ROUNDS})',
+        # Exceeded tool rounds - return as terminal failure
+        error = LLMCompletionError(
+            kind=LLMCompletionErrorKind.backend_error,
+            message=f'Assistant exceeded maximum tool rounds ({MAXIMUM_TOOL_ROUNDS})',
+        )
+        return _LLMLoopResult(
+            content='',
+            executed_tools=executed_tools,
+            error=error,
         )
 
     @staticmethod
