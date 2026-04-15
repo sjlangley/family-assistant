@@ -103,7 +103,7 @@ class WebFetchTool(BaseTool):
             payload.url,
             payload.title,
             len(payload.content),
-            len(payload.excerpt),
+            len(payload.excerpt) if payload.excerpt else 0,
         )
 
         return ToolExecutionResult(
