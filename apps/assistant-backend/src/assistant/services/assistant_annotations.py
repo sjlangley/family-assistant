@@ -184,7 +184,7 @@ class AssistantAnnotationService:
         """
         # Return count-limited list of fact IDs wrapped in dicts for Pydantic validation
         return [
-            {'label': 'Memory Fact', 'summary': f'Fact ID: {fid}'}
+            MemoryHitAnnotation(label='Memory Fact', summary=f'Fact ID: {fid}')
             for fid in fact_ids[: self.MAX_MEMORY_HITS]
         ]
 
