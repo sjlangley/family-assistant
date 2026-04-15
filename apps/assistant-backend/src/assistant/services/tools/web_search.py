@@ -78,7 +78,11 @@ class WebSearchTool(BaseTool):
 
         finished_at = datetime.now(UTC)
 
-        logger.debug('web search result payload: %s', payload)
+        logger.debug(
+            'web_search completed with %s results in %s ms',
+            len(results),
+            int((finished_at - started_at).total_seconds() * 1000),
+        )
 
         return ToolExecutionResult(
             tool_name=self.name,
