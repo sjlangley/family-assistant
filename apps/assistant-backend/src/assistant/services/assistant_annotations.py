@@ -121,8 +121,9 @@ class AssistantAnnotationService:
 
             payload: WebFetchPayload = tool_result.payload
 
-            snippet = payload.excerpt or self._truncate_text(
-                payload.content, self.MAX_SOURCES_SNIPPET_LENGTH
+            snippet_source = payload.excerpt or payload.content
+            snippet = self._truncate_text(
+                snippet_source, self.MAX_SOURCES_SNIPPET_LENGTH
             )
 
             source = SourceAnnotation(
