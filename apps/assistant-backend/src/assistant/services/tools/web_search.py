@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import UTC, datetime
+import logging
 
 from ddgs import DDGS
 
@@ -14,6 +15,8 @@ from assistant.models.tool import (
     WebSearchResultPayload,
 )
 from assistant.services.tools.base import BaseTool
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_NUMBER_OF_RESULTS = 5
 
@@ -58,6 +61,12 @@ class WebSearchTool(BaseTool):
         query = arguments['query']
         num_results = arguments.get('num_results', DEFAULT_NUMBER_OF_RESULTS)
 
+        logger.debug(
+            'Starting web_search, query_length=%d, num_results=%s',
+            len(query),
+            num_results,
+        )
+
         results = await asyncio.to_thread(
             self._perform_search, query, num_results
         )
@@ -68,6 +77,12 @@ class WebSearchTool(BaseTool):
         )
 
         finished_at = datetime.now(UTC)
+
+        logger.debug(
+            'web_search completed with %s results in %s ms',
+            len(results),
+            int((finished_at - started_at).total_seconds() * 1000),
+        )
 
         return ToolExecutionResult(
             tool_name=self.name,
