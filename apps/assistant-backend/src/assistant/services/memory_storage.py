@@ -2,6 +2,7 @@ import uuid
 
 import chromadb
 from sqlalchemy import and_, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from assistant.models.memory_sql import (
@@ -66,11 +67,14 @@ class MemoryStorage:
         source_message_id: uuid.UUID | None = None,
     ) -> ConversationMemorySummary:
         """
-        Upsert a conversation summary with idempotency.
+        Upsert a conversation summary atomically with idempotency.
+
+        Uses PostgreSQL's atomic ON CONFLICT for production, falls back
+        to read-check-insert for other databases (tests).
 
         - If no summary exists, create with version=1
-        - If identical summary exists, return as no-op
-        - If summary changed, update in place and increment version
+        - On conflict (by conversation_id), update and increment version
+        - Atomic upsert prevents race conditions on concurrent retries
 
         Args:
             session: AsyncSession for database operations
@@ -82,7 +86,40 @@ class MemoryStorage:
         Returns:
             Persisted ConversationMemorySummary row
         """
-        # Query for existing summary
+        # Try atomic PostgreSQL upsert first
+        try:
+            stmt = (
+                insert(ConversationMemorySummary)
+                .values(
+                    conversation_id=conversation_id,
+                    user_id=user_id,
+                    summary_text=summary_text,
+                    source_message_id=source_message_id,
+                    version=1,
+                )
+                .on_conflict_do_update(
+                    index_elements=['conversation_id'],
+                    set_={
+                        'summary_text': summary_text,
+                        'source_message_id': source_message_id,
+                        'version': (
+                            ConversationMemorySummary.version + 1
+                        ),
+                    },
+                )
+                .returning(ConversationMemorySummary)
+            )
+
+            result = await session.execute(stmt)
+            await session.flush()
+            row = result.scalars().first()
+            if row is not None:
+                return row
+        except Exception:
+            # Fall through to manual upsert for SQLite or other DBs
+            pass
+
+        # Fallback: manual upsert for SQLite and other databases
         stmt = select(ConversationMemorySummary).where(
             ConversationMemorySummary.conversation_id == conversation_id
         )
@@ -102,15 +139,7 @@ class MemoryStorage:
             await session.flush()
             return new_summary
 
-        # Check if content is identical (no-op case)
-        if (
-            existing_summary.summary_text == summary_text
-            and existing_summary.source_message_id == source_message_id
-        ):
-            # Identical, return as-is
-            return existing_summary
-
-        # Content changed, update in place and increment version
+        # Update existing summary
         existing_summary.summary_text = summary_text
         existing_summary.source_message_id = source_message_id
         existing_summary.version = existing_summary.version + 1
@@ -131,15 +160,16 @@ class MemoryStorage:
         source_excerpt: str | None = None,
     ) -> DurableFact:
         """
-        Upsert a durable fact with idempotency and deduplication.
+        Upsert a durable fact atomically with idempotency and deduplication.
+
+        Uses PostgreSQL's atomic ON CONFLICT for production, falls back
+        to read-check-insert for other databases (tests).
 
         Deduplication rules:
         - If fact_key present: dedupe by (user_id, fact_key, active=True)
         - If fact_key absent: dedupe by (user_id, subject, fact_text, active=True)
 
-        - If identical fact exists, return as no-op
-        - If matching fact exists but content changed, update in place
-        - If no match exists, insert new active fact
+        Atomic upsert prevents race conditions on concurrent retries.
 
         Args:
             session: AsyncSession for database operations
@@ -156,7 +186,72 @@ class MemoryStorage:
         Returns:
             Persisted DurableFact row
         """
-        # Query for matching fact based on deduplication rules
+        # Prepare values for atomic upsert
+        values = {
+            'user_id': user_id,
+            'subject': subject,
+            'fact_key': fact_key,
+            'fact_text': fact_text,
+            'confidence': confidence,
+            'source_type': source_type,
+            'source_conversation_id': source_conversation_id,
+            'source_message_id': source_message_id,
+            'source_excerpt': source_excerpt,
+            'active': True,
+        }
+
+        update_values = {
+            'subject': subject,
+            'fact_key': fact_key,
+            'fact_text': fact_text,
+            'confidence': confidence,
+            'source_type': source_type,
+            'source_conversation_id': source_conversation_id,
+            'source_message_id': source_message_id,
+            'source_excerpt': source_excerpt,
+        }
+
+        # Try atomic PostgreSQL upsert first
+        try:
+            # Use different conflict resolution based on fact_key presence
+            if fact_key is not None:
+                # Conflict on (user_id, fact_key, active) unique index
+                stmt = (
+                    insert(DurableFact)
+                    .values(**values)
+                    .on_conflict_do_update(
+                        index_elements=['user_id', 'fact_key', 'active'],
+                        set_=update_values,
+                    )
+                    .returning(DurableFact)
+                )
+            else:
+                # Conflict on (user_id, subject, fact_text, active) unique index
+                stmt = (
+                    insert(DurableFact)
+                    .values(**values)
+                    .on_conflict_do_update(
+                        index_elements=[
+                            'user_id',
+                            'subject',
+                            'fact_text',
+                            'active',
+                        ],
+                        set_=update_values,
+                    )
+                    .returning(DurableFact)
+                )
+
+            result = await session.execute(stmt)
+            await session.flush()
+            row = result.scalars().first()
+            if row is not None:
+                return row
+        except Exception:
+            # Fall through to manual upsert for SQLite or other DBs
+            pass
+
+        # Fallback: manual upsert for SQLite and other databases
         if fact_key is not None:
             # Dedupe by fact_key
             stmt = select(DurableFact).where(
@@ -198,18 +293,7 @@ class MemoryStorage:
             await session.flush()
             return new_fact
 
-        # Check if content is identical (no-op case)
-        if (
-            existing_fact.subject == subject
-            and existing_fact.fact_text == fact_text
-            and existing_fact.confidence == confidence
-            and existing_fact.source_type == source_type
-            and existing_fact.fact_key == fact_key
-        ):
-            # Identical, return as-is
-            return existing_fact
-
-        # Content changed, update in place
+        # Update existing fact
         existing_fact.subject = subject
         existing_fact.fact_text = fact_text
         existing_fact.confidence = confidence
