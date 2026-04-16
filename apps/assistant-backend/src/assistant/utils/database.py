@@ -18,7 +18,7 @@ async def get_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
 DBSession = Annotated[AsyncSession, Depends(get_session)]
 
 
-def get_database_url() -> URL:
+def get_database_url() -> URL | str:
     """Get the canonical database URL, resolving TCP connection if needed.
 
     Returns configured DATABASE_URL if set, otherwise constructs a TCP
