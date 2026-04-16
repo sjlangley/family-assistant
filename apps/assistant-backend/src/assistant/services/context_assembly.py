@@ -10,6 +10,7 @@ Chroma retrieval support is deferred to future work (Step 6+).
 """
 
 from dataclasses import dataclass
+import re
 from typing import TYPE_CHECKING
 import uuid
 
@@ -252,13 +253,18 @@ class ContextAssemblyService:
             return candidates[:MAX_DURABLE_FACTS], 'recency'
 
         # Rank by relevance to recent turns
-        # Build a combined text of all recent message content (lowercase for matching)
-        recent_content = ' '.join(msg.content for msg in recent_turns).lower()
+        # Build a set of words from all recent message content for efficient, whole-word matching.
+        recent_content_words = set(
+            re.findall(
+                r'\b\w+\b',
+                ' '.join(msg.content for msg in recent_turns).lower(),
+            )
+        )
 
         # Split subject into words for matching (e.g., "George Langley" -> ["george", "langley"])
         def _subject_words(subject: str) -> list[str]:
             """Extract lowercased words from subject."""
-            return [word.lower() for word in subject.split()]
+            return re.findall(r'\b\w+\b', subject.lower())
 
         # Separate facts into relevant and remaining groups
         relevant_facts = []
@@ -267,7 +273,9 @@ class ContextAssemblyService:
         for fact in candidates:
             # Check if any word from the subject appears in recent content
             subject_words = _subject_words(fact.subject)
-            is_relevant = any(word in recent_content for word in subject_words)
+            is_relevant = any(
+                word in recent_content_words for word in subject_words
+            )
 
             if is_relevant:
                 relevant_facts.append(fact)

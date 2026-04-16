@@ -5,6 +5,7 @@ from typing import cast
 import uuid
 
 from fastapi import HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -850,7 +851,7 @@ class ConversationService:
 
             return summary, facts if facts else None
 
-        except Exception as e:
+        except (ValidationError, TypeError) as e:
             logger.warning(f'Failed to parse extraction result: {str(e)}')
             return None, None
 

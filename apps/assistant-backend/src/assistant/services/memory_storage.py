@@ -308,15 +308,10 @@ class MemoryStorage:
             return new_fact
 
         # Update existing fact
-        existing_fact.subject = subject
-        existing_fact.fact_text = fact_text
-        existing_fact.confidence = confidence
-        existing_fact.source_type = source_type
-        existing_fact.fact_key = fact_key
-        existing_fact.source_conversation_id = source_conversation_id
-        existing_fact.source_message_id = source_message_id
-        existing_fact.source_excerpt = source_excerpt
+        for key, value in update_values.items():
+            setattr(existing_fact, key, value)
         await session.flush()
+
         return existing_fact
 
     def index_conversation_summary(
