@@ -738,8 +738,34 @@ class ConversationService:
     ) -> list[dict]:
         """Build an LLM prompt for extracting summary and facts.
 
+        Slices the conversation relative to the target assistant message,
+        not the current tail. This ensures that if new messages are added
+        before extraction completes, we still extract context for the
+        correct exchange and correctly attribute facts/summary to the
+        target message.
+
         Returns a minimal prompt structure for extraction.
         """
+        # Find the index of the target assistant message
+        msg_index = next(
+            (i for i, m in enumerate(messages) if m.id == assistant_message.id),
+            -1,
+        )
+
+        if msg_index == -1:
+            # Fallback: should not happen, but use last 4 as safety net
+            logger.warning(
+                f'Target assistant message {assistant_message.id} not found '
+                f'in message list during extraction prompt build'
+            )
+            recent = messages[-4:] if len(messages) > 4 else messages
+        else:
+            # Include up to 3 messages before the target assistant message,
+            # plus the message itself. This gives us the user's request + our
+            # response in context.
+            start_idx = max(0, msg_index - 3)
+            recent = messages[start_idx : msg_index + 1]
+
         # Build a simple extraction prompt
         user_content = (
             'Please extract:\n'
@@ -750,8 +776,6 @@ class ConversationService:
             'Recent exchange:\n'
         )
 
-        # Add last few messages for context
-        recent = messages[-4:] if len(messages) > 4 else messages
         for msg in recent:
             role_label = 'User' if msg.role == 'user' else 'Assistant'
             user_content += f'{role_label}: {msg.content}\n'

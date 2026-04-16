@@ -2873,3 +2873,220 @@ async def test_enrich_annotations_nothing_saved_leaves_empty():
         assert len(refreshed.annotations['memory_saved']) == 0
 
     await engine.dispose()
+
+
+# Tests for extraction prompt building with correct message slicing
+def test_build_extraction_prompt_slices_relative_to_target_message():
+    """Extraction prompt should slice relative to target message, not conversation tail."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    # Create a conversation with many messages
+    # msg 0: user -> "old question"
+    # msg 1: assistant -> "old answer"
+    # msg 2: user -> "mid question"
+    # msg 3: assistant -> "mid answer" (TARGET)
+    # msg 4: user -> "new question" (added after extraction started)
+    # msg 5: assistant -> "new answer" (added after extraction started)
+
+    conv_id = uuid.uuid4()
+    messages = [
+        Message(
+            id=uuid.uuid4(),
+            conversation_id=conv_id,
+            role='user',
+            content='old question',
+            sequence_number=0,
+        ),
+        Message(
+            id=uuid.uuid4(),
+            conversation_id=conv_id,
+            role='assistant',
+            content='old answer',
+            sequence_number=1,
+        ),
+        Message(
+            id=uuid.uuid4(),
+            conversation_id=conv_id,
+            role='user',
+            content='mid question',
+            sequence_number=2,
+        ),
+        Message(
+            id=uuid.uuid4(),
+            conversation_id=conv_id,
+            role='assistant',
+            content='mid answer',
+            sequence_number=3,
+        ),
+        Message(
+            id=uuid.uuid4(),
+            conversation_id=conv_id,
+            role='user',
+            content='new question added later',
+            sequence_number=4,
+        ),
+        Message(
+            id=uuid.uuid4(),
+            conversation_id=conv_id,
+            role='assistant',
+            content='new answer added later',
+            sequence_number=5,
+        ),
+    ]
+
+    # Target is message 3 (idx 3)
+    target_msg = messages[3]
+
+    # Build extraction prompt
+    prompt = service._build_extraction_prompt(
+        messages=messages, assistant_message=target_msg
+    )
+
+    # Verify we get the prompt structure
+    assert len(prompt) == 2
+    assert prompt[0]['role'] == 'system'
+    assert prompt[1]['role'] == 'user'
+
+    # Verify the content includes the right messages
+    # Should include: msg 0, msg 1, msg 2, msg 3 (NOT msg 4, 5)
+    prompt_content = prompt[1]['content']
+    assert 'old question' in prompt_content
+    assert 'old answer' in prompt_content
+    assert 'mid question' in prompt_content
+    assert 'mid answer' in prompt_content
+    # Should NOT include messages added after target
+    assert 'new question added later' not in prompt_content
+    assert 'new answer added later' not in prompt_content
+
+
+def test_build_extraction_prompt_respects_message_bounds():
+    """When target message is near the start, respect array bounds."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    # Create messages with target at the beginning
+    msgs = []
+    conv_id = uuid.uuid4()
+    for i in range(3):
+        msgs.append(
+            Message(
+                id=uuid.uuid4(),
+                conversation_id=conv_id,
+                role='user' if i % 2 == 0 else 'assistant',
+                content=f'message {i}',
+                sequence_number=i,
+            )
+        )
+
+    # Target is first message (idx 0)
+    target_msg = msgs[0]
+
+    prompt = service._build_extraction_prompt(
+        messages=msgs, assistant_message=target_msg
+    )
+
+    prompt_content = prompt[1]['content']
+    # When target is at index 0, we slice from max(0, 0-3)=0 to 0+1=1
+    # So we get only message 0, NOT messages that come after
+    assert 'message 0' in prompt_content
+    # Messages after target should NOT be included
+    assert 'message 1' not in prompt_content
+    assert 'message 2' not in prompt_content
+
+
+def test_build_extraction_prompt_includes_target_and_context():
+    """Prompt should include target message and surrounding context."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    # Create a conversation where target is in the middle
+    conv_id = uuid.uuid4()
+    messages = []
+    for i in range(6):
+        messages.append(
+            Message(
+                id=uuid.uuid4(),
+                conversation_id=conv_id,
+                role='user' if i % 2 == 0 else 'assistant',
+                content=f'msg{i}',
+                sequence_number=i,
+            )
+        )
+
+    # Target is message 4 (an assistant message)
+    target_msg = messages[4]
+
+    prompt = service._build_extraction_prompt(
+        messages=messages, assistant_message=target_msg
+    )
+
+    prompt_content = prompt[1]['content']
+
+    # Should include up to 3 messages before target + target itself
+    # msg 1, msg 2, msg 3, msg 4 (NOT msg 0, msg 5)
+    assert 'msg1' in prompt_content
+    assert 'msg2' in prompt_content
+    assert 'msg3' in prompt_content
+    assert 'msg4' in prompt_content
+    # msg 5 comes after target, should not be included
+    assert 'msg5' not in prompt_content
+
+
+def test_build_extraction_prompt_fallback_when_target_not_found():
+    """If target message not found, fallback to last 4 messages."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    conv_id = uuid.uuid4()
+    messages = []
+    for i in range(6):
+        messages.append(
+            Message(
+                id=uuid.uuid4(),
+                conversation_id=conv_id,
+                role='user' if i % 2 == 0 else 'assistant',
+                content=f'msg{i}',
+                sequence_number=i,
+            )
+        )
+
+    # Create a target message that's NOT in the list
+    missing_target = Message(
+        id=uuid.uuid4(),
+        conversation_id=conv_id,
+        role='assistant',
+        content='not in list',
+        sequence_number=99,
+    )
+
+    prompt = service._build_extraction_prompt(
+        messages=messages, assistant_message=missing_target
+    )
+
+    prompt_content = prompt[1]['content']
+
+    # Should fallback to last 4 messages: msg2, msg3, msg4, msg5
+    assert 'msg2' in prompt_content
+    assert 'msg3' in prompt_content
+    assert 'msg4' in prompt_content
+    assert 'msg5' in prompt_content
+    # Should not include msg0, msg1
+    assert 'msg0' not in prompt_content
+    assert 'msg1' not in prompt_content
