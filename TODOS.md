@@ -1,5 +1,35 @@
 # TODOs
 
+## Mobile interface for trust UI
+
+What:
+Implement mobile-responsive behavior for the trust UI completed in desktop Step 8:
+- Move conversation rail behind a hamburger menu (collapse when narrow)
+- Keep trust row inline under assistant messages (no change)
+- Implement evidence/details as a bottom sheet or full-screen detail view instead of desktop side panel
+- Add responsive menu close on conversation selection
+- Ensure touch-friendly interaction patterns
+
+Why:
+Desktop Step 8 is complete and focused on annotation-driven, reload-safe trust rendering. Mobile requires layout restructuring without changing the core announcement and evidence model. This is prioritized after desktop validation.
+
+Pros:
+- Reuses all desktop annotation and trust logic
+- Only UI layout changes, no new data model
+- Validates that trust UI is truly independent of layout
+
+Cons:
+- Requires careful responsive breakpoint testing
+- Bottom sheet / modal behavior differs from desktop panel
+- Mobile menu state management adds complexity
+
+Context:
+Deferred from desktop Step 8 to keep the first-phase UI focused and shippable. Desktop proof of concept is complete. Mobile behavior should follow desktop validation.
+
+Depends on / blocked by:
+- Desktop Step 8 complete and stable
+- Test coverage for desktop flows passing
+
 ## Phase 1.5 image generation tool after web-search tool pipeline is stable
 
 What:

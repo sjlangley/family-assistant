@@ -200,14 +200,13 @@ function MemoryDetail({ label, summary, type }: MemoryDetailProps) {
   );
 }
 
-// EvidencePanel: Main detail surface for evidence display
+// EvidencePanel: Desktop detail surface for evidence display
 interface EvidencePanelProps {
   message: Message;
   onClose: () => void;
-  isMobile: boolean;
 }
 
-function EvidencePanel({ message, onClose, isMobile }: EvidencePanelProps) {
+function EvidencePanel({ message, onClose }: EvidencePanelProps) {
   if (!message.annotations) return null;
 
   const { annotations } = message;
@@ -329,16 +328,11 @@ function EvidencePanel({ message, onClose, isMobile }: EvidencePanelProps) {
     </div>
   );
 
-  if (isMobile) {
-    return (
-      <div className="evidence-panel-mobile">
-        <div className="evidence-panel-mobile-overlay" onClick={onClose} />
-        <div className="evidence-panel-mobile-sheet">{content}</div>
-      </div>
-    );
-  }
-
-  return <div className="evidence-panel-desktop">{content}</div>;
+  return (
+    <div className="evidence-panel-desktop">
+      {content}
+    </div>
+  );
 }
 
 export function ConversationsChat({ onLogout }: ConversationsChatProps) {
@@ -361,7 +355,6 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(
     null,
   );
-  const [isMobile, setIsMobile] = useState(false);
 
   // Track conversations for which we've just set messages to skip redundant fetches
   const skipFetchForConversation = useRef<string | null>(null);
@@ -382,17 +375,6 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
   // Handle closing evidence details
   const handleCloseDetails = useCallback(() => {
     setSelectedMessageId(null);
-  }, []);
-
-  // Detect mobile viewport
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   // Handle Escape key to close evidence panel
@@ -797,11 +779,10 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
           </div>
 
           {/* Evidence panel - desktop right side */}
-          {!isMobile && selectedMessage && (
+          {selectedMessage && (
             <EvidencePanel
               message={selectedMessage}
               onClose={handleCloseDetails}
-              isMobile={false}
             />
           )}
         </div>
@@ -833,14 +814,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
         </div>
       </div>
 
-      {/* Evidence panel - mobile bottom sheet */}
-      {isMobile && selectedMessage && selectedMessage.annotations && (
-        <EvidencePanel
-          isOpen={true}
-          evidence={selectedMessage.annotations}
-          onClose={handleCloseDetails}
-        />
-      )}
+
     </div>
   );
 }
