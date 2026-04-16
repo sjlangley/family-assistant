@@ -46,11 +46,14 @@ flowchart TD
 
 ## Memory Model
 
-- **Session memory:** last N messages per conversation
-- **User memory:** personal facts, preferences, history (vector DB + structured DB)
+- **Session memory:** last N messages per conversation, loaded from canonical Postgres rows during prompt assembly
+- **Conversation memory:** latest per-conversation summary stored canonically in Postgres and refreshed after successful assistant replies
+- **User memory:** durable per-user facts stored canonically in Postgres and mirrored into Chroma only for retrieval support
 - **Household memory:** shared info like grocery lists, calendars, devices
 
 All memory is **retrieved and injected dynamically** for LLM prompts.
+
+Background extraction runs after the visible assistant response is persisted. It refreshes summaries and durable facts without blocking the request path, then mirrors saved rows into Chroma for retrieval support.
 
 ---
 

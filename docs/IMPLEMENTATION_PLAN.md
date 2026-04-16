@@ -480,6 +480,8 @@ This branch finished the first real research path: `web_search` for discovery an
 
 ### Step 6. Add background extraction with canonical Postgres writes
 
+**Status:** ✅ **COMPLETE**
+
 **Files**
 
 - update [apps/assistant-backend/src/assistant/routers/conversations.py](/Users/stuartlangley/src/sjlangley/family-assistant/apps/assistant-backend/src/assistant/routers/conversations.py)
@@ -504,6 +506,14 @@ This branch finished the first real research path: `web_search` for discovery an
 - user-visible chat success does not depend on extraction success
 - summary/fact writes are idempotent enough for retries
 - later requests can reuse saved facts and latest summary
+
+**Completed work:**
+- Wired `BackgroundTasks` through the conversation POST endpoints and `ConversationService`, scheduling extraction only after the assistant row commits successfully
+- Added canonical Postgres upsert helpers for conversation summaries and durable facts, with PostgreSQL `ON CONFLICT` semantics and SQLite-safe test fallbacks
+- Implemented background extraction that reloads canonical transcript state, scopes extraction relative to the target assistant message, and persists refreshed summaries plus durable facts without blocking the request path
+- Mirrored persisted summaries and active durable facts into Chroma using stable document IDs derived from canonical Postgres row IDs
+- Improved context assembly so later requests reuse saved summaries and durable facts from Postgres with explicit budgets and relevance-aware fact selection
+- Enriched persisted assistant annotations with truthful `memory_saved` metadata only after background writes succeed, keeping reload behavior aligned with stored state
 
 ### Step 7. Update the conversation API contract
 
@@ -595,7 +605,7 @@ This branch finished the first real research path: `web_search` for discovery an
 [x] web_search + web_fetch tool path works
 [x] AssistantAnnotationService exists
 [x] terminal assistant failure rows persist on backend failure
-[ ] BackgroundTasks extraction writes summaries/facts
+[x] BackgroundTasks extraction writes summaries/facts
 [x] chat reload returns persisted annotations
 [ ] pending placeholder UI works
 [ ] trust row renders from persisted annotations
