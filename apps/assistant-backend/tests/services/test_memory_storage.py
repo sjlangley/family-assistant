@@ -1168,6 +1168,53 @@ async def test_postgres_upsert_keyed_includes_correct_index_where(
     assert 'active' in compiled_str
 
 
+def test_postgres_summary_upsert_supplies_primary_key(memory_storage):
+    """Postgres summary upsert includes an explicit UUID primary key.
+
+    Regression test for runtime failure where Core insert bypassed SQLModel's
+    default_factory and attempted to insert NULL into conversation summaries.id.
+    """
+    stmt = memory_storage._build_summary_upsert_statement(
+        conversation_id=uuid.uuid4(),
+        user_id='test@example.com',
+        summary_text='A summary',
+        source_message_id=uuid.uuid4(),
+    )
+
+    insert_values = stmt.compile().params
+
+    assert 'id' in insert_values
+    assert isinstance(insert_values['id'], uuid.UUID)
+
+
+def test_postgres_durable_fact_upsert_supplies_primary_key(memory_storage):
+    """Postgres durable fact upsert includes an explicit UUID primary key.
+
+    Regression test for the same Core-insert/default_factory gap on durable_facts.id.
+    """
+    from assistant.models.memory_sql import (
+        DurableFactConfidence,
+        DurableFactSourceType,
+    )
+
+    stmt = memory_storage._build_durable_fact_upsert_statement(
+        user_id='test@example.com',
+        subject='User',
+        fact_text='Likes tea',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        fact_key='drink_preference',
+        source_conversation_id=uuid.uuid4(),
+        source_message_id=uuid.uuid4(),
+        source_excerpt='User likes tea.',
+    )
+
+    insert_values = stmt.compile().params
+
+    assert 'id' in insert_values
+    assert isinstance(insert_values['id'], uuid.UUID)
+
+
 @pytest.mark.asyncio
 async def test_postgres_upsert_keyless_includes_correct_index_where(
     memory_storage, async_db_session

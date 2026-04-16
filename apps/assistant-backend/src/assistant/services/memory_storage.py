@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from assistant.models.memory_sql import (
     ConversationMemorySummary,
     DurableFact,
+    DurableFactConfidence,
+    DurableFactSourceType,
 )
 from assistant.utils.datetime_utils import utc_now
 
@@ -61,6 +63,114 @@ class MemoryStorage:
         documents = results['documents'][0] if results['documents'] else []
         return documents
 
+    @staticmethod
+    def _build_summary_upsert_statement(
+        *,
+        conversation_id: uuid.UUID,
+        user_id: str,
+        summary_text: str,
+        source_message_id: uuid.UUID | None,
+    ):
+        """Build the PostgreSQL summary upsert statement.
+
+        Core insert statements do not apply SQLModel's Python-side
+        ``default_factory`` for primary keys, so we must provide ``id``
+        explicitly on the insert branch.
+        """
+        return (
+            insert(ConversationMemorySummary)
+            .values(
+                id=uuid.uuid4(),
+                conversation_id=conversation_id,
+                user_id=user_id,
+                summary_text=summary_text,
+                source_message_id=source_message_id,
+                version=1,
+            )
+            .on_conflict_do_update(
+                index_elements=['conversation_id'],
+                set_={
+                    'summary_text': summary_text,
+                    'source_message_id': source_message_id,
+                    'version': (ConversationMemorySummary.version + 1),
+                    'updated_at': func.now(),
+                },
+            )
+            .returning(ConversationMemorySummary)
+        )
+
+    @staticmethod
+    def _build_durable_fact_upsert_statement(
+        *,
+        user_id: str,
+        subject: str,
+        fact_text: str,
+        confidence: 'DurableFactConfidence',
+        source_type: 'DurableFactSourceType',
+        fact_key: str | None = None,
+        source_conversation_id: uuid.UUID | None = None,
+        source_message_id: uuid.UUID | None = None,
+        source_excerpt: str | None = None,
+    ):
+        """Build the PostgreSQL durable fact upsert statement.
+
+        Like summaries, the insert branch must provide a concrete ``id`` because
+        Core inserts bypass SQLModel's Python-side UUID default.
+        """
+        values = {
+            'id': uuid.uuid4(),
+            'user_id': user_id,
+            'subject': subject,
+            'fact_key': fact_key,
+            'fact_text': fact_text,
+            'confidence': confidence,
+            'source_type': source_type,
+            'source_conversation_id': source_conversation_id,
+            'source_message_id': source_message_id,
+            'source_excerpt': source_excerpt,
+            'active': True,
+        }
+
+        update_values = {
+            'subject': subject,
+            'fact_key': fact_key,
+            'fact_text': fact_text,
+            'confidence': confidence,
+            'source_type': source_type,
+            'source_conversation_id': source_conversation_id,
+            'source_message_id': source_message_id,
+            'source_excerpt': source_excerpt,
+            'updated_at': func.now(),
+        }
+
+        if fact_key is not None:
+            return (
+                insert(DurableFact)
+                .values(**values)
+                .on_conflict_do_update(
+                    index_elements=['user_id', 'fact_key', 'active'],
+                    index_where=text('fact_key IS NOT NULL AND active = true'),
+                    set_=update_values,
+                )
+                .returning(DurableFact)
+            )
+
+        return (
+            insert(DurableFact)
+            .values(**values)
+            .on_conflict_do_update(
+                index_elements=[
+                    'user_id',
+                    'subject',
+                    'fact_text',
+                    'active',
+                ],
+                index_where=text('active = true AND fact_key IS NULL'),
+                set_=update_values,
+            )
+            .returning(DurableFact)
+        )
+
     async def upsert_conversation_summary(
         self,
         session: AsyncSession,
@@ -92,25 +202,11 @@ class MemoryStorage:
         # Use atomic PostgreSQL upsert when the bound dialect supports it.
         bind = session.bind
         if bind is not None and bind.dialect.name == 'postgresql':
-            stmt = (
-                insert(ConversationMemorySummary)
-                .values(
-                    conversation_id=conversation_id,
-                    user_id=user_id,
-                    summary_text=summary_text,
-                    source_message_id=source_message_id,
-                    version=1,
-                )
-                .on_conflict_do_update(
-                    index_elements=['conversation_id'],
-                    set_={
-                        'summary_text': summary_text,
-                        'source_message_id': source_message_id,
-                        'version': (ConversationMemorySummary.version + 1),
-                        'updated_at': func.now(),
-                    },
-                )
-                .returning(ConversationMemorySummary)
+            stmt = self._build_summary_upsert_statement(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                summary_text=summary_text,
+                source_message_id=source_message_id,
             )
 
             result = await session.execute(stmt)
@@ -187,75 +283,22 @@ class MemoryStorage:
         Returns:
             Persisted DurableFact row
         """
-        # Prepare values for atomic upsert
-        values = {
-            'user_id': user_id,
-            'subject': subject,
-            'fact_key': fact_key,
-            'fact_text': fact_text,
-            'confidence': confidence,
-            'source_type': source_type,
-            'source_conversation_id': source_conversation_id,
-            'source_message_id': source_message_id,
-            'source_excerpt': source_excerpt,
-            'active': True,
-        }
-
-        update_values = {
-            'subject': subject,
-            'fact_key': fact_key,
-            'fact_text': fact_text,
-            'confidence': confidence,
-            'source_type': source_type,
-            'source_conversation_id': source_conversation_id,
-            'source_message_id': source_message_id,
-            'source_excerpt': source_excerpt,
-            'updated_at': func.now(),
-        }
-
         # Try atomic PostgreSQL upsert first
         # Only attempt if actually using PostgreSQL
         bind = session.bind
         if bind is not None and bind.dialect.name == 'postgresql':
             try:
-                # Use different conflict resolution based on fact_key presence
-                # Must include index_where to match partial unique indexes exactly
-                if fact_key is not None:
-                    # Conflict on keyed facts:
-                    # (user_id, fact_key, active) WHERE fact_key IS NOT NULL AND active = true
-                    stmt = (
-                        insert(DurableFact)
-                        .values(**values)
-                        .on_conflict_do_update(
-                            index_elements=['user_id', 'fact_key', 'active'],
-                            index_where=text(
-                                'fact_key IS NOT NULL AND active = true'
-                            ),
-                            set_=update_values,
-                        )
-                        .returning(DurableFact)
-                    )
-                else:
-                    # Conflict on keyless facts:
-                    # (user_id, subject, fact_text, active)
-                    # WHERE active = true AND fact_key IS NULL
-                    stmt = (
-                        insert(DurableFact)
-                        .values(**values)
-                        .on_conflict_do_update(
-                            index_elements=[
-                                'user_id',
-                                'subject',
-                                'fact_text',
-                                'active',
-                            ],
-                            index_where=text(
-                                'active = true AND fact_key IS NULL'
-                            ),
-                            set_=update_values,
-                        )
-                        .returning(DurableFact)
-                    )
+                stmt = self._build_durable_fact_upsert_statement(
+                    user_id=user_id,
+                    subject=subject,
+                    fact_text=fact_text,
+                    confidence=confidence,
+                    source_type=source_type,
+                    fact_key=fact_key,
+                    source_conversation_id=source_conversation_id,
+                    source_message_id=source_message_id,
+                    source_excerpt=source_excerpt,
+                )
 
                 result = await session.execute(stmt)
                 await session.flush()
@@ -318,8 +361,14 @@ class MemoryStorage:
             return new_fact
 
         # Update existing fact
-        for key, value in update_values.items():
-            setattr(existing_fact, key, value)
+        existing_fact.subject = subject
+        existing_fact.fact_key = fact_key
+        existing_fact.fact_text = fact_text
+        existing_fact.confidence = confidence
+        existing_fact.source_type = source_type
+        existing_fact.source_conversation_id = source_conversation_id
+        existing_fact.source_message_id = source_message_id
+        existing_fact.source_excerpt = source_excerpt
         await session.flush()
 
         return existing_fact
