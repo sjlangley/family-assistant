@@ -9,6 +9,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from assistant.constants import MAXIMUM_TOOL_ROUNDS, SYSTEM_PROMPT
+from assistant.models.annotations import AssistantAnnotations
 from assistant.models.conversation import (
     ConversationSummary,
     ConversationWithMessagesResponse,
@@ -27,7 +28,6 @@ from assistant.models.llm import (
 )
 from assistant.models.tool import ToolExecutionResult
 from assistant.routers.web_utils import llm_completion_error_to_http_exception
-from assistant.models.annotations import AssistantAnnotations
 from assistant.services.assistant_annotations import (
     AssistantAnnotationService,
 )
@@ -845,6 +845,7 @@ class ConversationService:
         try:
             # Parse current annotations to AssistantAnnotations model
             current_annotations = AssistantAnnotations(
+                # pyrefly: ignore [bad-unpacking]
                 **current_annotations_dict
             )
         except Exception:

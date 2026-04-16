@@ -33,11 +33,11 @@ from assistant.models.tool import (
     ToolExecutionResult,
     ToolExecutionStatus,
 )
+from assistant.services.assistant_annotations import AssistantAnnotationService
 from assistant.services.context_assembly import (
     ContextAssemblyResult,
     ContextAssemblyService,
 )
-from assistant.services.assistant_annotations import AssistantAnnotationService
 from assistant.services.conversation_service import ConversationService
 from assistant.services.llm_service import LLMService
 from assistant.services.memory_storage import MemoryStorage

@@ -41,12 +41,14 @@ class ContextAssemblyResult:
     used_summary: bool  # Whether a saved summary was used
     summary_id: uuid.UUID | None  # ID of the summary if used
     fact_ids: list[uuid.UUID]  # IDs of durable facts included
+    # pyrefly: ignore [bad-assignment]
     candidate_fact_ids: list[uuid.UUID] = None  # All candidate facts considered
     selection_method: str = 'recency'  # How facts were selected: 'relevance', 'recency', or 'chroma'
 
     def __post_init__(self):
         """Set defaults for optional fields."""
         if self.candidate_fact_ids is None:
+            # pyrefly: ignore [bad-assignment]
             self.candidate_fact_ids = []
 
 

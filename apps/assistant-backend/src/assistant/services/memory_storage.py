@@ -119,6 +119,7 @@ class MemoryStorage:
 
         # Fallback: manual upsert for SQLite and other databases
         stmt = select(ConversationMemorySummary).where(
+            # pyrefly: ignore [bad-argument-type]
             ConversationMemorySummary.conversation_id == conversation_id
         )
         result = await session.execute(stmt)
@@ -262,8 +263,11 @@ class MemoryStorage:
             # Dedupe by fact_key for keyed facts
             stmt = select(DurableFact).where(
                 and_(
+                    # pyrefly: ignore [bad-argument-type]
                     DurableFact.user_id == user_id,
+                    # pyrefly: ignore [bad-argument-type]
                     DurableFact.fact_key == fact_key,
+                    # pyrefly: ignore [bad-argument-type]
                     DurableFact.active == True,  # noqa: E712
                 )
             )
@@ -271,9 +275,13 @@ class MemoryStorage:
             # Dedupe by subject and fact_text for keyless facts
             stmt = select(DurableFact).where(
                 and_(
+                    # pyrefly: ignore [bad-argument-type]
                     DurableFact.user_id == user_id,
+                    # pyrefly: ignore [bad-argument-type]
                     DurableFact.subject == subject,
+                    # pyrefly: ignore [bad-argument-type]
                     DurableFact.fact_text == fact_text,
+                    # pyrefly: ignore [bad-argument-type]
                     DurableFact.active == True,  # noqa: E712
                 )
             )

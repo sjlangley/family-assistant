@@ -25,6 +25,7 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     background tasks that don't have access to FastAPI's request context.
     """
     engine = create_async_engine(
+        # pyrefly: ignore [bad-argument-type]
         settings.database_url,
         echo=False,
     )
