@@ -4,7 +4,7 @@ import logging
 from typing import cast
 import uuid
 
-from fastapi import HTTPException, status
+from fastapi import BackgroundTasks, HTTPException, status
 from pydantic import ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -127,7 +127,7 @@ class ConversationService:
         *,
         user_id: str,
         payload: CreateConversationWithMessageRequest,
-        background_tasks=None,
+        background_tasks: BackgroundTasks | None = None,
     ) -> ConversationWithMessagesResponse:
         content = payload.content.strip()
         if not content:
