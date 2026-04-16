@@ -5,7 +5,6 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
 from starlette.middleware.sessions import SessionMiddleware
@@ -15,6 +14,7 @@ from assistant.logging import setup_logging
 from assistant.routers import auth, chat, conversations, health, user
 from assistant.services import get_llm_service
 from assistant.settings import Settings, settings
+from assistant.utils.database import get_database_url
 
 logger = logging.getLogger(__name__)
 
@@ -60,25 +60,16 @@ def _log_startup_settings(settings_to_log: Settings) -> None:
     )
 
 
-def tcp_connection_url() -> URL:
-    """Initializes a TCP connection URL for a Cloud SQL instance of PostgreSQL.
+def _log_startup_settings(settings_to_log: Settings) -> None:
+    """Log application settings at startup for debugging.
 
-    Returns:
-        URL: The SQLAlchemy URL object configured for TCP connection.
+    Args:
+        settings_to_log: The application settings to log.
     """
-    db_user = settings.database_user
-    db_pass = settings.database_password
-    db_name = settings.database_name
-    db_host = settings.database_host
-    db_port = settings.database_port
-
-    return URL.create(
-        drivername='postgresql+asyncpg',
-        username=db_user,
-        password=db_pass,
-        host=db_host,
-        port=db_port,
-        database=db_name,
+    safe_settings = _get_safe_settings_for_logging(settings_to_log)
+    logger.info(
+        'Application startup configuration: %s',
+        safe_settings,
     )
 
 
@@ -87,11 +78,8 @@ async def lifespan(application: FastAPI):
     setup_logging()
     _log_startup_settings(settings)
 
-    # Connect to the database
-    if settings.database_url is not None:
-        database_url = settings.database_url
-    else:
-        database_url = tcp_connection_url()
+    # Get the canonical database URL (uses DATABASE_URL or builds TCP connection)
+    database_url = get_database_url()
 
     logger.info(
         f'Final Database URL: {database_url!r}'

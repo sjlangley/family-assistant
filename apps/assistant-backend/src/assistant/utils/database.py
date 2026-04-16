@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import Depends, Request
+from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -17,12 +18,42 @@ async def get_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
 DBSession = Annotated[AsyncSession, Depends(get_session)]
 
 
-def _resolve_database_url() -> str:
-    """Resolve the effective database URL for standalone DB sessions."""
-    database_url = settings.database_url or settings.tcp_connection_url()
-    if not database_url:
-        raise RuntimeError('Database URL is not configured.')
-    return database_url
+def get_database_url() -> URL:
+    """Get the canonical database URL, resolving TCP connection if needed.
+
+    Returns configured DATABASE_URL if set, otherwise constructs a TCP
+    connection URL for Cloud SQL using database credentials.
+
+    Returns:
+        URL: The SQLAlchemy URL object configured for database connection.
+
+    Raises:
+        RuntimeError: If database URL cannot be resolved.
+    """
+    # If explicit database_url is configured, use it
+    if settings.database_url is not None:
+        return settings.database_url
+
+    # Otherwise, build TCP connection URL from credentials
+    db_user = settings.database_user
+    db_pass = settings.database_password
+    db_name = settings.database_name
+    db_host = settings.database_host
+    db_port = settings.database_port
+
+    url = URL.create(
+        drivername='postgresql+asyncpg',
+        username=db_user,
+        password=db_pass,
+        host=db_host,
+        port=db_port,
+        database=db_name,
+    )
+
+    if not url:
+        raise RuntimeError('Database URL could not be constructed.')
+
+    return url
 
 
 @asynccontextmanager
@@ -31,10 +62,10 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 
     This creates its own engine connection, suitable for long-running
     background tasks that don't have access to FastAPI's request context.
+    Uses the canonical database URL resolution from get_database_url().
     """
     engine = create_async_engine(
-        # pyrefly: ignore [bad-argument-type]
-        _resolve_database_url(),
+        get_database_url(),
         echo=False,
     )
     # expire_on_commit=False prevents ORM instances from expiring after commit,
