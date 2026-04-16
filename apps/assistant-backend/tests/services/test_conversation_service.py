@@ -3223,3 +3223,303 @@ async def test_background_extraction_continues_if_indexing_fails():
 
     except Exception:
         pytest.fail('Extraction should complete even if indexing fails')
+
+
+# Additional coverage tests for error paths and edge cases
+def test_parse_extraction_result_with_only_summary():
+    """Parse extraction result with summary but no valid facts."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = '{"summary": "Test summary", "facts": []}'
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == 'Test summary'
+    # Empty facts filtered out, returns None
+    assert facts is None
+
+
+def test_parse_extraction_result_with_only_facts():
+    """Parse extraction result with facts but no summary."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = (
+        '{"summary": "", "facts": ['
+        '{"subject": "Test", "fact": "Fact", "confidence": "high"}'
+        ']}'
+    )
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == ''
+    assert len(facts) == 1
+    assert facts[0]['subject'] == 'Test'
+
+
+def test_parse_extraction_result_missing_confidence():
+    """Parse extraction result where confidence field is missing."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = (
+        '{"summary": "Summary", "facts": [{"subject": "Test", "fact": "Fact"}]}'
+    )
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == 'Summary'
+    assert len(facts) == 1
+    # Fact should still be present even without confidence
+
+
+def test_parse_extraction_result_with_text_before_json():
+    """Parse extraction result with text before JSON."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = 'Here is the extraction:\n{"summary": "Test", "facts": []}'
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == 'Test'
+    # Empty facts filtered out, returns None
+    assert facts is None
+
+
+def test_parse_extraction_result_with_text_after_json():
+    """Parse extraction result with text after JSON."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = '{"summary": "Test", "facts": []}\n\nEnd of extraction.'
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == 'Test'
+    # Empty facts filtered out, returns None
+    assert facts is None
+
+
+def test_build_extraction_prompt_with_single_message():
+    """Extraction prompt with only one message in conversation."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    conv_id = uuid.uuid4()
+    msg = Message(
+        id=uuid.uuid4(),
+        conversation_id=conv_id,
+        role='assistant',
+        content='Single response',
+        sequence_number=0,
+    )
+
+    prompt = service._build_extraction_prompt(
+        messages=[msg], assistant_message=msg
+    )
+
+    assert len(prompt) == 2
+    assert 'Single response' in prompt[1]['content']
+
+
+def test_build_extraction_prompt_with_empty_messages():
+    """Extraction prompt with empty message list."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    target_msg = Message(
+        id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        role='assistant',
+        content='Response',
+        sequence_number=0,
+    )
+
+    prompt = service._build_extraction_prompt(
+        messages=[], assistant_message=target_msg
+    )
+
+    assert len(prompt) == 2
+    # Should fallback gracefully with empty message list
+    assert prompt[0]['role'] == 'system'
+
+
+def test_build_memory_saved_annotations_large_fact_count():
+    """Build memory_saved with large number of facts."""
+    service = AssistantAnnotationService()
+
+    annotations = service.build_memory_saved_annotations(
+        summary_saved=False, facts_count=100
+    )
+
+    assert len(annotations) == 1
+    assert '100 memory facts' in annotations[0].label
+
+
+def test_build_memory_saved_annotations_combines_all_saves():
+    """memory_saved combines summary and facts into single annotation."""
+    service = AssistantAnnotationService()
+
+    annotations = service.build_memory_saved_annotations(
+        summary_saved=True, facts_count=5
+    )
+
+    # Should be exactly 1 entry (respects MAX_MEMORY_SAVED budget)
+    assert len(annotations) == 1
+    # Both summary and facts should be in the label
+    assert 'conversation summary' in annotations[0].label
+    assert '5 memory facts' in annotations[0].label
+    # Label should use comma-separated format
+    assert ', ' in annotations[0].label
+
+
+def test_parse_extraction_result_invalid_json():
+    """Parse extraction result with no valid JSON."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = 'This is plain text with no JSON'
+    summary, facts = service._parse_extraction_result(result_text)
+
+    # Should return None for both when no JSON found
+    assert summary is None
+    assert facts is None
+
+
+def test_parse_extraction_result_malformed_json():
+    """Parse extraction result with malformed JSON."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = '{"summary": "Test", "facts": [incomplete'
+    summary, facts = service._parse_extraction_result(result_text)
+
+    # Should handle gracefully and return None
+    assert summary is None
+    assert facts is None
+
+
+def test_parse_extraction_result_facts_missing_subject():
+    """Parse extraction result where facts missing subject field."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = (
+        '{"summary": "Summary", "facts": [{"fact": "Fact without subject"}]}'
+    )
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == 'Summary'
+    # Fact filtered out for missing subject
+    assert facts is None
+
+
+def test_parse_extraction_result_facts_missing_fact():
+    """Parse extraction result where facts missing fact field."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = (
+        '{"summary": "Summary", "facts": [{"subject": "Subject without fact"}]}'
+    )
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == 'Summary'
+    # Fact filtered out for missing fact field
+    assert facts is None
+
+
+def test_parse_extraction_result_empty_strings():
+    """Parse extraction result with empty strings."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = '{"summary": "", "facts": [{"subject": "", "fact": ""}]}'
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == ''
+    # Empty strings filtered out
+    assert facts is None
+
+
+def test_build_memory_saved_annotations_no_saves():
+    """Build memory_saved annotations with no saves."""
+    service = AssistantAnnotationService()
+
+    annotations = service.build_memory_saved_annotations(
+        summary_saved=False, facts_count=0
+    )
+
+    # Should return empty list when nothing saved
+    assert len(annotations) == 0
+
+
+def test_build_memory_saved_annotations_only_summary():
+    """Build memory_saved annotations with only summary saved."""
+    service = AssistantAnnotationService()
+
+    annotations = service.build_memory_saved_annotations(
+        summary_saved=True, facts_count=0
+    )
+
+    assert len(annotations) == 1
+    assert 'conversation summary' in annotations[0].label
+    assert 'memory facts' not in annotations[0].label
+
+
+def test_build_memory_saved_annotations_only_facts():
+    """Build memory_saved annotations with only facts saved."""
+    service = AssistantAnnotationService()
+
+    annotations = service.build_memory_saved_annotations(
+        summary_saved=False, facts_count=3
+    )
+
+    assert len(annotations) == 1
+    assert 'conversation summary' not in annotations[0].label
+    assert '3 memory facts' in annotations[0].label
