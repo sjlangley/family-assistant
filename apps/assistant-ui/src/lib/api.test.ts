@@ -5,6 +5,26 @@ import * as api from "./api";
 const mockFetch = vi.fn();
 globalThis.fetch = mockFetch as typeof fetch;
 
+const populatedAssistantAnnotations = {
+  sources: [
+    {
+      title: "Example Source",
+      url: "https://example.com",
+      snippet: "Example supporting snippet",
+      rationale: "Explains why the source matters",
+    },
+  ],
+  tools: [{ name: "web_fetch", status: "completed" as const }],
+  memory_hits: [
+    {
+      label: "Saved family detail",
+      summary: "Matched a previously saved fact",
+    },
+  ],
+  memory_saved: [],
+  failure: null,
+};
+
 describe("API client", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -196,6 +216,16 @@ describe("API client", () => {
             sequence_number: 1,
             created_at: "2024-01-01T00:00:00Z",
             error: null,
+            annotations: null,
+          },
+          {
+            id: "msg-2",
+            role: "assistant" as const,
+            content: "Hi there!",
+            sequence_number: 2,
+            created_at: "2024-01-01T00:00:01Z",
+            error: null,
+            annotations: populatedAssistantAnnotations,
           },
         ],
       };
@@ -216,6 +246,8 @@ describe("API client", () => {
       );
 
       expect(result).toEqual(mockResponse);
+      expect(result.items[0].annotations).toBeNull();
+      expect(result.items[1].annotations).toEqual(populatedAssistantAnnotations);
     });
 
     it("throws UNAUTHORIZED error on 401 response", async () => {
@@ -269,6 +301,7 @@ describe("API client", () => {
           sequence_number: 1,
           created_at: "2024-01-01T00:00:00Z",
           error: null,
+          annotations: null,
         },
         assistant_message: {
           id: "msg-2",
@@ -277,6 +310,7 @@ describe("API client", () => {
           sequence_number: 2,
           created_at: "2024-01-01T00:00:00Z",
           error: null,
+          annotations: populatedAssistantAnnotations,
         },
       };
 
@@ -300,6 +334,10 @@ describe("API client", () => {
       );
 
       expect(result).toEqual(mockResponse);
+      expect(result.user_message.annotations).toBeNull();
+      expect(result.assistant_message.annotations).toEqual(
+        populatedAssistantAnnotations,
+      );
     });
 
     it("throws UNAUTHORIZED error on 401 response", async () => {
@@ -342,6 +380,7 @@ describe("API client", () => {
           sequence_number: 3,
           created_at: "2024-01-01T00:01:00Z",
           error: null,
+          annotations: null,
         },
         assistant_message: {
           id: "msg-4",
@@ -350,6 +389,7 @@ describe("API client", () => {
           sequence_number: 4,
           created_at: "2024-01-01T00:01:00Z",
           error: null,
+          annotations: null,
         },
       };
 
