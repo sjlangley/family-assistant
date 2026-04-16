@@ -247,7 +247,9 @@ describe("API client", () => {
 
       expect(result).toEqual(mockResponse);
       expect(result.items[0].annotations).toBeNull();
-      expect(result.items[1].annotations).toEqual(populatedAssistantAnnotations);
+      expect(result.items[1].annotations).toEqual(
+        populatedAssistantAnnotations,
+      );
     });
 
     it("throws UNAUTHORIZED error on 401 response", async () => {
