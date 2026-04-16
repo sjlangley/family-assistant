@@ -565,7 +565,6 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
         };
         const pendingMessage = createPendingAssistantMessage();
         setMessages((prev) => [...prev, userMessage, pendingMessage]);
-        setInputMessage("");
 
         try {
           response = await addMessageToConversation(activeConversationId, {
@@ -587,8 +586,12 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
 
           // Update conversations list
           updateConversationsList(response);
+
+          // Clear input only on success
+          setInputMessage("");
         } catch (err) {
           // Remove both pending message and optimistic user message on error
+          // Keep input text so user can retry
           setMessages((prev) =>
             prev.filter(
               (msg) =>
@@ -611,7 +614,6 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
         };
         const pendingMessage = createPendingAssistantMessage();
         setMessages([userMessage, pendingMessage]);
-        setInputMessage("");
 
         try {
           response = await createConversationWithMessage({
@@ -629,8 +631,12 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
 
           // Set active conversation to the new one (this will trigger useEffect but it will skip fetch)
           setActiveConversationId(response.conversation.id);
+
+          // Clear input only on success
+          setInputMessage("");
         } catch (err) {
           // Remove fake optimistic messages if API call fails
+          // Keep input text so user can retry
           setMessages([]);
           throw err;
         }
