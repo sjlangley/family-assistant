@@ -780,6 +780,13 @@ async def test_fact_selection_prefers_multiple_relevant_facts(
     await db_session.commit()
 
     # Newest relevant fact
+    # Add sleep between commits to ensure distinct updated_at timestamps
+    # SQLite uses second-resolution timestamps, so rapid inserts can have
+    # identical updated_at and cause nondeterministic ordering
+    import asyncio
+
+    await asyncio.sleep(0.1)
+
     fact3 = DurableFact(
         user_id=user_id,
         subject='John',

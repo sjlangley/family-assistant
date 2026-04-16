@@ -5,6 +5,7 @@ from typing import cast
 import uuid
 
 from fastapi import BackgroundTasks, HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -737,7 +738,7 @@ class ConversationService:
                                 summary_saved=summary_saved,
                                 facts_count=facts_count,
                             )
-                        except Exception as e:
+                        except (ValidationError, TypeError) as e:
                             logger.error(
                                 f'Failed to enrich assistant annotations with '
                                 f'memory_saved: {str(e)}'
@@ -848,7 +849,7 @@ class ConversationService:
 
             return summary, facts if facts else None
 
-        except (json.JSONDecodeError, TypeError) as e:
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
             logger.warning(f'Failed to parse extraction result: {str(e)}')
             return None, None
 

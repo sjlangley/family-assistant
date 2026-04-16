@@ -416,7 +416,16 @@ async def async_db_session():
         connect_args={'check_same_thread': False, 'timeout': 30},
     )
 
+    # Import models to ensure their metadata is registered before create_all
+    # These imports are unused but necessary for their side effects
+    from assistant.models.conversation_sql import (  # noqa: F401
+        Conversation,
+        Message,
+    )
+
     async with engine.begin() as conn:
+        # This ensures all SQLModel metadata is created, including foreign keys
+        # to Conversation and Message tables referenced by memory models
         await conn.run_sync(SQLModel.metadata.create_all)
 
     async_session_maker = sessionmaker(

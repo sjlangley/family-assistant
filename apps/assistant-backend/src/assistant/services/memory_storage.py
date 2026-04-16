@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 import chromadb
@@ -10,6 +11,8 @@ from assistant.models.memory_sql import (
     DurableFact,
 )
 from assistant.utils.datetime_utils import utc_now
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryStorage:
@@ -207,55 +210,63 @@ class MemoryStorage:
             'source_conversation_id': source_conversation_id,
             'source_message_id': source_message_id,
             'source_excerpt': source_excerpt,
+            'updated_at': func.now(),
         }
 
         # Try atomic PostgreSQL upsert first
-        try:
-            # Use different conflict resolution based on fact_key presence
-            # Must include index_where to match partial unique indexes exactly
-            if fact_key is not None:
-                # Conflict on keyed facts:
-                # (user_id, fact_key, active) WHERE fact_key IS NOT NULL AND active = true
-                stmt = (
-                    insert(DurableFact)
-                    .values(**values)
-                    .on_conflict_do_update(
-                        index_elements=['user_id', 'fact_key', 'active'],
-                        index_where=text(
-                            'fact_key IS NOT NULL AND active = true'
-                        ),
-                        set_=update_values,
+        # Only attempt if actually using PostgreSQL
+        bind = session.bind
+        if bind is not None and bind.dialect.name == 'postgresql':
+            try:
+                # Use different conflict resolution based on fact_key presence
+                # Must include index_where to match partial unique indexes exactly
+                if fact_key is not None:
+                    # Conflict on keyed facts:
+                    # (user_id, fact_key, active) WHERE fact_key IS NOT NULL AND active = true
+                    stmt = (
+                        insert(DurableFact)
+                        .values(**values)
+                        .on_conflict_do_update(
+                            index_elements=['user_id', 'fact_key', 'active'],
+                            index_where=text(
+                                'fact_key IS NOT NULL AND active = true'
+                            ),
+                            set_=update_values,
+                        )
+                        .returning(DurableFact)
                     )
-                    .returning(DurableFact)
-                )
-            else:
-                # Conflict on keyless facts:
-                # (user_id, subject, fact_text, active)
-                # WHERE active = true AND fact_key IS NULL
-                stmt = (
-                    insert(DurableFact)
-                    .values(**values)
-                    .on_conflict_do_update(
-                        index_elements=[
-                            'user_id',
-                            'subject',
-                            'fact_text',
-                            'active',
-                        ],
-                        index_where=text('active = true AND fact_key IS NULL'),
-                        set_=update_values,
+                else:
+                    # Conflict on keyless facts:
+                    # (user_id, subject, fact_text, active)
+                    # WHERE active = true AND fact_key IS NULL
+                    stmt = (
+                        insert(DurableFact)
+                        .values(**values)
+                        .on_conflict_do_update(
+                            index_elements=[
+                                'user_id',
+                                'subject',
+                                'fact_text',
+                                'active',
+                            ],
+                            index_where=text(
+                                'active = true AND fact_key IS NULL'
+                            ),
+                            set_=update_values,
+                        )
+                        .returning(DurableFact)
                     )
-                    .returning(DurableFact)
-                )
 
-            result = await session.execute(stmt)
-            await session.flush()
-            row = result.scalars().first()
-            if row is not None:
-                return row
-        except Exception:
-            # Fall through to manual upsert for SQLite or other DBs
-            pass
+                result = await session.execute(stmt)
+                await session.flush()
+                row = result.scalars().first()
+                if row is not None:
+                    return row
+            except Exception as e:
+                # Log unexpected errors and fall through to manual upsert
+                logger.warning(
+                    f'PostgreSQL upsert failed (falling back to manual): {str(e)}'
+                )
 
         # Fallback: manual upsert for SQLite and other databases
         if fact_key is not None:

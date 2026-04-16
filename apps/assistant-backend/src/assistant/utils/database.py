@@ -37,7 +37,10 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         _resolve_database_url(),
         echo=False,
     )
-    async with AsyncSession(engine) as session:
+    # expire_on_commit=False prevents ORM instances from expiring after commit,
+    # which can cause lazy loads to fail in background jobs where we need to
+    # access attributes after committing (e.g., indexing persisted memory).
+    async with AsyncSession(engine, expire_on_commit=False) as session:
         try:
             yield session
         finally:
