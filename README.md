@@ -73,8 +73,5 @@ See individual READMEs for detailed instructions:
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
-- [Step 6 Notes: Atomic Postgres Memory Writes](STEP_6_IMPLEMENTATION_NOTES.md)
-- [Step 6 Notes: Chroma Indexing Mirror](STEP_6_CHROMA_INDEXING_SUMMARY.md)
-- [Step 6 Notes: Context Assembly Improvements](STEP_6_CONTEXT_ASSEMBLY_IMPROVEMENTS.md)
 - [Design System](DESIGN.md)
 - [Roadmap / TODOs](TODOS.md)

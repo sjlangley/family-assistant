@@ -9,6 +9,28 @@ import pytest
 pytestmark = pytest.mark.asyncio
 
 
+def build_assistant_annotations() -> dict:
+    return {
+        'sources': [
+            {
+                'title': 'Example Source',
+                'url': 'https://example.com',
+                'snippet': 'Example supporting snippet',
+                'rationale': 'Shows why the source matters',
+            }
+        ],
+        'tools': [{'name': 'web_fetch', 'status': 'completed'}],
+        'memory_hits': [
+            {
+                'label': 'Saved family detail',
+                'summary': 'Matched a previously saved fact',
+            }
+        ],
+        'memory_saved': [],
+        'failure': None,
+    }
+
+
 async def test_list_conversations_success(authenticated_async_test_client):
     """Test successfully listing conversations for a user."""
     conv_id_1 = str(uuid4())
@@ -96,6 +118,8 @@ async def test_get_conversation_messages_success(
                 'content': 'Hello',
                 'sequence_number': 1,
                 'created_at': '2024-01-01T00:00:00Z',
+                'error': None,
+                'annotations': None,
             },
             {
                 'id': msg_id_2,
@@ -103,6 +127,8 @@ async def test_get_conversation_messages_success(
                 'content': 'Hi there!',
                 'sequence_number': 2,
                 'created_at': '2024-01-01T00:00:00Z',
+                'error': None,
+                'annotations': build_assistant_annotations(),
             },
         ],
     }
@@ -126,8 +152,13 @@ async def test_get_conversation_messages_success(
     assert len(data['items']) == 2
     assert data['items'][0]['content'] == 'Hello'
     assert data['items'][0]['role'] == 'user'
+    assert data['items'][0]['annotations'] is None
     assert data['items'][1]['content'] == 'Hi there!'
     assert data['items'][1]['role'] == 'assistant'
+    assert data['items'][1]['annotations'] is not None
+    assert data['items'][1]['annotations']['sources'][0]['title'] == (
+        'Example Source'
+    )
 
 
 async def test_get_conversation_messages_not_found(
@@ -194,6 +225,8 @@ async def test_create_conversation_with_message_success(
             'content': 'What is Python?',
             'sequence_number': 1,
             'created_at': '2024-01-01T00:00:00Z',
+            'error': None,
+            'annotations': None,
         },
         'assistant_message': {
             'id': msg_id_2,
@@ -201,6 +234,8 @@ async def test_create_conversation_with_message_success(
             'sequence_number': 2,
             'content': 'Python is a programming language.',
             'created_at': '2024-01-01T00:00:00Z',
+            'error': None,
+            'annotations': build_assistant_annotations(),
         },
     }
 
@@ -229,10 +264,15 @@ async def test_create_conversation_with_message_success(
     assert 'assistant_message' in data
     assert data['conversation']['title'] == 'Generated Title'
     assert data['user_message']['content'] == 'What is Python?'
+    assert data['user_message']['annotations'] is None
     assert (
         data['assistant_message']['content']
         == 'Python is a programming language.'
     )
+    assert data['assistant_message']['annotations'] is not None
+    assert data['assistant_message']['annotations']['tools'] == [
+        {'name': 'web_fetch', 'status': 'completed'}
+    ]
 
 
 async def test_create_conversation_with_message_default_params(
@@ -255,6 +295,8 @@ async def test_create_conversation_with_message_default_params(
             'content': 'Hello',
             'sequence_number': 1,
             'created_at': '2024-01-01T00:00:00Z',
+            'error': None,
+            'annotations': None,
         },
         'assistant_message': {
             'id': msg_id,
@@ -262,6 +304,8 @@ async def test_create_conversation_with_message_default_params(
             'content': 'Hello',
             'sequence_number': 2,
             'created_at': '2024-01-01T00:00:00Z',
+            'error': None,
+            'annotations': None,
         },
     }
 
@@ -393,6 +437,8 @@ async def test_add_message_to_conversation_success(
             'content': 'Follow-up question',
             'sequence_number': 3,
             'created_at': '2024-01-01T00:00:01Z',
+            'error': None,
+            'annotations': None,
         },
         'assistant_message': {
             'id': assistant_msg_id,
@@ -400,6 +446,8 @@ async def test_add_message_to_conversation_success(
             'content': 'Follow-up response',
             'sequence_number': 4,
             'created_at': '2024-01-01T00:00:01Z',
+            'error': None,
+            'annotations': build_assistant_annotations(),
         },
     }
 
@@ -428,7 +476,12 @@ async def test_add_message_to_conversation_success(
     assert 'assistant_message' in data
     assert data['conversation']['id'] == conv_id
     assert data['user_message']['content'] == 'Follow-up question'
+    assert data['user_message']['annotations'] is None
     assert data['assistant_message']['content'] == 'Follow-up response'
+    assert data['assistant_message']['annotations'] is not None
+    assert data['assistant_message']['annotations']['memory_hits'][0][
+        'label'
+    ] == 'Saved family detail'
 
 
 async def test_add_message_to_conversation_default_params(
@@ -450,6 +503,8 @@ async def test_add_message_to_conversation_default_params(
             'content': 'Hello',
             'sequence_number': 1,
             'created_at': '2024-01-01T00:00:01Z',
+            'error': None,
+            'annotations': None,
         },
         'assistant_message': {
             'id': str(uuid4()),
@@ -457,6 +512,8 @@ async def test_add_message_to_conversation_default_params(
             'content': 'Hi',
             'sequence_number': 2,
             'created_at': '2024-01-01T00:00:01Z',
+            'error': None,
+            'annotations': None,
         },
     }
 
@@ -627,6 +684,8 @@ async def test_create_conversation_with_message_passes_background_tasks(
             'content': 'Hello',
             'sequence_number': 1,
             'created_at': '2024-01-01T00:00:00Z',
+            'error': None,
+            'annotations': None,
         },
         'assistant_message': {
             'id': str(uuid4()),
@@ -634,6 +693,8 @@ async def test_create_conversation_with_message_passes_background_tasks(
             'content': 'Hi!',
             'sequence_number': 2,
             'created_at': '2024-01-01T00:00:00Z',
+            'error': None,
+            'annotations': None,
         },
     }
 
@@ -679,6 +740,8 @@ async def test_add_message_to_conversation_passes_background_tasks(
             'content': 'Follow-up',
             'sequence_number': 3,
             'created_at': '2024-01-01T00:00:00Z',
+            'error': None,
+            'annotations': None,
         },
         'assistant_message': {
             'id': str(uuid4()),
@@ -686,6 +749,8 @@ async def test_add_message_to_conversation_passes_background_tasks(
             'content': 'Response',
             'sequence_number': 4,
             'created_at': '2024-01-01T00:00:00Z',
+            'error': None,
+            'annotations': None,
         },
     }
 
