@@ -1,13 +1,16 @@
 from dataclasses import dataclass
 import json
+import logging
 from typing import cast
 import uuid
 
-from fastapi import HTTPException, status
+from fastapi import BackgroundTasks, HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from assistant.constants import MAXIMUM_TOOL_ROUNDS, SYSTEM_PROMPT
+from assistant.models.annotations import AssistantAnnotations
 from assistant.models.conversation import (
     ConversationSummary,
     ConversationWithMessagesResponse,
@@ -31,10 +34,13 @@ from assistant.services.assistant_annotations import (
 )
 from assistant.services.context_assembly import ContextAssemblyService
 from assistant.services.llm_service import LLMService
+from assistant.services.memory_storage import MemoryStorage
 from assistant.services.tool_service import ToolService
 from assistant.services.tools.errors import UnsupportedToolError
 from assistant.services.tools.factory import DisabledToolError
 from assistant.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -63,6 +69,7 @@ class ConversationService:
         context_assembly: ContextAssemblyService,
         tool_service: ToolService,
         annotation_service: AssistantAnnotationService | None = None,
+        memory_storage: MemoryStorage | None = None,
     ) -> None:
         self.llm_service = llm_service
         self.context_assembly = context_assembly
@@ -70,6 +77,7 @@ class ConversationService:
         self.annotation_service = (
             annotation_service or AssistantAnnotationService()
         )
+        self.memory_storage = memory_storage
 
     async def list_conversations(
         self,
@@ -119,6 +127,7 @@ class ConversationService:
         *,
         user_id: str,
         payload: CreateConversationWithMessageRequest,
+        background_tasks: BackgroundTasks | None = None,
     ) -> ConversationWithMessagesResponse:
         content = payload.content.strip()
         if not content:
@@ -209,6 +218,17 @@ class ConversationService:
         await session.refresh(user_message)
         await session.refresh(assistant_message)
 
+        # Schedule background extraction only on successful completion
+        # (no terminal LLM/tool error)
+        if not loop_result.error and background_tasks and self.memory_storage:
+            background_tasks.add_task(
+                self.extract_and_save_background,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                assistant_message_id=assistant_message.id,
+                latest_user_message_id=user_message.id,
+            )
+
         # If there was a terminal error, raise HTTP exception after persisting
         if loop_result.error:
             raise llm_completion_error_to_http_exception(loop_result.error)
@@ -226,6 +246,7 @@ class ConversationService:
         user_id: str,
         conversation_id: uuid.UUID,
         payload: CreateMessageRequest,
+        background_tasks=None,
     ) -> ConversationWithMessagesResponse:
         content = payload.content.strip()
         if not content:
@@ -321,6 +342,17 @@ class ConversationService:
         await session.refresh(conversation)
         await session.refresh(user_message)
         await session.refresh(assistant_message)
+
+        # Schedule background extraction only on successful completion
+        # (no terminal LLM/tool error)
+        if not loop_result.error and background_tasks and self.memory_storage:
+            background_tasks.add_task(
+                self.extract_and_save_background,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                assistant_message_id=assistant_message.id,
+                latest_user_message_id=user_message.id,
+            )
 
         # If there was a terminal error, raise HTTP exception after persisting
         if loop_result.error:
@@ -532,4 +564,373 @@ class ConversationService:
             created_at=message.created_at,
             error=message.error,
             annotations=message.annotations,
+        )
+
+    async def extract_and_save_background(
+        self,
+        *,
+        user_id: str,
+        conversation_id: uuid.UUID,
+        assistant_message_id: uuid.UUID,
+        latest_user_message_id: uuid.UUID | None = None,
+    ) -> None:
+        """Background extraction job: extract summary and facts after successful response.
+
+        This method runs after the assistant message has been persisted, outside the
+        request path. It:
+        1. Loads a fresh database session
+        2. Reloads conversation and messages from canonical Postgres
+        3. Extracts refreshed summary using LLMService
+        4. Extracts durable facts worth saving
+        5. Persists to Postgres via MemoryStorage
+        6. Mirrors summary/facts to Chroma for retrieval support
+        7. Updates assistant message annotations with truthful memory_saved data
+
+        Failures at any point are logged but do not affect the already-persisted
+        conversation or user-visible chat responses.
+
+        Args:
+            user_id: User ID for isolation
+            conversation_id: Conversation UUID
+            assistant_message_id: UUID of assistant message to extract from
+            latest_user_message_id: Optional UUID of latest user message (context hint)
+        """
+        try:
+            # Import here to avoid circular imports and to get fresh session
+            from assistant.utils.database import get_db_session
+
+            async with get_db_session() as session:
+                # Reload conversation and messages from canonical Postgres
+                _ = await self._get_conversation_for_user(
+                    session,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                )
+
+                messages = await self._get_messages_for_conversation(
+                    session,
+                    conversation_id=conversation_id,
+                )
+
+                # Find the assistant message we just created
+                assistant_msg = next(
+                    (m for m in messages if m.id == assistant_message_id),
+                    None,
+                )
+                if not assistant_msg:
+                    logger.warning(
+                        f'Background extraction: assistant message '
+                        f'{assistant_message_id} not found in conversation '
+                        f'{conversation_id}'
+                    )
+                    return
+
+                # Extract summary and facts from the latest turns
+                extraction_prompt = self._build_extraction_prompt(
+                    messages=messages,
+                    assistant_message=assistant_msg,
+                )
+
+                try:
+                    # Call LLM for extraction
+                    completion_result = (
+                        await self.llm_service.complete_messages(
+                            messages=extraction_prompt,
+                            model=settings.llm_model,
+                            temperature=0.3,  # Lower temperature for extraction
+                            max_tokens=1000,
+                        )
+                    )
+
+                    # Parse extraction output
+                    summary_text, facts = self._parse_extraction_result(
+                        completion_result.content
+                    )
+
+                    # Track what we actually save
+                    summary_saved = False
+                    persisted_summary = None
+                    facts_count = 0
+                    persisted_facts = []
+
+                    # Persist summary if extracted
+                    if summary_text and self.memory_storage:
+                        persisted_summary = await self.memory_storage.upsert_conversation_summary(
+                            session=session,
+                            conversation_id=conversation_id,
+                            user_id=user_id,
+                            summary_text=summary_text,
+                            source_message_id=assistant_message_id,
+                        )
+                        summary_saved = True
+
+                    # Persist each durable fact if extracted
+                    if facts and self.memory_storage:
+                        from assistant.models.memory_sql import (
+                            DurableFactConfidence,
+                            DurableFactSourceType,
+                        )
+
+                        for fact_data in facts:
+                            try:
+                                persisted_fact = await self.memory_storage.upsert_durable_fact(
+                                    session=session,
+                                    user_id=user_id,
+                                    subject=fact_data.get('subject', ''),
+                                    fact_text=fact_data.get('fact', ''),
+                                    confidence=DurableFactConfidence(
+                                        fact_data.get('confidence', 'medium')
+                                    ),
+                                    source_type=DurableFactSourceType.CONVERSATION,
+                                    source_conversation_id=conversation_id,
+                                    source_message_id=assistant_message_id,
+                                    source_excerpt=assistant_msg.content[:240]
+                                    if assistant_msg.content
+                                    else None,
+                                )
+                                persisted_facts.append(persisted_fact)
+                                facts_count += 1
+                            except Exception as e:
+                                logger.warning(
+                                    f'Failed to save durable fact: {str(e)}'
+                                )
+
+                    # Commit the session to persist all writes
+                    await session.commit()
+
+                    # Index persisted memory into Chroma for retrieval support
+                    if self.memory_storage:
+                        if persisted_summary:
+                            try:
+                                self.memory_storage.index_conversation_summary(
+                                    persisted_summary
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    f'Failed to index conversation summary in '
+                                    f'Chroma: {str(e)}'
+                                )
+
+                        for persisted_fact in persisted_facts:
+                            try:
+                                self.memory_storage.index_durable_fact(
+                                    persisted_fact
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    f'Failed to index durable fact in Chroma: '
+                                    f'{str(e)}'
+                                )
+
+                    logger.info(
+                        f'Background extraction completed for conversation '
+                        f'{conversation_id}: summary_saved={summary_saved}, '
+                        f'facts_count={facts_count}'
+                    )
+
+                    # Now enrich the assistant message annotations with memory_saved
+                    # This must happen AFTER commit to ensure all memory writes are canonical
+                    if summary_saved or facts_count > 0:
+                        try:
+                            await self._enrich_assistant_annotations_with_memory_saved(
+                                session=session,
+                                assistant_message_id=assistant_message_id,
+                                summary_saved=summary_saved,
+                                facts_count=facts_count,
+                            )
+                        except (ValidationError, TypeError) as e:
+                            logger.error(
+                                f'Failed to enrich assistant annotations with '
+                                f'memory_saved: {str(e)}'
+                            )
+                            # Do not propagate - annotation enrichment failure
+                            # should not affect the already-successful extraction
+
+                except Exception as e:
+                    logger.error(
+                        f'Background extraction failed for conversation '
+                        f'{conversation_id}: {str(e)}'
+                    )
+                    await session.rollback()
+
+        except Exception as e:
+            logger.error(
+                f'Background extraction job failed for conversation '
+                f'{conversation_id}: {str(e)}'
+            )
+
+    def _build_extraction_prompt(
+        self,
+        messages: list[Message],
+        assistant_message: Message,
+    ) -> list[dict]:
+        """Build an LLM prompt for extracting summary and facts.
+
+        Slices the conversation relative to the target assistant message,
+        not the current tail. This ensures that if new messages are added
+        before extraction completes, we still extract context for the
+        correct exchange and correctly attribute facts/summary to the
+        target message.
+
+        Returns a minimal prompt structure for extraction.
+        """
+        # Find the index of the target assistant message
+        msg_index = next(
+            (i for i, m in enumerate(messages) if m.id == assistant_message.id),
+            -1,
+        )
+
+        if msg_index == -1:
+            # Fallback: should not happen, but use last 4 as safety net
+            logger.warning(
+                f'Target assistant message {assistant_message.id} not found '
+                f'in message list during extraction prompt build'
+            )
+            recent = messages[-4:] if len(messages) > 4 else messages
+        else:
+            # Include up to 3 messages before the target assistant message,
+            # plus the message itself. This gives us the user's request + our
+            # response in context.
+            start_idx = max(0, msg_index - 3)
+            recent = messages[start_idx : msg_index + 1]
+
+        # Build a simple extraction prompt
+        user_content = (
+            'Please extract:\n'
+            '1. A brief one-sentence summary of this conversation update\n'
+            '2. Any important facts to remember about the user\n\n'
+            'Format as JSON:\n'
+            '{"summary": "...", "facts": [{"subject": "...", "fact": "...", "confidence": "high|medium|low"}]}\n\n'
+            'Recent exchange:\n'
+        )
+
+        for msg in recent:
+            role_label = 'User' if msg.role == 'user' else 'Assistant'
+            user_content += f'{role_label}: {msg.content}\n'
+
+        return [
+            {
+                'role': 'system',
+                'content': (
+                    'You are a memory extraction assistant. '
+                    'Extract brief, factual summaries and user facts '
+                    'from conversations. Be concise and accurate.'
+                ),
+            },
+            {'role': 'user', 'content': user_content},
+        ]
+
+    def _parse_extraction_result(
+        self, result_text: str
+    ) -> tuple[str | None, list[dict] | None]:
+        """Parse LLM extraction result into summary and facts.
+
+        Returns:
+          Tuple of (summary_text, facts_list)
+          Both can be None if extraction fails or produces empty results.
+        """
+        try:
+            # Try to extract JSON from result
+            start_idx = result_text.find('{')
+            end_idx = result_text.rfind('}') + 1
+
+            if start_idx == -1 or end_idx == 0:
+                logger.warning('No JSON found in extraction result')
+                return None, None
+
+            json_str = result_text[start_idx:end_idx]
+            data = json.loads(json_str)
+
+            summary = data.get('summary')
+            facts = data.get('facts', [])
+
+            # Filter out empty facts
+            facts = [f for f in facts if f.get('fact') and f.get('subject')]
+
+            return summary, facts if facts else None
+
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            logger.warning(f'Failed to parse extraction result: {str(e)}')
+            return None, None
+
+    async def _enrich_assistant_annotations_with_memory_saved(
+        self,
+        session: AsyncSession,
+        *,
+        assistant_message_id: uuid.UUID,
+        summary_saved: bool = False,
+        facts_count: int = 0,
+    ) -> None:
+        """Enrich persisted assistant message annotations with truthful memory_saved data.
+
+        After successful background extraction and persistence, update the assistant
+        message row to include memory_saved annotations reflecting what was actually
+        persisted. This is read-modify-write to preserve existing annotations
+        (sources, tools, memory_hits, failure).
+
+        Args:
+            session: Database session
+            assistant_message_id: UUID of the assistant message to enrich
+            summary_saved: Whether conversation summary was saved/updated
+            facts_count: Number of durable facts that were saved/updated
+        """
+        # Read the current message row
+        stmt = select(Message).where(
+            # pyrefly: ignore [bad-argument-type]
+            Message.id == assistant_message_id
+        )
+        result = await session.execute(stmt)
+        message = result.scalar_one_or_none()
+
+        if not message:
+            logger.warning(
+                f'Assistant message {assistant_message_id} not found '
+                f'for annotation enrichment'
+            )
+            return
+
+        # Get current annotations or start with empty
+        current_annotations_dict = message.annotations or {}
+
+        try:
+            # Parse current annotations to AssistantAnnotations model
+            current_annotations = AssistantAnnotations(
+                # pyrefly: ignore [bad-unpacking]
+                **current_annotations_dict
+            )
+        except Exception:
+            # If current annotations are malformed, log but continue with clean slate
+            logger.warning(
+                f'Failed to parse current annotations for message '
+                f'{assistant_message_id}, using fresh annotations'
+            )
+            current_annotations = AssistantAnnotations()
+
+        # Build memory_saved annotations from what was actually saved
+        memory_saved = self.annotation_service.build_memory_saved_annotations(
+            summary_saved=summary_saved, facts_count=facts_count
+        )
+
+        # Merge: preserve all existing fields, update only memory_saved
+        enriched_annotations = AssistantAnnotations(
+            sources=current_annotations.sources,
+            tools=current_annotations.tools,
+            memory_hits=current_annotations.memory_hits,
+            memory_saved=memory_saved,  # NEW: add memory_saved from extraction
+            failure=current_annotations.failure,
+        )
+
+        # Update the message row with enriched annotations
+        enriched_dict = enriched_annotations.model_dump()
+        await session.execute(
+            update(Message)
+            # pyrefly: ignore [bad-argument-type]
+            .where(Message.id == assistant_message_id)
+            .values(annotations=enriched_dict)
+        )
+        await session.commit()
+
+        logger.info(
+            f'Enriched assistant message {assistant_message_id} with '
+            f'memory_saved annotations'
         )

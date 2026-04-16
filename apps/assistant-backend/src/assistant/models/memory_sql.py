@@ -99,10 +99,21 @@ class DurableFact(SQLModel, table=True):
             'subject',
         ),
         Index(
-            'durable_facts_user_fact_key_active_idx',
+            'durable_facts_user_fact_key_active_uniq',
             'user_id',
             'fact_key',
             'active',
+            unique=True,
+            postgresql_where=text('fact_key IS NOT NULL AND active = true'),
+        ),
+        Index(
+            'durable_facts_user_subject_text_active_uniq',
+            'user_id',
+            'subject',
+            'fact_text',
+            'active',
+            unique=True,
+            postgresql_where=text('active = true AND fact_key IS NULL'),
         ),
         Index('durable_facts_source_message_idx', 'source_message_id'),
     )

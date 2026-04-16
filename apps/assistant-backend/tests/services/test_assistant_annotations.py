@@ -356,3 +356,65 @@ class TestTextTruncation:
         # Should end at reasonable word boundary, not mid-word
         assert len(truncated) <= 42  # 40 + "..."
         assert '...' in truncated
+
+
+class TestMemorySavedAnnotations:
+    """Test memory_saved annotation building."""
+
+    def test_build_memory_saved_summary_only(self, annotation_service):
+        """Build memory_saved when only summary was saved."""
+        annotations = annotation_service.build_memory_saved_annotations(
+            summary_saved=True, facts_count=0
+        )
+
+        assert len(annotations) == 1
+        assert annotations[0].label == 'conversation summary'
+        assert 'conversation summary' in annotations[0].summary
+
+    def test_build_memory_saved_facts_only(self, annotation_service):
+        """Build memory_saved when only facts were saved."""
+        annotations = annotation_service.build_memory_saved_annotations(
+            summary_saved=False, facts_count=2
+        )
+
+        assert len(annotations) == 1
+        assert '2 memory facts' in annotations[0].label
+        assert 'fact' in annotations[0].summary
+
+    def test_build_memory_saved_single_fact(self, annotation_service):
+        """Build memory_saved with singular form for single fact."""
+        annotations = annotation_service.build_memory_saved_annotations(
+            summary_saved=False, facts_count=1
+        )
+
+        assert len(annotations) == 1
+        assert '1 memory fact' in annotations[0].label
+        assert 'fact' in annotations[0].label
+
+    def test_build_memory_saved_summary_and_facts(self, annotation_service):
+        """Build memory_saved when both summary and facts were saved."""
+        annotations = annotation_service.build_memory_saved_annotations(
+            summary_saved=True, facts_count=3
+        )
+
+        assert len(annotations) == 1
+        # Both should be in the label
+        assert 'conversation summary' in annotations[0].label
+        assert '3 memory facts' in annotations[0].label
+
+    def test_build_memory_saved_nothing_returns_empty(self, annotation_service):
+        """Return empty list when nothing was saved."""
+        annotations = annotation_service.build_memory_saved_annotations(
+            summary_saved=False, facts_count=0
+        )
+
+        assert len(annotations) == 0
+
+    def test_build_memory_saved_respects_max_budget(self, annotation_service):
+        """Respects MAX_MEMORY_SAVED budget of 1 entry."""
+        annotations = annotation_service.build_memory_saved_annotations(
+            summary_saved=True, facts_count=5
+        )
+
+        # Should still be 1 entry (combines both into single annotation)
+        assert len(annotations) <= annotation_service.MAX_MEMORY_SAVED

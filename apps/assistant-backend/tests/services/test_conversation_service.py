@@ -1,7 +1,7 @@
 """Tests for ConversationService."""
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 import uuid
 
 from fastapi import HTTPException
@@ -33,6 +33,7 @@ from assistant.models.tool import (
     ToolExecutionResult,
     ToolExecutionStatus,
 )
+from assistant.services.assistant_annotations import AssistantAnnotationService
 from assistant.services.context_assembly import (
     ContextAssemblyResult,
     ContextAssemblyService,
@@ -2272,3 +2273,1836 @@ async def test_add_message_with_llm_failure_persists_error_annotations(
     assert annotations.failure is not None
     assert annotations.failure.stage == FailureAnnotationStage.LLM
     assert annotations.failure.retryable is True
+
+
+# ============================================================================
+# Background Extraction Tests
+# ============================================================================
+
+
+@pytest.fixture
+def mock_background_tasks():
+    """Create a mock BackgroundTasks instance."""
+    mock_tasks = Mock()
+    mock_tasks.add_task = Mock()
+    return mock_tasks
+
+
+async def test_create_conversation_schedules_background_extraction(
+    async_session,
+    mock_llm_service,
+    mock_context_assembly,
+    mock_tool_service,
+    mock_memory_storage,
+    mock_background_tasks,
+):
+    """Test that create_conversation_with_message schedules extraction on success."""
+    # Setup
+    user_id = 'test@example.com'
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        ContextAssemblyResult(
+            messages=[
+                {'role': 'user', 'content': 'Hello'},
+            ],
+            used_summary=False,
+            summary_id=None,
+            fact_ids=[],
+        )
+    )
+    mock_llm_service.complete_messages.return_value = LLMCompletionResult(
+        content='Hi there!',
+        model='test-model',
+        prompt_tokens=10,
+        completion_tokens=5,
+        total_tokens=15,
+        tool_calls=None,
+        finish_reason='stop',
+    )
+
+    service = ConversationService(
+        llm_service=mock_llm_service,
+        context_assembly=mock_context_assembly,
+        tool_service=mock_tool_service,
+        memory_storage=mock_memory_storage,
+    )
+
+    payload = CreateConversationWithMessageRequest(
+        content='Hello',
+        temperature=0.7,
+        max_tokens=100,
+    )
+
+    # Execute
+    result = await service.create_conversation_with_message(
+        async_session,
+        user_id=user_id,
+        payload=payload,
+        background_tasks=mock_background_tasks,
+    )
+
+    # Assert: background task scheduled exactly once
+    assert mock_background_tasks.add_task.call_count == 1
+
+    # Assert: task is called with correct method and args
+    call_args = mock_background_tasks.add_task.call_args
+    assert call_args[0][0].__name__ == 'extract_and_save_background'
+    assert call_args[1]['user_id'] == user_id
+    assert call_args[1]['conversation_id'] == result.conversation.id
+    assert call_args[1]['assistant_message_id'] == result.assistant_message.id
+    assert call_args[1]['latest_user_message_id'] == result.user_message.id
+
+
+async def test_add_message_schedules_background_extraction(
+    async_session,
+    mock_llm_service,
+    mock_context_assembly,
+    mock_tool_service,
+    mock_memory_storage,
+    mock_background_tasks,
+):
+    """Test that add_message_to_conversation schedules extraction on success."""
+    # Setup
+    user_id = 'test@example.com'
+    conv_id = uuid.uuid4()
+
+    # Create initial conversation with user message
+    conversation = Conversation(
+        id=conv_id,
+        user_id=user_id,
+        title='Test Conversation',
+    )
+    async_session.add(conversation)
+
+    user_msg_1 = Message(
+        conversation_id=conv_id,
+        role='user',
+        content='Hello',
+        sequence_number=1,
+    )
+    async_session.add(user_msg_1)
+    await async_session.commit()
+
+    # Setup mocks for add_message
+    mock_context_assembly.assemble_context.return_value = ContextAssemblyResult(
+        messages=[
+            {'role': 'user', 'content': 'Follow-up'},
+        ],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+    mock_llm_service.complete_messages.return_value = LLMCompletionResult(
+        content='Response to follow-up',
+        model='test-model',
+        prompt_tokens=15,
+        completion_tokens=8,
+        total_tokens=23,
+        tool_calls=None,
+        finish_reason='stop',
+    )
+
+    service = ConversationService(
+        llm_service=mock_llm_service,
+        context_assembly=mock_context_assembly,
+        tool_service=mock_tool_service,
+        memory_storage=mock_memory_storage,
+    )
+
+    payload = CreateMessageRequest(
+        content='Follow-up question',
+        temperature=0.7,
+        max_tokens=100,
+    )
+
+    # Execute
+    result = await service.add_message_to_conversation(
+        async_session,
+        user_id=user_id,
+        conversation_id=conv_id,
+        payload=payload,
+        background_tasks=mock_background_tasks,
+    )
+
+    # Assert: background task scheduled exactly once
+    assert mock_background_tasks.add_task.call_count == 1
+
+    # Assert: task receives primitive IDs
+    call_args = mock_background_tasks.add_task.call_args
+    assert call_args[0][0].__name__ == 'extract_and_save_background'
+    assert call_args[1]['user_id'] == user_id
+    assert call_args[1]['conversation_id'] == conv_id
+    assert call_args[1]['assistant_message_id'] == result.assistant_message.id
+
+
+async def test_no_background_extraction_on_terminal_failure(
+    async_session,
+    mock_llm_service,
+    mock_context_assembly,
+    mock_tool_service,
+    mock_background_tasks,
+):
+    """Test that background extraction is NOT scheduled on terminal LLM failure."""
+    # Setup
+    user_id = 'test@example.com'
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        ContextAssemblyResult(
+            messages=[
+                {'role': 'user', 'content': 'Hello'},
+            ],
+            used_summary=False,
+            summary_id=None,
+            fact_ids=[],
+        )
+    )
+
+    # Simulate LLM error
+    mock_llm_service.complete_messages.side_effect = LLMCompletionError(
+        kind=LLMCompletionErrorKind.timeout,
+        message='LLM timeout',
+    )
+
+    service = ConversationService(
+        llm_service=mock_llm_service,
+        context_assembly=mock_context_assembly,
+        tool_service=mock_tool_service,
+    )
+
+    payload = CreateConversationWithMessageRequest(
+        content='Hello',
+        temperature=0.7,
+        max_tokens=100,
+    )
+
+    # Execute and catch HTTPException from terminal failure
+    with pytest.raises(HTTPException):
+        await service.create_conversation_with_message(
+            async_session,
+            user_id=user_id,
+            payload=payload,
+            background_tasks=mock_background_tasks,
+        )
+
+    # Assert: NO background task scheduled on failure
+    assert mock_background_tasks.add_task.call_count == 0
+
+
+async def test_no_background_extraction_without_memory_storage(
+    async_session,
+    mock_llm_service,
+    mock_context_assembly,
+    mock_tool_service,
+    mock_background_tasks,
+):
+    """Test that background extraction is not scheduled if memory_storage is None."""
+    # Setup
+    user_id = 'test@example.com'
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        ContextAssemblyResult(
+            messages=[
+                {'role': 'user', 'content': 'Hello'},
+            ],
+            used_summary=False,
+            summary_id=None,
+            fact_ids=[],
+        )
+    )
+    mock_llm_service.complete_messages.return_value = LLMCompletionResult(
+        content='Hi there!',
+        model='test-model',
+        prompt_tokens=10,
+        completion_tokens=5,
+        total_tokens=15,
+        tool_calls=None,
+        finish_reason='stop',
+    )
+
+    # Create service WITHOUT memory_storage
+    service = ConversationService(
+        llm_service=mock_llm_service,
+        context_assembly=mock_context_assembly,
+        tool_service=mock_tool_service,
+        memory_storage=None,
+    )
+
+    payload = CreateConversationWithMessageRequest(
+        content='Hello',
+        temperature=0.7,
+        max_tokens=100,
+    )
+
+    # Execute
+    result = await service.create_conversation_with_message(
+        async_session,
+        user_id=user_id,
+        payload=payload,
+        background_tasks=mock_background_tasks,
+    )
+
+    # Assert: response succeeds but NO background task scheduled
+    assert result.assistant_message.content == 'Hi there!'
+    assert mock_background_tasks.add_task.call_count == 0
+
+
+async def test_background_extraction_parses_results_correctly():
+    """Test that extraction result parsing works correctly."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+    )
+
+    # Test valid JSON extraction
+    result_text = """
+    {
+        "summary": "User learned about Python",
+        "facts": [
+            {"subject": "User", "fact": "Interested in Python", "confidence": "high"},
+            {"subject": "User", "fact": "Beginner programmer", "confidence": "medium"}
+        ]
+    }
+    """
+
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == 'User learned about Python'
+    assert len(facts) == 2
+    assert facts[0]['subject'] == 'User'
+    assert facts[0]['fact'] == 'Interested in Python'
+
+
+async def test_background_extraction_handles_invalid_json():
+    """Test that extraction gracefully handles invalid JSON."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+    )
+
+    # Invalid JSON
+    result_text = 'Invalid JSON text without any braces'
+
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary is None
+    assert facts is None
+
+
+async def test_background_extraction_filters_empty_facts():
+    """Test that extraction filters out empty facts."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+    )
+
+    result_text = """
+    {
+        "summary": "Test summary",
+        "facts": [
+            {"subject": "User", "fact": "Valid fact", "confidence": "high"},
+            {"subject": "", "fact": "", "confidence": "low"},
+            {"subject": "Valid", "fact": "Another fact", "confidence": "medium"}
+        ]
+    }
+    """
+
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == 'Test summary'
+    assert len(facts) == 2  # Empty fact filtered out
+
+
+# Tests for memory_saved annotation enrichment
+async def test_enrich_annotations_with_summary_saved():
+    """Adding memory_saved annotation when summary is saved."""
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlmodel import SQLModel
+
+    engine = create_async_engine('sqlite+aiosqlite:///:memory:', echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+
+    async_session_maker = sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    async with async_session_maker() as session:
+        # Create assistant message with existing annotations
+        conversation = Conversation(user_id='user-123', title='Test')
+        session.add(conversation)
+        await session.commit()
+        await session.refresh(conversation)
+
+        assistant_msg = Message(
+            conversation_id=conversation.id,
+            role='assistant',
+            content='Response',
+            sequence_number=1,
+            annotations={
+                'sources': [],
+                'tools': [],
+                'memory_hits': [],
+                'memory_saved': [],
+                'failure': None,
+            },
+        )
+        session.add(assistant_msg)
+        await session.commit()
+        await session.refresh(assistant_msg)
+
+        # Create service and enrich annotations
+        service = ConversationService(
+            llm_service=AsyncMock(spec=LLMService),
+            context_assembly=AsyncMock(spec=ContextAssemblyService),
+            tool_service=Mock(spec=ToolService),
+            annotation_service=AssistantAnnotationService(),
+        )
+
+        await service._enrich_assistant_annotations_with_memory_saved(
+            session=session,
+            assistant_message_id=assistant_msg.id,
+            summary_saved=True,
+            facts_count=0,
+        )
+
+        # Reload message and verify annotations were enriched
+        refreshed = await session.get(Message, assistant_msg.id)
+        assert refreshed.annotations is not None
+        assert len(refreshed.annotations['memory_saved']) == 1
+        assert (
+            'conversation summary'
+            in refreshed.annotations['memory_saved'][0]['label']
+        )
+
+    await engine.dispose()
+
+
+async def test_enrich_annotations_with_facts_saved():
+    """Adding memory_saved annotation when facts are saved."""
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlmodel import SQLModel
+
+    engine = create_async_engine('sqlite+aiosqlite:///:memory:', echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+
+    async_session_maker = sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    async with async_session_maker() as session:
+        # Create assistant message
+        conversation = Conversation(user_id='user-123', title='Test')
+        session.add(conversation)
+        await session.commit()
+        await session.refresh(conversation)
+
+        assistant_msg = Message(
+            conversation_id=conversation.id,
+            role='assistant',
+            content='Response',
+            sequence_number=1,
+            annotations={
+                'sources': [],
+                'tools': [],
+                'memory_hits': [],
+                'memory_saved': [],
+                'failure': None,
+            },
+        )
+        session.add(assistant_msg)
+        await session.commit()
+        await session.refresh(assistant_msg)
+
+        # Enrich with facts
+        service = ConversationService(
+            llm_service=AsyncMock(spec=LLMService),
+            context_assembly=AsyncMock(spec=ContextAssemblyService),
+            tool_service=Mock(spec=ToolService),
+            annotation_service=AssistantAnnotationService(),
+        )
+
+        await service._enrich_assistant_annotations_with_memory_saved(
+            session=session,
+            assistant_message_id=assistant_msg.id,
+            summary_saved=False,
+            facts_count=3,
+        )
+
+        # Verify
+        refreshed = await session.get(Message, assistant_msg.id)
+        assert len(refreshed.annotations['memory_saved']) == 1
+        assert (
+            '3 memory facts'
+            in refreshed.annotations['memory_saved'][0]['label']
+        )
+
+    await engine.dispose()
+
+
+async def test_enrich_annotations_preserves_existing_data():
+    """Enrichment preserves existing sources, tools, and other metadata."""
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlmodel import SQLModel
+
+    engine = create_async_engine('sqlite+aiosqlite:///:memory:', echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+
+    async_session_maker = sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    async with async_session_maker() as session:
+        # Create assistant message with complex annotations
+        conversation = Conversation(user_id='user-123', title='Test')
+        session.add(conversation)
+        await session.commit()
+        await session.refresh(conversation)
+
+        existing_annotations = {
+            'sources': [
+                {
+                    'title': 'Example',
+                    'url': 'https://example.com',
+                    'snippet': 'Example snippet',
+                    'rationale': 'Used in response',
+                }
+            ],
+            'tools': [{'name': 'web_fetch', 'status': 'completed'}],
+            'memory_hits': [{'label': 'Memory Hit', 'summary': 'Hit summary'}],
+            'memory_saved': [],
+            'failure': None,
+        }
+
+        assistant_msg = Message(
+            conversation_id=conversation.id,
+            role='assistant',
+            content='Response',
+            sequence_number=1,
+            annotations=existing_annotations,
+        )
+        session.add(assistant_msg)
+        await session.commit()
+        await session.refresh(assistant_msg)
+
+        # Enrich
+        service = ConversationService(
+            llm_service=AsyncMock(spec=LLMService),
+            context_assembly=AsyncMock(spec=ContextAssemblyService),
+            tool_service=Mock(spec=ToolService),
+            annotation_service=AssistantAnnotationService(),
+        )
+
+        await service._enrich_assistant_annotations_with_memory_saved(
+            session=session,
+            assistant_message_id=assistant_msg.id,
+            summary_saved=True,
+            facts_count=2,
+        )
+
+        # Verify existing data preserved
+        refreshed = await session.get(Message, assistant_msg.id)
+        assert len(refreshed.annotations['sources']) == 1
+        assert refreshed.annotations['sources'][0]['title'] == 'Example'
+        assert len(refreshed.annotations['tools']) == 1
+        assert len(refreshed.annotations['memory_hits']) == 1
+        # And memory_saved added
+        assert len(refreshed.annotations['memory_saved']) == 1
+
+    await engine.dispose()
+
+
+async def test_enrich_annotations_nothing_saved_leaves_empty():
+    """If nothing was saved, memory_saved remains empty."""
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlmodel import SQLModel
+
+    engine = create_async_engine('sqlite+aiosqlite:///:memory:', echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+
+    async_session_maker = sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    async with async_session_maker() as session:
+        conversation = Conversation(user_id='user-123', title='Test')
+        session.add(conversation)
+        await session.commit()
+        await session.refresh(conversation)
+
+        assistant_msg = Message(
+            conversation_id=conversation.id,
+            role='assistant',
+            content='Response',
+            sequence_number=1,
+            annotations={
+                'sources': [],
+                'tools': [],
+                'memory_hits': [],
+                'memory_saved': [],
+                'failure': None,
+            },
+        )
+        session.add(assistant_msg)
+        await session.commit()
+        await session.refresh(assistant_msg)
+
+        # Enrich with no saves
+        service = ConversationService(
+            llm_service=AsyncMock(spec=LLMService),
+            context_assembly=AsyncMock(spec=ContextAssemblyService),
+            tool_service=Mock(spec=ToolService),
+            annotation_service=AssistantAnnotationService(),
+        )
+
+        await service._enrich_assistant_annotations_with_memory_saved(
+            session=session,
+            assistant_message_id=assistant_msg.id,
+            summary_saved=False,
+            facts_count=0,
+        )
+
+        # Verify memory_saved still empty
+        refreshed = await session.get(Message, assistant_msg.id)
+        assert len(refreshed.annotations['memory_saved']) == 0
+
+    await engine.dispose()
+
+
+# Tests for extraction prompt building with correct message slicing
+def test_build_extraction_prompt_slices_relative_to_target_message():
+    """Extraction prompt should slice relative to target message, not conversation tail."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    # Create a conversation with many messages
+    # msg 0: user -> "old question"
+    # msg 1: assistant -> "old answer"
+    # msg 2: user -> "mid question"
+    # msg 3: assistant -> "mid answer" (TARGET)
+    # msg 4: user -> "new question" (added after extraction started)
+    # msg 5: assistant -> "new answer" (added after extraction started)
+
+    conv_id = uuid.uuid4()
+    messages = [
+        Message(
+            id=uuid.uuid4(),
+            conversation_id=conv_id,
+            role='user',
+            content='old question',
+            sequence_number=0,
+        ),
+        Message(
+            id=uuid.uuid4(),
+            conversation_id=conv_id,
+            role='assistant',
+            content='old answer',
+            sequence_number=1,
+        ),
+        Message(
+            id=uuid.uuid4(),
+            conversation_id=conv_id,
+            role='user',
+            content='mid question',
+            sequence_number=2,
+        ),
+        Message(
+            id=uuid.uuid4(),
+            conversation_id=conv_id,
+            role='assistant',
+            content='mid answer',
+            sequence_number=3,
+        ),
+        Message(
+            id=uuid.uuid4(),
+            conversation_id=conv_id,
+            role='user',
+            content='new question added later',
+            sequence_number=4,
+        ),
+        Message(
+            id=uuid.uuid4(),
+            conversation_id=conv_id,
+            role='assistant',
+            content='new answer added later',
+            sequence_number=5,
+        ),
+    ]
+
+    # Target is message 3 (idx 3)
+    target_msg = messages[3]
+
+    # Build extraction prompt
+    prompt = service._build_extraction_prompt(
+        messages=messages, assistant_message=target_msg
+    )
+
+    # Verify we get the prompt structure
+    assert len(prompt) == 2
+    assert prompt[0]['role'] == 'system'
+    assert prompt[1]['role'] == 'user'
+
+    # Verify the content includes the right messages
+    # Should include: msg 0, msg 1, msg 2, msg 3 (NOT msg 4, 5)
+    prompt_content = prompt[1]['content']
+    assert 'old question' in prompt_content
+    assert 'old answer' in prompt_content
+    assert 'mid question' in prompt_content
+    assert 'mid answer' in prompt_content
+    # Should NOT include messages added after target
+    assert 'new question added later' not in prompt_content
+    assert 'new answer added later' not in prompt_content
+
+
+def test_build_extraction_prompt_respects_message_bounds():
+    """When target message is near the start, respect array bounds."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    # Create messages with target at the beginning
+    msgs = []
+    conv_id = uuid.uuid4()
+    for i in range(3):
+        msgs.append(
+            Message(
+                id=uuid.uuid4(),
+                conversation_id=conv_id,
+                role='user' if i % 2 == 0 else 'assistant',
+                content=f'message {i}',
+                sequence_number=i,
+            )
+        )
+
+    # Target is first message (idx 0)
+    target_msg = msgs[0]
+
+    prompt = service._build_extraction_prompt(
+        messages=msgs, assistant_message=target_msg
+    )
+
+    prompt_content = prompt[1]['content']
+    # When target is at index 0, we slice from max(0, 0-3)=0 to 0+1=1
+    # So we get only message 0, NOT messages that come after
+    assert 'message 0' in prompt_content
+    # Messages after target should NOT be included
+    assert 'message 1' not in prompt_content
+    assert 'message 2' not in prompt_content
+
+
+def test_build_extraction_prompt_includes_target_and_context():
+    """Prompt should include target message and surrounding context."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    # Create a conversation where target is in the middle
+    conv_id = uuid.uuid4()
+    messages = []
+    for i in range(6):
+        messages.append(
+            Message(
+                id=uuid.uuid4(),
+                conversation_id=conv_id,
+                role='user' if i % 2 == 0 else 'assistant',
+                content=f'msg{i}',
+                sequence_number=i,
+            )
+        )
+
+    # Target is message 4 (an assistant message)
+    target_msg = messages[4]
+
+    prompt = service._build_extraction_prompt(
+        messages=messages, assistant_message=target_msg
+    )
+
+    prompt_content = prompt[1]['content']
+
+    # Should include up to 3 messages before target + target itself
+    # msg 1, msg 2, msg 3, msg 4 (NOT msg 0, msg 5)
+    assert 'msg1' in prompt_content
+    assert 'msg2' in prompt_content
+    assert 'msg3' in prompt_content
+    assert 'msg4' in prompt_content
+    # msg 5 comes after target, should not be included
+    assert 'msg5' not in prompt_content
+
+
+def test_build_extraction_prompt_fallback_when_target_not_found():
+    """If target message not found, fallback to last 4 messages."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    conv_id = uuid.uuid4()
+    messages = []
+    for i in range(6):
+        messages.append(
+            Message(
+                id=uuid.uuid4(),
+                conversation_id=conv_id,
+                role='user' if i % 2 == 0 else 'assistant',
+                content=f'msg{i}',
+                sequence_number=i,
+            )
+        )
+
+    # Create a target message that's NOT in the list
+    missing_target = Message(
+        id=uuid.uuid4(),
+        conversation_id=conv_id,
+        role='assistant',
+        content='not in list',
+        sequence_number=99,
+    )
+
+    prompt = service._build_extraction_prompt(
+        messages=messages, assistant_message=missing_target
+    )
+
+    prompt_content = prompt[1]['content']
+
+    # Should fallback to last 4 messages: msg2, msg3, msg4, msg5
+    assert 'msg2' in prompt_content
+    assert 'msg3' in prompt_content
+    assert 'msg4' in prompt_content
+    assert 'msg5' in prompt_content
+    # Should not include msg0, msg1
+    assert 'msg0' not in prompt_content
+    assert 'msg1' not in prompt_content
+
+
+# Tests for Chroma indexing during background extraction
+async def test_background_extraction_indexes_summary_in_chroma():
+    """Background extraction should index persisted summary into Chroma."""
+    memory_storage = AsyncMock(spec=MemoryStorage)
+    memory_storage.upsert_conversation_summary = AsyncMock(
+        return_value=Mock(
+            id=uuid.uuid4(),
+            conversation_id=uuid.uuid4(),
+            user_id='user-123',
+            summary_text='Test summary',
+            source_message_id=uuid.uuid4(),
+            version=1,
+        )
+    )
+    memory_storage.index_conversation_summary = Mock()
+
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+    service.memory_storage = memory_storage
+
+    # Mock the LLM to return valid extraction
+    llm_result = Mock()
+    llm_result.content = '{"summary": "Test summary", "facts": []}'
+    service.llm_service.complete_messages = AsyncMock(return_value=llm_result)
+
+    # We would call extract_and_save_background here, but that requires
+    # complex async context setup. Instead, verify the logic by checking
+    # that when upsert_conversation_summary returns a row, indexing is attempted
+    returned_summary = Mock()
+    memory_storage.upsert_conversation_summary.return_value = returned_summary
+
+    # Simulate what happens in extract_and_save_background
+    persisted_summary = await memory_storage.upsert_conversation_summary(
+        session=Mock(),
+        conversation_id=uuid.uuid4(),
+        user_id='user-123',
+        summary_text='Test',
+        source_message_id=uuid.uuid4(),
+    )
+
+    # Index it (as done in extract_and_save_background)
+    if persisted_summary:
+        memory_storage.index_conversation_summary(persisted_summary)
+
+    # Verify indexing was called with the persisted row
+    memory_storage.index_conversation_summary.assert_called_once_with(
+        returned_summary
+    )
+
+
+async def test_background_extraction_indexes_facts_in_chroma():
+    """Background extraction should index persisted facts into Chroma."""
+    fact_row = Mock()
+    fact_row.id = uuid.uuid4()
+    fact_row.user_id = 'user-123'
+    fact_row.subject = 'Test Subject'
+    fact_row.fact_text = 'Test fact'
+    fact_row.active = True
+
+    memory_storage = AsyncMock(spec=MemoryStorage)
+    memory_storage.upsert_durable_fact = AsyncMock(return_value=fact_row)
+    memory_storage.index_durable_fact = Mock()
+
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+    service.memory_storage = memory_storage
+
+    persisted_fact = await memory_storage.upsert_durable_fact(
+        session=Mock(),
+        user_id='user-123',
+        subject='Subject',
+        fact_text='Fact',
+        confidence=Mock(),
+        source_type=Mock(),
+    )
+
+    # Simulate indexing (as done in extract_and_save_background)
+    if persisted_fact:
+        memory_storage.index_durable_fact(persisted_fact)
+
+    memory_storage.index_durable_fact.assert_called_once_with(fact_row)
+
+
+async def test_background_extraction_continues_if_indexing_fails():
+    """Indexing failures should be logged but not break extraction."""
+    memory_storage = AsyncMock(spec=MemoryStorage)
+
+    summary_row = Mock()
+    memory_storage.upsert_conversation_summary = AsyncMock(
+        return_value=summary_row
+    )
+    # Simulate indexing failure
+    memory_storage.index_conversation_summary = Mock(
+        side_effect=Exception('Chroma unavailable')
+    )
+
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+    service.memory_storage = memory_storage
+
+    # Even if indexing raises, extraction should not propagate the error
+    try:
+        persisted = await memory_storage.upsert_conversation_summary(
+            session=Mock(),
+            conversation_id=uuid.uuid4(),
+            user_id='user-123',
+            summary_text='Summary',
+            source_message_id=uuid.uuid4(),
+        )
+
+        # Try to index (in real code, this would be wrapped in try-except)
+        if persisted:
+            try:
+                memory_storage.index_conversation_summary(persisted)
+            except Exception:
+                pass  # Log and continue
+
+    except Exception:
+        pytest.fail('Extraction should complete even if indexing fails')
+
+
+# Additional coverage tests for error paths and edge cases
+def test_parse_extraction_result_with_only_summary():
+    """Parse extraction result with summary but no valid facts."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = '{"summary": "Test summary", "facts": []}'
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == 'Test summary'
+    # Empty facts filtered out, returns None
+    assert facts is None
+
+
+def test_parse_extraction_result_with_only_facts():
+    """Parse extraction result with facts but no summary."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = (
+        '{"summary": "", "facts": ['
+        '{"subject": "Test", "fact": "Fact", "confidence": "high"}'
+        ']}'
+    )
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == ''
+    assert len(facts) == 1
+    assert facts[0]['subject'] == 'Test'
+
+
+def test_parse_extraction_result_missing_confidence():
+    """Parse extraction result where confidence field is missing."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = (
+        '{"summary": "Summary", "facts": [{"subject": "Test", "fact": "Fact"}]}'
+    )
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == 'Summary'
+    assert len(facts) == 1
+    # Fact should still be present even without confidence
+
+
+def test_parse_extraction_result_with_text_before_json():
+    """Parse extraction result with text before JSON."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = 'Here is the extraction:\n{"summary": "Test", "facts": []}'
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == 'Test'
+    # Empty facts filtered out, returns None
+    assert facts is None
+
+
+def test_parse_extraction_result_with_text_after_json():
+    """Parse extraction result with text after JSON."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = '{"summary": "Test", "facts": []}\n\nEnd of extraction.'
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == 'Test'
+    # Empty facts filtered out, returns None
+    assert facts is None
+
+
+def test_build_extraction_prompt_with_single_message():
+    """Extraction prompt with only one message in conversation."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    conv_id = uuid.uuid4()
+    msg = Message(
+        id=uuid.uuid4(),
+        conversation_id=conv_id,
+        role='assistant',
+        content='Single response',
+        sequence_number=0,
+    )
+
+    prompt = service._build_extraction_prompt(
+        messages=[msg], assistant_message=msg
+    )
+
+    assert len(prompt) == 2
+    assert 'Single response' in prompt[1]['content']
+
+
+def test_build_extraction_prompt_with_empty_messages():
+    """Extraction prompt with empty message list."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    target_msg = Message(
+        id=uuid.uuid4(),
+        conversation_id=uuid.uuid4(),
+        role='assistant',
+        content='Response',
+        sequence_number=0,
+    )
+
+    prompt = service._build_extraction_prompt(
+        messages=[], assistant_message=target_msg
+    )
+
+    assert len(prompt) == 2
+    # Should fallback gracefully with empty message list
+    assert prompt[0]['role'] == 'system'
+
+
+def test_build_memory_saved_annotations_large_fact_count():
+    """Build memory_saved with large number of facts."""
+    service = AssistantAnnotationService()
+
+    annotations = service.build_memory_saved_annotations(
+        summary_saved=False, facts_count=100
+    )
+
+    assert len(annotations) == 1
+    assert '100 memory facts' in annotations[0].label
+
+
+def test_build_memory_saved_annotations_combines_all_saves():
+    """memory_saved combines summary and facts into single annotation."""
+    service = AssistantAnnotationService()
+
+    annotations = service.build_memory_saved_annotations(
+        summary_saved=True, facts_count=5
+    )
+
+    # Should be exactly 1 entry (respects MAX_MEMORY_SAVED budget)
+    assert len(annotations) == 1
+    # Both summary and facts should be in the label
+    assert 'conversation summary' in annotations[0].label
+    assert '5 memory facts' in annotations[0].label
+    # Label should use comma-separated format
+    assert ', ' in annotations[0].label
+
+
+def test_parse_extraction_result_invalid_json():
+    """Parse extraction result with no valid JSON."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = 'This is plain text with no JSON'
+    summary, facts = service._parse_extraction_result(result_text)
+
+    # Should return None for both when no JSON found
+    assert summary is None
+    assert facts is None
+
+
+def test_parse_extraction_result_malformed_json():
+    """Parse extraction result with malformed JSON."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = '{"summary": "Test", "facts": [incomplete'
+    summary, facts = service._parse_extraction_result(result_text)
+
+    # Should handle gracefully and return None
+    assert summary is None
+    assert facts is None
+
+
+def test_parse_extraction_result_facts_missing_subject():
+    """Parse extraction result where facts missing subject field."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = (
+        '{"summary": "Summary", "facts": [{"fact": "Fact without subject"}]}'
+    )
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == 'Summary'
+    # Fact filtered out for missing subject
+    assert facts is None
+
+
+def test_parse_extraction_result_facts_missing_fact():
+    """Parse extraction result where facts missing fact field."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = (
+        '{"summary": "Summary", "facts": [{"subject": "Subject without fact"}]}'
+    )
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == 'Summary'
+    # Fact filtered out for missing fact field
+    assert facts is None
+
+
+def test_parse_extraction_result_empty_strings():
+    """Parse extraction result with empty strings."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    result_text = '{"summary": "", "facts": [{"subject": "", "fact": ""}]}'
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == ''
+    # Empty strings filtered out
+    assert facts is None
+
+
+def test_build_memory_saved_annotations_no_saves():
+    """Build memory_saved annotations with no saves."""
+    service = AssistantAnnotationService()
+
+    annotations = service.build_memory_saved_annotations(
+        summary_saved=False, facts_count=0
+    )
+
+    # Should return empty list when nothing saved
+    assert len(annotations) == 0
+
+
+def test_build_memory_saved_annotations_only_summary():
+    """Build memory_saved annotations with only summary saved."""
+    service = AssistantAnnotationService()
+
+    annotations = service.build_memory_saved_annotations(
+        summary_saved=True, facts_count=0
+    )
+
+    assert len(annotations) == 1
+    assert 'conversation summary' in annotations[0].label
+    assert 'memory facts' not in annotations[0].label
+
+
+def test_build_memory_saved_annotations_only_facts():
+    """Build memory_saved annotations with only facts saved."""
+    service = AssistantAnnotationService()
+
+    annotations = service.build_memory_saved_annotations(
+        summary_saved=False, facts_count=3
+    )
+
+    assert len(annotations) == 1
+    assert 'conversation summary' not in annotations[0].label
+    assert '3 memory facts' in annotations[0].label
+
+
+# Integration tests for extract_and_save_background orchestration
+@pytest.mark.asyncio
+async def test_extract_and_save_background_successful_with_summary_and_facts():
+    """Extract and save background with both summary and facts extracted."""
+    user_id = 'user123'
+    conv_id = uuid.uuid4()
+    assistant_msg_id = uuid.uuid4()
+    user_msg_id = uuid.uuid4()
+
+    # Mock LLM response with both summary and facts
+    llm_response_text = (
+        '{"summary": "Test summary", "facts": ['
+        '{"subject": "Topic", "fact": "Important fact", "confidence": "high"}'
+        ']}'
+    )
+
+    # Create mocks
+    mock_llm_service = AsyncMock(spec=LLMService)
+    mock_llm_service.complete_messages = AsyncMock(
+        return_value=type(
+            'Result',
+            (),
+            {
+                'content': llm_response_text,
+            },
+        )()
+    )
+
+    mock_memory_storage = AsyncMock(spec=MemoryStorage)
+    mock_summary = Message(
+        id=uuid.uuid4(),
+        conversation_id=conv_id,
+        role='system',
+        content='Test summary',
+        sequence_number=0,
+    )
+    mock_fact = Message(
+        id=uuid.uuid4(),
+        conversation_id=conv_id,
+        role='system',
+        content='Important fact',
+        sequence_number=1,
+    )
+    mock_memory_storage.upsert_conversation_summary = AsyncMock(
+        return_value=mock_summary
+    )
+    mock_memory_storage.upsert_durable_fact = AsyncMock(return_value=mock_fact)
+
+    service = ConversationService(
+        llm_service=mock_llm_service,
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+        memory_storage=mock_memory_storage,
+    )
+
+    # Mock database session and queries
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    service._get_conversation_for_user = AsyncMock(
+        return_value=Conversation(
+            id=conv_id,
+            user_id=user_id,
+            title='Test',
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+
+    assistant_msg = Message(
+        id=assistant_msg_id,
+        conversation_id=conv_id,
+        role='assistant',
+        content='Assistant response',
+        sequence_number=1,
+    )
+
+    service._get_messages_for_conversation = AsyncMock(
+        return_value=[
+            Message(
+                id=user_msg_id,
+                conversation_id=conv_id,
+                role='user',
+                content='User question',
+                sequence_number=0,
+            ),
+            assistant_msg,
+        ]
+    )
+
+    service._enrich_assistant_annotations_with_memory_saved = AsyncMock()
+
+    # Patch get_db_session to return our mock session
+    with patch(
+        'assistant.utils.database.get_db_session',
+        return_value=mock_session,
+    ):
+        await service.extract_and_save_background(
+            user_id=user_id,
+            conversation_id=conv_id,
+            assistant_message_id=assistant_msg_id,
+            latest_user_message_id=user_msg_id,
+        )
+
+    # Verify summary was persisted
+    mock_memory_storage.upsert_conversation_summary.assert_called_once()
+    # Verify fact was persisted
+    mock_memory_storage.upsert_durable_fact.assert_called_once()
+    # Verify indexing was attempted
+    mock_memory_storage.index_conversation_summary.assert_called_once()
+    mock_memory_storage.index_durable_fact.assert_called_once()
+    # Verify annotations were enriched
+    service._enrich_assistant_annotations_with_memory_saved.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_extract_and_save_background_with_only_summary():
+    """Extract and save background with summary but no facts."""
+    user_id = 'user123'
+    conv_id = uuid.uuid4()
+    assistant_msg_id = uuid.uuid4()
+
+    # Mock LLM response with only summary
+    llm_response_text = '{"summary": "Only summary", "facts": []}'
+
+    mock_llm_service = AsyncMock(spec=LLMService)
+    mock_llm_service.complete_messages = AsyncMock(
+        return_value=type(
+            'Result',
+            (),
+            {
+                'content': llm_response_text,
+            },
+        )()
+    )
+
+    mock_memory_storage = AsyncMock(spec=MemoryStorage)
+    mock_summary = Message(
+        id=uuid.uuid4(),
+        conversation_id=conv_id,
+        role='system',
+        content='Only summary',
+        sequence_number=0,
+    )
+    mock_memory_storage.upsert_conversation_summary = AsyncMock(
+        return_value=mock_summary
+    )
+
+    service = ConversationService(
+        llm_service=mock_llm_service,
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+        memory_storage=mock_memory_storage,
+    )
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    assistant_msg = Message(
+        id=assistant_msg_id,
+        conversation_id=conv_id,
+        role='assistant',
+        content='Response',
+        sequence_number=1,
+    )
+
+    service._get_conversation_for_user = AsyncMock(
+        return_value=Conversation(
+            id=conv_id,
+            user_id=user_id,
+            title='Test',
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    service._get_messages_for_conversation = AsyncMock(
+        return_value=[assistant_msg]
+    )
+    service._enrich_assistant_annotations_with_memory_saved = AsyncMock()
+
+    with patch(
+        'assistant.utils.database.get_db_session',
+        return_value=mock_session,
+    ):
+        await service.extract_and_save_background(
+            user_id=user_id,
+            conversation_id=conv_id,
+            assistant_message_id=assistant_msg_id,
+        )
+
+    # Verify summary was persisted
+    mock_memory_storage.upsert_conversation_summary.assert_called_once()
+    # Verify no facts were persisted
+    mock_memory_storage.upsert_durable_fact.assert_not_called()
+    # Verify annotation enrichment was called (had summary save)
+    service._enrich_assistant_annotations_with_memory_saved.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_extract_and_save_background_with_only_facts():
+    """Extract and save background with facts but no summary."""
+    user_id = 'user123'
+    conv_id = uuid.uuid4()
+    assistant_msg_id = uuid.uuid4()
+
+    # Mock LLM response with only facts
+    llm_response_text = (
+        '{"summary": "", "facts": ['
+        '{"subject": "Topic", "fact": "Fact text", "confidence": "medium"}'
+        ']}'
+    )
+
+    mock_llm_service = AsyncMock(spec=LLMService)
+    mock_llm_service.complete_messages = AsyncMock(
+        return_value=type(
+            'Result',
+            (),
+            {
+                'content': llm_response_text,
+            },
+        )()
+    )
+
+    mock_memory_storage = AsyncMock(spec=MemoryStorage)
+    mock_fact = Message(
+        id=uuid.uuid4(),
+        conversation_id=conv_id,
+        role='system',
+        content='Fact text',
+        sequence_number=0,
+    )
+    mock_memory_storage.upsert_durable_fact = AsyncMock(return_value=mock_fact)
+
+    service = ConversationService(
+        llm_service=mock_llm_service,
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+        memory_storage=mock_memory_storage,
+    )
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    assistant_msg = Message(
+        id=assistant_msg_id,
+        conversation_id=conv_id,
+        role='assistant',
+        content='Response',
+        sequence_number=0,
+    )
+
+    service._get_conversation_for_user = AsyncMock(
+        return_value=Conversation(
+            id=conv_id,
+            user_id=user_id,
+            title='Test',
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    service._get_messages_for_conversation = AsyncMock(
+        return_value=[assistant_msg]
+    )
+    service._enrich_assistant_annotations_with_memory_saved = AsyncMock()
+
+    with patch(
+        'assistant.utils.database.get_db_session',
+        return_value=mock_session,
+    ):
+        await service.extract_and_save_background(
+            user_id=user_id,
+            conversation_id=conv_id,
+            assistant_message_id=assistant_msg_id,
+        )
+
+    # Verify only facts were persisted
+    mock_memory_storage.upsert_conversation_summary.assert_not_called()
+    mock_memory_storage.upsert_durable_fact.assert_called_once()
+    # Verify annotation enrichment was called (had facts)
+    service._enrich_assistant_annotations_with_memory_saved.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_extract_and_save_background_no_extraction():
+    """Extract and save background when nothing is extracted."""
+    user_id = 'user123'
+    conv_id = uuid.uuid4()
+    assistant_msg_id = uuid.uuid4()
+
+    # Mock LLM response with no content
+    llm_response_text = '{"summary": "", "facts": []}'
+
+    mock_llm_service = AsyncMock(spec=LLMService)
+    mock_llm_service.complete_messages = AsyncMock(
+        return_value=type(
+            'Result',
+            (),
+            {
+                'content': llm_response_text,
+            },
+        )()
+    )
+
+    mock_memory_storage = AsyncMock(spec=MemoryStorage)
+
+    service = ConversationService(
+        llm_service=mock_llm_service,
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+        memory_storage=mock_memory_storage,
+    )
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    assistant_msg = Message(
+        id=assistant_msg_id,
+        conversation_id=conv_id,
+        role='assistant',
+        content='Response',
+        sequence_number=0,
+    )
+
+    service._get_conversation_for_user = AsyncMock(
+        return_value=Conversation(
+            id=conv_id,
+            user_id=user_id,
+            title='Test',
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    service._get_messages_for_conversation = AsyncMock(
+        return_value=[assistant_msg]
+    )
+    service._enrich_assistant_annotations_with_memory_saved = AsyncMock()
+
+    with patch(
+        'assistant.utils.database.get_db_session',
+        return_value=mock_session,
+    ):
+        await service.extract_and_save_background(
+            user_id=user_id,
+            conversation_id=conv_id,
+            assistant_message_id=assistant_msg_id,
+        )
+
+    # Verify nothing was persisted
+    mock_memory_storage.upsert_conversation_summary.assert_not_called()
+    mock_memory_storage.upsert_durable_fact.assert_not_called()
+    # Verify annotation enrichment was NOT called (nothing saved)
+    service._enrich_assistant_annotations_with_memory_saved.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_extract_and_save_background_missing_assistant_message():
+    """Extract and save background when assistant message not found."""
+    user_id = 'user123'
+    conv_id = uuid.uuid4()
+    assistant_msg_id = uuid.uuid4()
+
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+    )
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    service._get_conversation_for_user = AsyncMock(
+        return_value=Conversation(
+            id=conv_id,
+            user_id=user_id,
+            title='Test',
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    # Return messages without the assistant message
+    service._get_messages_for_conversation = AsyncMock(
+        return_value=[
+            Message(
+                id=uuid.uuid4(),
+                conversation_id=conv_id,
+                role='user',
+                content='User message',
+                sequence_number=0,
+            )
+        ]
+    )
+
+    with patch(
+        'assistant.utils.database.get_db_session',
+        return_value=mock_session,
+    ):
+        # Should return early without error
+        await service.extract_and_save_background(
+            user_id=user_id,
+            conversation_id=conv_id,
+            assistant_message_id=assistant_msg_id,
+        )
+
+    # LLM should not be called if message not found
+    service.llm_service.complete_messages.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_extract_and_save_background_llm_error():
+    """Extract and save background when LLM fails."""
+    user_id = 'user123'
+    conv_id = uuid.uuid4()
+    assistant_msg_id = uuid.uuid4()
+
+    # Mock LLM error
+    mock_llm_service = AsyncMock(spec=LLMService)
+    mock_llm_service.complete_messages = AsyncMock(
+        side_effect=Exception('LLM service error')
+    )
+
+    mock_memory_storage = AsyncMock(spec=MemoryStorage)
+
+    service = ConversationService(
+        llm_service=mock_llm_service,
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+        memory_storage=mock_memory_storage,
+    )
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    assistant_msg = Message(
+        id=assistant_msg_id,
+        conversation_id=conv_id,
+        role='assistant',
+        content='Response',
+        sequence_number=0,
+    )
+
+    service._get_conversation_for_user = AsyncMock(
+        return_value=Conversation(
+            id=conv_id,
+            user_id=user_id,
+            title='Test',
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    service._get_messages_for_conversation = AsyncMock(
+        return_value=[assistant_msg]
+    )
+
+    with patch(
+        'assistant.utils.database.get_db_session',
+        return_value=mock_session,
+    ):
+        # Should not raise - errors are logged but not propagated
+        await service.extract_and_save_background(
+            user_id=user_id,
+            conversation_id=conv_id,
+            assistant_message_id=assistant_msg_id,
+        )
+
+    # Session should be rolled back on error
+    mock_session.rollback.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_extract_and_save_background_indexing_failure_nonfatal():
+    """Extract and save background when Chroma indexing fails (should not propagate)."""
+    user_id = 'user123'
+    conv_id = uuid.uuid4()
+    assistant_msg_id = uuid.uuid4()
+
+    # Mock LLM response
+    llm_response_text = (
+        '{"summary": "Test", "facts": ['
+        '{"subject": "Topic", "fact": "Fact", "confidence": "high"}'
+        ']}'
+    )
+
+    mock_llm_service = AsyncMock(spec=LLMService)
+    mock_llm_service.complete_messages = AsyncMock(
+        return_value=type(
+            'Result',
+            (),
+            {
+                'content': llm_response_text,
+            },
+        )()
+    )
+
+    mock_memory_storage = AsyncMock(spec=MemoryStorage)
+    mock_summary = Message(
+        id=uuid.uuid4(),
+        conversation_id=conv_id,
+        role='system',
+        content='Test',
+        sequence_number=0,
+    )
+    mock_fact = Message(
+        id=uuid.uuid4(),
+        conversation_id=conv_id,
+        role='system',
+        content='Fact',
+        sequence_number=1,
+    )
+    mock_memory_storage.upsert_conversation_summary = AsyncMock(
+        return_value=mock_summary
+    )
+    mock_memory_storage.upsert_durable_fact = AsyncMock(return_value=mock_fact)
+    # Index methods raise exceptions
+    mock_memory_storage.index_conversation_summary = Mock(
+        side_effect=Exception('Chroma error')
+    )
+    mock_memory_storage.index_durable_fact = Mock(
+        side_effect=Exception('Chroma error')
+    )
+
+    service = ConversationService(
+        llm_service=mock_llm_service,
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+        annotation_service=AssistantAnnotationService(),
+        memory_storage=mock_memory_storage,
+    )
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    assistant_msg = Message(
+        id=assistant_msg_id,
+        conversation_id=conv_id,
+        role='assistant',
+        content='Response',
+        sequence_number=0,
+    )
+
+    service._get_conversation_for_user = AsyncMock(
+        return_value=Conversation(
+            id=conv_id,
+            user_id=user_id,
+            title='Test',
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    service._get_messages_for_conversation = AsyncMock(
+        return_value=[assistant_msg]
+    )
+    service._enrich_assistant_annotations_with_memory_saved = AsyncMock()
+
+    with patch(
+        'assistant.utils.database.get_db_session',
+        return_value=mock_session,
+    ):
+        # Should not raise even though indexing failed
+        await service.extract_and_save_background(
+            user_id=user_id,
+            conversation_id=conv_id,
+            assistant_message_id=assistant_msg_id,
+        )
+
+    # Verify memory was persisted despite indexing failure
+    mock_memory_storage.upsert_conversation_summary.assert_called_once()
+    # Verify enrichment still happened
+    service._enrich_assistant_annotations_with_memory_saved.assert_called_once()

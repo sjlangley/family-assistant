@@ -47,7 +47,7 @@ def get_memory_storage() -> MemoryStorage:
 @lru_cache(maxsize=1)
 def get_context_assembly_service() -> ContextAssemblyService:
     """Return a lazily initialized singleton instance of ContextAssemblyService."""
-    return ContextAssemblyService()
+    return ContextAssemblyService(memory_storage=get_memory_storage())
 
 
 @lru_cache(maxsize=1)
@@ -58,4 +58,5 @@ def get_conversation_service() -> ConversationService:
         context_assembly=get_context_assembly_service(),
         tool_service=get_tool_service(),
         annotation_service=AssistantAnnotationService(),
+        memory_storage=get_memory_storage(),
     )
