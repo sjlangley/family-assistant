@@ -1,7 +1,7 @@
 import uuid
 
 import chromadb
-from sqlalchemy import and_, select, text
+from sqlalchemy import and_, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -103,6 +103,7 @@ class MemoryStorage:
                         'summary_text': summary_text,
                         'source_message_id': source_message_id,
                         'version': (ConversationMemorySummary.version + 1),
+                        'updated_at': func.now(),
                     },
                 )
                 .returning(ConversationMemorySummary)
