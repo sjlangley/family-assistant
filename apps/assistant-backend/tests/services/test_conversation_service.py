@@ -37,6 +37,7 @@ from assistant.services.context_assembly import (
     ContextAssemblyResult,
     ContextAssemblyService,
 )
+from assistant.services.assistant_annotations import AssistantAnnotationService
 from assistant.services.conversation_service import ConversationService
 from assistant.services.llm_service import LLMService
 from assistant.services.memory_storage import MemoryStorage
@@ -2609,3 +2610,266 @@ async def test_background_extraction_filters_empty_facts():
 
     assert summary == 'Test summary'
     assert len(facts) == 2  # Empty fact filtered out
+
+
+# Tests for memory_saved annotation enrichment
+async def test_enrich_annotations_with_summary_saved():
+    """Adding memory_saved annotation when summary is saved."""
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlmodel import SQLModel
+
+    engine = create_async_engine('sqlite+aiosqlite:///:memory:', echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+
+    async_session_maker = sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    async with async_session_maker() as session:
+        # Create assistant message with existing annotations
+        conversation = Conversation(user_id='user-123', title='Test')
+        session.add(conversation)
+        await session.commit()
+        await session.refresh(conversation)
+
+        assistant_msg = Message(
+            conversation_id=conversation.id,
+            role='assistant',
+            content='Response',
+            sequence_number=1,
+            annotations={
+                'sources': [],
+                'tools': [],
+                'memory_hits': [],
+                'memory_saved': [],
+                'failure': None,
+            },
+        )
+        session.add(assistant_msg)
+        await session.commit()
+        await session.refresh(assistant_msg)
+
+        # Create service and enrich annotations
+        service = ConversationService(
+            llm_service=AsyncMock(spec=LLMService),
+            context_assembly=AsyncMock(spec=ContextAssemblyService),
+            tool_service=Mock(spec=ToolService),
+            annotation_service=AssistantAnnotationService(),
+        )
+
+        await service._enrich_assistant_annotations_with_memory_saved(
+            session=session,
+            assistant_message_id=assistant_msg.id,
+            summary_saved=True,
+            facts_count=0,
+        )
+
+        # Reload message and verify annotations were enriched
+        refreshed = await session.get(Message, assistant_msg.id)
+        assert refreshed.annotations is not None
+        assert len(refreshed.annotations['memory_saved']) == 1
+        assert (
+            'conversation summary'
+            in refreshed.annotations['memory_saved'][0]['label']
+        )
+
+    await engine.dispose()
+
+
+async def test_enrich_annotations_with_facts_saved():
+    """Adding memory_saved annotation when facts are saved."""
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlmodel import SQLModel
+
+    engine = create_async_engine('sqlite+aiosqlite:///:memory:', echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+
+    async_session_maker = sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    async with async_session_maker() as session:
+        # Create assistant message
+        conversation = Conversation(user_id='user-123', title='Test')
+        session.add(conversation)
+        await session.commit()
+        await session.refresh(conversation)
+
+        assistant_msg = Message(
+            conversation_id=conversation.id,
+            role='assistant',
+            content='Response',
+            sequence_number=1,
+            annotations={
+                'sources': [],
+                'tools': [],
+                'memory_hits': [],
+                'memory_saved': [],
+                'failure': None,
+            },
+        )
+        session.add(assistant_msg)
+        await session.commit()
+        await session.refresh(assistant_msg)
+
+        # Enrich with facts
+        service = ConversationService(
+            llm_service=AsyncMock(spec=LLMService),
+            context_assembly=AsyncMock(spec=ContextAssemblyService),
+            tool_service=Mock(spec=ToolService),
+            annotation_service=AssistantAnnotationService(),
+        )
+
+        await service._enrich_assistant_annotations_with_memory_saved(
+            session=session,
+            assistant_message_id=assistant_msg.id,
+            summary_saved=False,
+            facts_count=3,
+        )
+
+        # Verify
+        refreshed = await session.get(Message, assistant_msg.id)
+        assert len(refreshed.annotations['memory_saved']) == 1
+        assert (
+            '3 memory facts'
+            in refreshed.annotations['memory_saved'][0]['label']
+        )
+
+    await engine.dispose()
+
+
+async def test_enrich_annotations_preserves_existing_data():
+    """Enrichment preserves existing sources, tools, and other metadata."""
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlmodel import SQLModel
+
+    engine = create_async_engine('sqlite+aiosqlite:///:memory:', echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+
+    async_session_maker = sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    async with async_session_maker() as session:
+        # Create assistant message with complex annotations
+        conversation = Conversation(user_id='user-123', title='Test')
+        session.add(conversation)
+        await session.commit()
+        await session.refresh(conversation)
+
+        existing_annotations = {
+            'sources': [
+                {
+                    'title': 'Example',
+                    'url': 'https://example.com',
+                    'snippet': 'Example snippet',
+                    'rationale': 'Used in response',
+                }
+            ],
+            'tools': [{'name': 'web_fetch', 'status': 'completed'}],
+            'memory_hits': [{'label': 'Memory Hit', 'summary': 'Hit summary'}],
+            'memory_saved': [],
+            'failure': None,
+        }
+
+        assistant_msg = Message(
+            conversation_id=conversation.id,
+            role='assistant',
+            content='Response',
+            sequence_number=1,
+            annotations=existing_annotations,
+        )
+        session.add(assistant_msg)
+        await session.commit()
+        await session.refresh(assistant_msg)
+
+        # Enrich
+        service = ConversationService(
+            llm_service=AsyncMock(spec=LLMService),
+            context_assembly=AsyncMock(spec=ContextAssemblyService),
+            tool_service=Mock(spec=ToolService),
+            annotation_service=AssistantAnnotationService(),
+        )
+
+        await service._enrich_assistant_annotations_with_memory_saved(
+            session=session,
+            assistant_message_id=assistant_msg.id,
+            summary_saved=True,
+            facts_count=2,
+        )
+
+        # Verify existing data preserved
+        refreshed = await session.get(Message, assistant_msg.id)
+        assert len(refreshed.annotations['sources']) == 1
+        assert refreshed.annotations['sources'][0]['title'] == 'Example'
+        assert len(refreshed.annotations['tools']) == 1
+        assert len(refreshed.annotations['memory_hits']) == 1
+        # And memory_saved added
+        assert len(refreshed.annotations['memory_saved']) == 1
+
+    await engine.dispose()
+
+
+async def test_enrich_annotations_nothing_saved_leaves_empty():
+    """If nothing was saved, memory_saved remains empty."""
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlmodel import SQLModel
+
+    engine = create_async_engine('sqlite+aiosqlite:///:memory:', echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+
+    async_session_maker = sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    async with async_session_maker() as session:
+        conversation = Conversation(user_id='user-123', title='Test')
+        session.add(conversation)
+        await session.commit()
+        await session.refresh(conversation)
+
+        assistant_msg = Message(
+            conversation_id=conversation.id,
+            role='assistant',
+            content='Response',
+            sequence_number=1,
+            annotations={
+                'sources': [],
+                'tools': [],
+                'memory_hits': [],
+                'memory_saved': [],
+                'failure': None,
+            },
+        )
+        session.add(assistant_msg)
+        await session.commit()
+        await session.refresh(assistant_msg)
+
+        # Enrich with no saves
+        service = ConversationService(
+            llm_service=AsyncMock(spec=LLMService),
+            context_assembly=AsyncMock(spec=ContextAssemblyService),
+            tool_service=Mock(spec=ToolService),
+            annotation_service=AssistantAnnotationService(),
+        )
+
+        await service._enrich_assistant_annotations_with_memory_saved(
+            session=session,
+            assistant_message_id=assistant_msg.id,
+            summary_saved=False,
+            facts_count=0,
+        )
+
+        # Verify memory_saved still empty
+        refreshed = await session.get(Message, assistant_msg.id)
+        assert len(refreshed.annotations['memory_saved']) == 0
+
+    await engine.dispose()

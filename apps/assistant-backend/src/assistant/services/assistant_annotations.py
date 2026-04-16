@@ -7,6 +7,7 @@ from assistant.models.annotations import (
     FailureAnnotation,
     FailureAnnotationStage,
     MemoryHitAnnotation,
+    MemorySavedAnnotation,
     SourceAnnotation,
     ToolAnnotation,
     ToolAnnotationStatus,
@@ -96,6 +97,46 @@ class AssistantAnnotationService:
             memory_saved=[],
             failure=failure_annotation,
         )
+
+    def build_memory_saved_annotations(
+        self,
+        *,
+        summary_saved: bool = False,
+        facts_count: int = 0,
+    ) -> list[MemorySavedAnnotation]:
+        """Build memory_saved annotations from extraction results.
+
+        Creates compact, human-meaningful labels describing what memory was
+        actually persisted. Budget: max 1 entry total.
+
+        Args:
+            summary_saved: Whether conversation summary was saved/updated
+            facts_count: Number of durable facts that were saved/updated
+
+        Returns:
+            List of MemorySavedAnnotation objects (empty if nothing saved)
+        """
+        saved_items = []
+
+        if summary_saved:
+            saved_items.append('conversation summary')
+
+        if facts_count > 0:
+            saved_items.append(
+                f'{facts_count} memory fact{"s" if facts_count != 1 else ""}'
+            )
+
+        if not saved_items:
+            return []
+
+        # Combine all saved items into one compact label (respects MAX_MEMORY_SAVED budget)
+        label = ', '.join(saved_items)
+        return [
+            MemorySavedAnnotation(
+                label=label,
+                summary=f'Persisted {label} from conversation',
+            )
+        ]
 
     # ─────────────────────────────────────────────────────────────────────
     # Private helpers for success annotations

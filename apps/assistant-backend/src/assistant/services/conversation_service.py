@@ -27,6 +27,7 @@ from assistant.models.llm import (
 )
 from assistant.models.tool import ToolExecutionResult
 from assistant.routers.web_utils import llm_completion_error_to_http_exception
+from assistant.models.annotations import AssistantAnnotations
 from assistant.services.assistant_annotations import (
     AssistantAnnotationService,
 )
@@ -582,6 +583,7 @@ class ConversationService:
         4. Extracts durable facts worth saving
         5. Persists to Postgres via MemoryStorage
         6. Mirrors summary/facts to Chroma for retrieval support
+        7. Updates assistant message annotations with truthful memory_saved data
 
         Failures at any point are logged but do not affect the already-persisted
         conversation or user-visible chat responses.
@@ -623,7 +625,6 @@ class ConversationService:
                     return
 
                 # Extract summary and facts from the latest turns
-                # For now, use a simple extraction prompt
                 extraction_prompt = self._build_extraction_prompt(
                     messages=messages,
                     assistant_message=assistant_msg,
@@ -645,6 +646,10 @@ class ConversationService:
                         completion_result.content
                     )
 
+                    # Track what we actually save
+                    summary_saved = False
+                    facts_count = 0
+
                     # Persist summary if extracted
                     if summary_text and self.memory_storage:
                         await self.memory_storage.upsert_conversation_summary(
@@ -654,6 +659,7 @@ class ConversationService:
                             summary_text=summary_text,
                             source_message_id=assistant_message_id,
                         )
+                        summary_saved = True
 
                     # Persist each durable fact if extracted
                     if facts and self.memory_storage:
@@ -679,6 +685,7 @@ class ConversationService:
                                     if assistant_msg.content
                                     else None,
                                 )
+                                facts_count += 1
                             except Exception as e:
                                 logger.warning(
                                     f'Failed to save durable fact: {str(e)}'
@@ -689,8 +696,27 @@ class ConversationService:
 
                     logger.info(
                         f'Background extraction completed for conversation '
-                        f'{conversation_id}'
+                        f'{conversation_id}: summary_saved={summary_saved}, '
+                        f'facts_count={facts_count}'
                     )
+
+                    # Now enrich the assistant message annotations with memory_saved
+                    # This must happen AFTER commit to ensure all memory writes are canonical
+                    if summary_saved or facts_count > 0:
+                        try:
+                            await self._enrich_assistant_annotations_with_memory_saved(
+                                session=session,
+                                assistant_message_id=assistant_message_id,
+                                summary_saved=summary_saved,
+                                facts_count=facts_count,
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f'Failed to enrich assistant annotations with '
+                                f'memory_saved: {str(e)}'
+                            )
+                            # Do not propagate - annotation enrichment failure
+                            # should not affect the already-successful extraction
 
                 except Exception as e:
                     logger.error(
@@ -776,3 +802,84 @@ class ConversationService:
         except Exception as e:
             logger.warning(f'Failed to parse extraction result: {str(e)}')
             return None, None
+
+    async def _enrich_assistant_annotations_with_memory_saved(
+        self,
+        session: AsyncSession,
+        *,
+        assistant_message_id: uuid.UUID,
+        summary_saved: bool = False,
+        facts_count: int = 0,
+    ) -> None:
+        """Enrich persisted assistant message annotations with truthful memory_saved data.
+
+        After successful background extraction and persistence, update the assistant
+        message row to include memory_saved annotations reflecting what was actually
+        persisted. This is read-modify-write to preserve existing annotations
+        (sources, tools, memory_hits, failure).
+
+        Args:
+            session: Database session
+            assistant_message_id: UUID of the assistant message to enrich
+            summary_saved: Whether conversation summary was saved/updated
+            facts_count: Number of durable facts that were saved/updated
+        """
+        # Read the current message row
+        stmt = select(Message).where(
+            # pyrefly: ignore [bad-argument-type]
+            Message.id == assistant_message_id
+        )
+        result = await session.execute(stmt)
+        message = result.scalar_one_or_none()
+
+        if not message:
+            logger.warning(
+                f'Assistant message {assistant_message_id} not found '
+                f'for annotation enrichment'
+            )
+            return
+
+        # Get current annotations or start with empty
+        current_annotations_dict = message.annotations or {}
+
+        try:
+            # Parse current annotations to AssistantAnnotations model
+            current_annotations = AssistantAnnotations(
+                **current_annotations_dict
+            )
+        except Exception:
+            # If current annotations are malformed, log but continue with clean slate
+            logger.warning(
+                f'Failed to parse current annotations for message '
+                f'{assistant_message_id}, using fresh annotations'
+            )
+            current_annotations = AssistantAnnotations()
+
+        # Build memory_saved annotations from what was actually saved
+        memory_saved = self.annotation_service.build_memory_saved_annotations(
+            summary_saved=summary_saved, facts_count=facts_count
+        )
+
+        # Merge: preserve all existing fields, update only memory_saved
+        enriched_annotations = AssistantAnnotations(
+            sources=current_annotations.sources,
+            tools=current_annotations.tools,
+            memory_hits=current_annotations.memory_hits,
+            memory_saved=memory_saved,  # NEW: add memory_saved from extraction
+            failure=current_annotations.failure,
+        )
+
+        # Update the message row with enriched annotations
+        enriched_dict = enriched_annotations.model_dump()
+        await session.execute(
+            update(Message)
+            # pyrefly: ignore [bad-argument-type]
+            .where(Message.id == assistant_message_id)
+            .values(annotations=enriched_dict)
+        )
+        await session.commit()
+
+        logger.info(
+            f'Enriched assistant message {assistant_message_id} with '
+            f'memory_saved annotations'
+        )
