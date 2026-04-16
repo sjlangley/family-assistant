@@ -53,11 +53,24 @@ function TrustPill({ label, value }: TrustPillProps) {
 // TrustRow: Renders compact trust metadata under assistant messages
 interface TrustRowProps {
   annotations: AssistantAnnotations;
+  messageId: string;
+  isSelected: boolean;
+  onOpenDetails: (messageId: string) => void;
 }
 
-function TrustRow({ annotations }: TrustRowProps) {
+function TrustRow({
+  annotations,
+  messageId,
+  isSelected,
+  onOpenDetails,
+}: TrustRowProps) {
   return (
-    <div className="trust-row">
+    <button
+      onClick={() => onOpenDetails(messageId)}
+      className={`trust-row ${isSelected ? "trust-row-active" : ""}`}
+      aria-pressed={isSelected}
+      aria-label="Open evidence and details"
+    >
       {/* Tools used */}
       {annotations.tools && annotations.tools.length > 0 && (
         <TrustPill
@@ -80,7 +93,7 @@ function TrustRow({ annotations }: TrustRowProps) {
       {annotations.memory_saved && annotations.memory_saved.length > 0 && (
         <TrustPill label="Saved" value={annotations.memory_saved.length} />
       )}
-    </div>
+    </button>
   );
 }
 
@@ -111,6 +124,223 @@ function FailureRow({ detail, stage, retryable }: FailureRowProps) {
   );
 }
 
+// SourceDetail: Renders a single source with title, snippet, and link
+interface SourceDetailProps {
+  title: string;
+  url: string;
+  snippet: string;
+  rationale: string;
+}
+
+function SourceDetail({ title, url, snippet, rationale }: SourceDetailProps) {
+  return (
+    <div className="evidence-source-item">
+      <h4 className="type-body-sm font-medium text-[#1f1c18] mb-1">
+        {title}
+      </h4>
+      <p className="type-meta text-[#6e675d] mb-2">{rationale}</p>
+      <p className="type-body-sm text-[#1f1c18] mb-2">{snippet}</p>
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="type-meta text-[#24453a] hover:underline focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[#24453a]"
+      >
+        View source
+      </a>
+    </div>
+  );
+}
+
+// ToolDetail: Renders tool usage information
+interface ToolDetailProps {
+  name: string;
+  status: "completed" | "failed";
+}
+
+function ToolDetail({ name, status }: ToolDetailProps) {
+  const statusColor = status === "completed" ? "#2f6b53" : "#a54034";
+  const statusLabel = status === "completed" ? "Completed" : "Failed";
+
+  return (
+    <div className="evidence-tool-item">
+      <div className="flex items-center gap-2">
+        <span
+          className="inline-block w-2 h-2 rounded-full"
+          style={{ backgroundColor: statusColor }}
+          aria-hidden="true"
+        />
+        <span className="type-meta font-medium" style={{ color: statusColor }}>
+          {name}
+        </span>
+      </div>
+      <p className="type-meta text-[#6e675d] mt-1">{statusLabel}</p>
+    </div>
+  );
+}
+
+// MemoryDetail: Renders memory evidence
+interface MemoryDetailProps {
+  label: string;
+  summary: string;
+  type: "hit" | "saved";
+}
+
+function MemoryDetail({ label, summary, type }: MemoryDetailProps) {
+  return (
+    <div className="evidence-memory-item">
+      <span className="inline-block px-2 py-1 bg-[#2f6b53] text-white rounded text-xs font-medium mb-2">
+        {type === "hit" ? "Memory Hit" : "Memory Saved"}
+      </span>
+      <h4 className="type-body-sm font-medium text-[#1f1c18] mb-1">
+        {label}
+      </h4>
+      <p className="type-meta text-[#6e675d]">{summary}</p>
+    </div>
+  );
+}
+
+// EvidencePanel: Main detail surface for evidence display
+interface EvidencePanelProps {
+  message: Message;
+  onClose: () => void;
+  isMobile: boolean;
+}
+
+function EvidencePanel({ message, onClose, isMobile }: EvidencePanelProps) {
+  if (!message.annotations) return null;
+
+  const { annotations } = message;
+  const hasContent =
+    annotations.sources.length > 0 ||
+    annotations.tools.length > 0 ||
+    annotations.memory_hits.length > 0 ||
+    annotations.memory_saved.length > 0 ||
+    annotations.failure;
+
+  if (!hasContent) return null;
+
+  const content = (
+    <div className="evidence-content">
+      <div className="evidence-header">
+        <h3 className="type-heading-sm text-[#24453a]">Evidence & Details</h3>
+        <button
+          onClick={onClose}
+          className="evidence-close-button"
+          aria-label="Close evidence details"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Sources */}
+      {annotations.sources.length > 0 && (
+        <div className="evidence-section">
+          <h4 className="evidence-section-title">Sources</h4>
+          <div className="evidence-section-content">
+            {annotations.sources.map((source, idx) => (
+              <SourceDetail
+                key={idx}
+                title={source.title}
+                url={source.url}
+                snippet={source.snippet}
+                rationale={source.rationale}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tools */}
+      {annotations.tools.length > 0 && (
+        <div className="evidence-section">
+          <h4 className="evidence-section-title">Tools Used</h4>
+          <div className="evidence-section-content">
+            {annotations.tools.map((tool, idx) => (
+              <ToolDetail key={idx} name={tool.name} status={tool.status} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Memory Hits */}
+      {annotations.memory_hits.length > 0 && (
+        <div className="evidence-section">
+          <h4 className="evidence-section-title">Memory Hits</h4>
+          <div className="evidence-section-content">
+            {annotations.memory_hits.map((hit, idx) => (
+              <MemoryDetail
+                key={idx}
+                label={hit.label}
+                summary={hit.summary}
+                type="hit"
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Memory Saved */}
+      {annotations.memory_saved.length > 0 && (
+        <div className="evidence-section">
+          <h4 className="evidence-section-title">Memory Saved</h4>
+          <div className="evidence-section-content">
+            {annotations.memory_saved.map((saved, idx) => (
+              <MemoryDetail
+                key={idx}
+                label={saved.label}
+                summary={saved.summary}
+                type="saved"
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Failure Details */}
+      {annotations.failure && (
+        <div className="evidence-section">
+          <h4 className="evidence-section-title">Failure Information</h4>
+          <div className="evidence-section-content">
+            <div className="evidence-failure-item">
+              <p className="type-body-sm font-medium text-[#a54034] mb-1">
+                {annotations.failure.stage === "llm"
+                  ? "LLM Phase Error"
+                  : annotations.failure.stage === "tool"
+                    ? "Tool Phase Error"
+                    : annotations.failure.stage === "annotation"
+                      ? "Processing Error"
+                      : "Unknown Error"}
+              </p>
+              {annotations.failure.detail && (
+                <p className="type-body-sm text-[#1f1c18] mb-2">
+                  {annotations.failure.detail}
+                </p>
+              )}
+              {annotations.failure.retryable && (
+                <p className="type-meta text-[#2f6b53]">
+                  This error may be retryable.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  if (isMobile) {
+    return (
+      <div className="evidence-panel-mobile">
+        <div className="evidence-panel-mobile-overlay" onClick={onClose} />
+        <div className="evidence-panel-mobile-sheet">{content}</div>
+      </div>
+    );
+  }
+
+  return <div className="evidence-panel-desktop">{content}</div>;
+}
+
 export function ConversationsChat({ onLogout }: ConversationsChatProps) {
   const { authState } = useAuth();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -127,11 +357,55 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
     null,
   );
 
+  // Evidence panel state
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(
+    null,
+  );
+  const [isMobile, setIsMobile] = useState(false);
+
   // Track conversations for which we've just set messages to skip redundant fetches
   const skipFetchForConversation = useRef<string | null>(null);
 
   // Get user from authState (it should always be present when component is mounted)
   const user = authState.status === "authenticated" ? authState.user : null;
+
+  // Get the currently selected message for evidence panel
+  const selectedMessage = selectedMessageId
+    ? messages.find((m) => m.id === selectedMessageId)
+    : null;
+
+  // Handle opening evidence details
+  const handleOpenDetails = useCallback((messageId: string) => {
+    setSelectedMessageId(messageId);
+  }, []);
+
+  // Handle closing evidence details
+  const handleCloseDetails = useCallback(() => {
+    setSelectedMessageId(null);
+  }, []);
+
+  // Detect mobile viewport
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Handle Escape key to close evidence panel
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && selectedMessageId) {
+        handleCloseDetails();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedMessageId, handleCloseDetails]);
 
   // Load conversations on mount
   useEffect(() => {
@@ -424,94 +698,111 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
         </div>
       </div>
 
-      {/* Main panel: Messages and composer */}
+      {/* Main panel: Messages and composer with optional evidence panel */}
       <div className="flex-1 flex flex-col">
-        {/* Messages area */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {activeConversationId ? (
-            <>
-              {transcriptLoading && messages.length === 0 ? (
-                <div className="text-gray-500">Loading messages...</div>
-              ) : (
-                <div className="space-y-4 max-w-3xl mx-auto">
-                  {messages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex ${
-                        msg.role === "user" ? "justify-end" : "justify-start"
-                      }`}
-                    >
+        {/* Messages and evidence container */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Messages area */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {activeConversationId ? (
+              <>
+                {transcriptLoading && messages.length === 0 ? (
+                  <div className="text-gray-500">Loading messages...</div>
+                ) : (
+                  <div className="space-y-4 max-w-3xl mx-auto">
+                    {messages.map((msg) => (
                       <div
-                        className={
-                          msg.role === "user" ? "max-w-md" : "max-w-md"
-                        }
+                        key={msg.id}
+                        className={`flex ${
+                          msg.role === "user" ? "justify-end" : "justify-start"
+                        }`}
                       >
-                        {/* Message bubble */}
                         <div
-                          className={`px-4 py-2 rounded-lg ${
-                            msg.role === "user"
-                              ? "message-user-bubble"
-                              : msg.error
-                                ? "message-error-bubble"
-                                : msg.id === PENDING_MESSAGE_ID
-                                  ? "message-pending-bubble"
-                                  : "message-assistant-bubble"
-                          }`}
+                          className={
+                            msg.role === "user" ? "max-w-md" : "max-w-md"
+                          }
                         >
-                          {msg.role === "assistant" ? (
-                            <MarkdownContent content={msg.content} />
-                          ) : (
-                            <div className="whitespace-pre-wrap">
-                              {msg.content}
-                            </div>
-                          )}
-                          {msg.error && !msg.annotations?.failure && (
-                            <div className="text-xs mt-2 font-medium">
-                              Error: {msg.error}
-                            </div>
+                          {/* Message bubble */}
+                          <div
+                            className={`px-4 py-2 rounded-lg ${
+                              msg.role === "user"
+                                ? "message-user-bubble"
+                                : msg.error
+                                  ? "message-error-bubble"
+                                  : msg.id === PENDING_MESSAGE_ID
+                                    ? "message-pending-bubble"
+                                    : "message-assistant-bubble"
+                            }`}
+                          >
+                            {msg.role === "assistant" ? (
+                              <MarkdownContent content={msg.content} />
+                            ) : (
+                              <div className="whitespace-pre-wrap">
+                                {msg.content}
+                              </div>
+                            )}
+                            {msg.error && !msg.annotations?.failure && (
+                              <div className="text-xs mt-2 font-medium">
+                                Error: {msg.error}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Trust row for assistant messages with annotations */}
+                          {msg.role === "assistant" && msg.annotations && (
+                            <>
+                              {msg.annotations.failure ? (
+                                <FailureRow
+                                  detail={msg.annotations.failure.detail}
+                                  stage={msg.annotations.failure.stage}
+                                  retryable={msg.annotations.failure.retryable}
+                                />
+                              ) : (
+                                <TrustRow
+                                  annotations={msg.annotations}
+                                  messageId={msg.id}
+                                  isSelected={selectedMessageId === msg.id}
+                                  onOpenDetails={handleOpenDetails}
+                                />
+                              )}
+                            </>
                           )}
                         </div>
-
-                        {/* Trust row for assistant messages with annotations */}
-                        {msg.role === "assistant" && msg.annotations && (
-                          <>
-                            {msg.annotations.failure ? (
-                              <FailureRow
-                                detail={msg.annotations.failure.detail}
-                                stage={msg.annotations.failure.stage}
-                                retryable={msg.annotations.failure.retryable}
-                              />
-                            ) : (
-                              <TrustRow annotations={msg.annotations} />
-                            )}
-                          </>
-                        )}
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center">
-                <div className="text-6xl mb-4" aria-hidden="true">
-                  💬
-                </div>
-                <div className="type-heading-md text-[#24453a] mb-2">
-                  Welcome to Family Assistant
-                </div>
-                <div className="type-body-sm text-[#6e675d]">
-                  Select a conversation or start a new chat below
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <div className="text-6xl mb-4" aria-hidden="true">
+                    💬
+                  </div>
+                  <div className="type-heading-md text-[#24453a] mb-2">
+                    Welcome to Family Assistant
+                  </div>
+                  <div className="type-body-sm text-[#6e675d]">
+                    Select a conversation or start a new chat below
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {error && (
-            <div className="max-w-3xl mx-auto mt-4 p-4 bg-[#f8e9e6] text-[#a54034] rounded border border-[#e0b5ad]">
-              Error: {error}
-            </div>
+            {error && (
+              <div className="max-w-3xl mx-auto mt-4 p-4 bg-[#f8e9e6] text-[#a54034] rounded border border-[#e0b5ad]">
+                Error: {error}
+              </div>
+            )}
+          </div>
+
+          {/* Evidence panel - desktop right side */}
+          {!isMobile && selectedMessage && (
+            <EvidencePanel
+              message={selectedMessage}
+              onClose={handleCloseDetails}
+              isMobile={false}
+            />
           )}
         </div>
 
@@ -541,6 +832,15 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
           </div>
         </div>
       </div>
+
+      {/* Evidence panel - mobile bottom sheet */}
+      {isMobile && selectedMessage && selectedMessage.annotations && (
+        <EvidencePanel
+          isOpen={true}
+          evidence={selectedMessage.annotations}
+          onClose={handleCloseDetails}
+        />
+      )}
     </div>
   );
 }
