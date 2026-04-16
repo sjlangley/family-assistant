@@ -102,9 +102,7 @@ class MemoryStorage:
                     set_={
                         'summary_text': summary_text,
                         'source_message_id': source_message_id,
-                        'version': (
-                            ConversationMemorySummary.version + 1
-                        ),
+                        'version': (ConversationMemorySummary.version + 1),
                     },
                 )
                 .returning(ConversationMemorySummary)
@@ -214,19 +212,24 @@ class MemoryStorage:
         # Try atomic PostgreSQL upsert first
         try:
             # Use different conflict resolution based on fact_key presence
+            # Must include index_where to match partial unique indexes exactly
             if fact_key is not None:
-                # Conflict on (user_id, fact_key, active) unique index
+                # Conflict on keyed facts:
+                # (user_id, fact_key, active) WHERE fact_key IS NOT NULL AND active = true
                 stmt = (
                     insert(DurableFact)
                     .values(**values)
                     .on_conflict_do_update(
                         index_elements=['user_id', 'fact_key', 'active'],
+                        index_where=('fact_key IS NOT NULL AND active = true'),
                         set_=update_values,
                     )
                     .returning(DurableFact)
                 )
             else:
-                # Conflict on (user_id, subject, fact_text, active) unique index
+                # Conflict on keyless facts:
+                # (user_id, subject, fact_text, active)
+                # WHERE active = true AND fact_key IS NULL
                 stmt = (
                     insert(DurableFact)
                     .values(**values)
@@ -237,6 +240,7 @@ class MemoryStorage:
                             'fact_text',
                             'active',
                         ],
+                        index_where=('active = true AND fact_key IS NULL'),
                         set_=update_values,
                     )
                     .returning(DurableFact)
@@ -253,7 +257,7 @@ class MemoryStorage:
 
         # Fallback: manual upsert for SQLite and other databases
         if fact_key is not None:
-            # Dedupe by fact_key
+            # Dedupe by fact_key for keyed facts
             stmt = select(DurableFact).where(
                 and_(
                     DurableFact.user_id == user_id,
@@ -262,13 +266,13 @@ class MemoryStorage:
                 )
             )
         else:
-            # Dedupe by subject and fact_text
+            # Dedupe by subject and fact_text for keyless facts
             stmt = select(DurableFact).where(
                 and_(
                     DurableFact.user_id == user_id,
                     DurableFact.subject == subject,
                     DurableFact.fact_text == fact_text,
-                    DurableFact.active is True,
+                    DurableFact.active == True,  # noqa: E712
                 )
             )
 

@@ -5,6 +5,7 @@ Revises: 57bad9ffdeea
 Create Date: 2026-04-16 10:45:14.599450
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -30,18 +31,16 @@ def upgrade() -> None:
         """
     )
     # Add unique partial index for (user_id, subject, fact_text, active)
-    # This supports atomic upsert when fact_key is absent
+    # This supports atomic upsert when fact_key is absent (keyless facts only)
     op.execute(
         """
         CREATE UNIQUE INDEX durable_facts_user_subject_text_active_uniq
         ON durable_facts(user_id, subject, fact_text, active)
-        WHERE active = true
+        WHERE active = true AND fact_key IS NULL
         """
     )
     # Drop the old non-unique index since we have unique indexes now
-    op.execute(
-        'DROP INDEX IF EXISTS durable_facts_user_fact_key_active_idx'
-    )
+    op.execute('DROP INDEX IF EXISTS durable_facts_user_fact_key_active_idx')
 
 
 def downgrade() -> None:

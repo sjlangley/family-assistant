@@ -113,7 +113,7 @@ class DurableFact(SQLModel, table=True):
             'fact_text',
             'active',
             unique=True,
-            postgresql_where=text('active = true'),
+            postgresql_where=text('active = true AND fact_key IS NULL'),
         ),
         Index('durable_facts_source_message_idx', 'source_message_id'),
     )
