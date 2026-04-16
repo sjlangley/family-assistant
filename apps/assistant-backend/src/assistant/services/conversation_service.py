@@ -5,7 +5,6 @@ from typing import cast
 import uuid
 
 from fastapi import BackgroundTasks, HTTPException, status
-from pydantic import ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -830,8 +829,6 @@ class ConversationService:
           Both can be None if extraction fails or produces empty results.
         """
         try:
-            import json
-
             # Try to extract JSON from result
             start_idx = result_text.find('{')
             end_idx = result_text.rfind('}') + 1
@@ -851,7 +848,7 @@ class ConversationService:
 
             return summary, facts if facts else None
 
-        except (ValidationError, TypeError) as e:
+        except (json.JSONDecodeError, TypeError) as e:
             logger.warning(f'Failed to parse extraction result: {str(e)}')
             return None, None
 

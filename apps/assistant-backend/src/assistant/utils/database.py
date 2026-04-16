@@ -17,6 +17,14 @@ async def get_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
 DBSession = Annotated[AsyncSession, Depends(get_session)]
 
 
+def _resolve_database_url() -> str:
+    """Resolve the effective database URL for standalone DB sessions."""
+    database_url = settings.database_url or settings.tcp_connection_url()
+    if not database_url:
+        raise RuntimeError('Database URL is not configured.')
+    return database_url
+
+
 @asynccontextmanager
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """Get a standalone async database session for background jobs.
@@ -26,7 +34,7 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """
     engine = create_async_engine(
         # pyrefly: ignore [bad-argument-type]
-        settings.database_url,
+        _resolve_database_url(),
         echo=False,
     )
     async with AsyncSession(engine) as session:

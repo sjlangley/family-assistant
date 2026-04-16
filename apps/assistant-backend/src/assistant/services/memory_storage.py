@@ -86,8 +86,9 @@ class MemoryStorage:
         Returns:
             Persisted ConversationMemorySummary row
         """
-        # Try atomic PostgreSQL upsert first
-        try:
+        # Use atomic PostgreSQL upsert when the bound dialect supports it.
+        bind = session.bind
+        if bind is not None and bind.dialect.name == 'postgresql':
             stmt = (
                 insert(ConversationMemorySummary)
                 .values(
@@ -114,9 +115,6 @@ class MemoryStorage:
             row = result.scalars().first()
             if row is not None:
                 return row
-        except Exception:
-            # Fall through to manual upsert for SQLite or other DBs
-            pass
 
         # Fallback: manual upsert for SQLite and other databases
         stmt = select(ConversationMemorySummary).where(
