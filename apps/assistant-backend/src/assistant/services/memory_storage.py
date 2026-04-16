@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from assistant.models.memory_sql import (
     ConversationMemorySummary,
     DurableFact,
+    DurableFactConfidence,
+    DurableFactSourceType,
 )
 from assistant.utils.datetime_utils import utc_now
 
@@ -103,8 +105,8 @@ class MemoryStorage:
         user_id: str,
         subject: str,
         fact_text: str,
-        confidence,
-        source_type,
+        confidence: 'DurableFactConfidence',
+        source_type: 'DurableFactSourceType',
         fact_key: str | None = None,
         source_conversation_id: uuid.UUID | None = None,
         source_message_id: uuid.UUID | None = None,
@@ -147,9 +149,7 @@ class MemoryStorage:
                 .values(**values)
                 .on_conflict_do_update(
                     index_elements=['user_id', 'fact_key', 'active'],
-                    index_where=text(
-                        'fact_key IS NOT NULL AND active = true'
-                    ),
+                    index_where=text('fact_key IS NOT NULL AND active = true'),
                     set_=update_values,
                 )
                 .returning(DurableFact)
@@ -361,8 +361,14 @@ class MemoryStorage:
             return new_fact
 
         # Update existing fact
-        for key, value in update_values.items():
-            setattr(existing_fact, key, value)
+        existing_fact.subject = subject
+        existing_fact.fact_key = fact_key
+        existing_fact.fact_text = fact_text
+        existing_fact.confidence = confidence
+        existing_fact.source_type = source_type
+        existing_fact.source_conversation_id = source_conversation_id
+        existing_fact.source_message_id = source_message_id
+        existing_fact.source_excerpt = source_excerpt
         await session.flush()
 
         return existing_fact
