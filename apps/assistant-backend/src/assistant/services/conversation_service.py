@@ -648,11 +648,13 @@ class ConversationService:
 
                     # Track what we actually save
                     summary_saved = False
+                    persisted_summary = None
                     facts_count = 0
+                    persisted_facts = []
 
                     # Persist summary if extracted
                     if summary_text and self.memory_storage:
-                        await self.memory_storage.upsert_conversation_summary(
+                        persisted_summary = await self.memory_storage.upsert_conversation_summary(
                             session=session,
                             conversation_id=conversation_id,
                             user_id=user_id,
@@ -670,7 +672,7 @@ class ConversationService:
 
                         for fact_data in facts:
                             try:
-                                await self.memory_storage.upsert_durable_fact(
+                                persisted_fact = await self.memory_storage.upsert_durable_fact(
                                     session=session,
                                     user_id=user_id,
                                     subject=fact_data.get('subject', ''),
@@ -685,6 +687,7 @@ class ConversationService:
                                     if assistant_msg.content
                                     else None,
                                 )
+                                persisted_facts.append(persisted_fact)
                                 facts_count += 1
                             except Exception as e:
                                 logger.warning(
@@ -693,6 +696,30 @@ class ConversationService:
 
                     # Commit the session to persist all writes
                     await session.commit()
+
+                    # Index persisted memory into Chroma for retrieval support
+                    if self.memory_storage:
+                        if persisted_summary:
+                            try:
+                                self.memory_storage.index_conversation_summary(
+                                    persisted_summary
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    f'Failed to index conversation summary in '
+                                    f'Chroma: {str(e)}'
+                                )
+
+                        for persisted_fact in persisted_facts:
+                            try:
+                                self.memory_storage.index_durable_fact(
+                                    persisted_fact
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    f'Failed to index durable fact in Chroma: '
+                                    f'{str(e)}'
+                                )
 
                     logger.info(
                         f'Background extraction completed for conversation '
