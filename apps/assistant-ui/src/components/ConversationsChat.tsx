@@ -35,6 +35,17 @@ function createPendingAssistantMessage(): Message {
   };
 }
 
+// Check if annotations have displayable content
+function hasAnnotationContent(annotations: AssistantAnnotations): boolean {
+  return (
+    (annotations.sources?.length ?? 0) > 0 ||
+    (annotations.tools?.length ?? 0) > 0 ||
+    (annotations.memory_hits?.length ?? 0) > 0 ||
+    (annotations.memory_saved?.length ?? 0) > 0 ||
+    !!annotations.failure
+  );
+}
+
 // TrustPill: Compact metadata item from annotations
 interface TrustPillProps {
   label: string;
@@ -377,6 +388,27 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
     setSelectedMessageId(null);
   }, []);
 
+  // Ref for aria-live announcements
+  const statusAnnouncementRef = useRef<HTMLDivElement>(null);
+
+  // Announce pending/response status changes for accessibility
+  useEffect(() => {
+    if (!statusAnnouncementRef.current) return;
+
+    if (sendingMessage) {
+      statusAnnouncementRef.current.textContent =
+        "Thinking... Your question is being processed.";
+    } else if (messages.some((m) => m.id === PENDING_MESSAGE_ID)) {
+      // Pending message exists but we're not sending - this shouldn't happen
+      // but handle gracefully
+    } else if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.role === "assistant") {
+        statusAnnouncementRef.current.textContent = "Response received.";
+      }
+    }
+  }, [sendingMessage, messages]);
+
   // Handle Escape key to close evidence panel
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -540,19 +572,28 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
             content: trimmedMessage,
           });
 
-          // Replace pending placeholder with real assistant message
+          // Replace pending placeholder with real assistant message AND replace optimistic user message with persisted version
           setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === PENDING_MESSAGE_ID ? response.assistant_message : msg,
-            ),
+            prev.map((msg) => {
+              if (msg.id === PENDING_MESSAGE_ID) {
+                return response.assistant_message;
+              }
+              if (msg.id === userMessage.id && response.user_message) {
+                return response.user_message;
+              }
+              return msg;
+            }),
           );
 
           // Update conversations list
           updateConversationsList(response);
         } catch (err) {
-          // Remove pending message on error
+          // Remove both pending message and optimistic user message on error
           setMessages((prev) =>
-            prev.filter((msg) => msg.id !== PENDING_MESSAGE_ID),
+            prev.filter(
+              (msg) =>
+                msg.id !== PENDING_MESSAGE_ID && msg.id !== userMessage.id,
+            ),
           );
           throw err;
         }
@@ -572,21 +613,27 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
         setMessages([userMessage, pendingMessage]);
         setInputMessage("");
 
-        response = await createConversationWithMessage({
-          content: trimmedMessage,
-        });
+        try {
+          response = await createConversationWithMessage({
+            content: trimmedMessage,
+          });
 
-        // Update conversations list
-        updateConversationsList(response);
+          // Update conversations list
+          updateConversationsList(response);
 
-        // Mark this conversation to skip the initial fetch
-        skipFetchForConversation.current = response.conversation.id;
+          // Mark this conversation to skip the initial fetch
+          skipFetchForConversation.current = response.conversation.id;
 
-        // Set messages with real user and assistant messages, removing placeholder
-        setMessages([response.user_message, response.assistant_message]);
+          // Set messages with real user and assistant messages, removing placeholder
+          setMessages([response.user_message, response.assistant_message]);
 
-        // Set active conversation to the new one (this will trigger useEffect but it will skip fetch)
-        setActiveConversationId(response.conversation.id);
+          // Set active conversation to the new one (this will trigger useEffect but it will skip fetch)
+          setActiveConversationId(response.conversation.id);
+        } catch (err) {
+          // Remove fake optimistic messages if API call fails
+          setMessages([]);
+          throw err;
+        }
       }
     } catch (err) {
       if (err instanceof Error) {
@@ -682,6 +729,14 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
 
       {/* Main panel: Messages and composer with optional evidence panel */}
       <div className="flex-1 flex flex-col">
+        {/* Accessibility: Announcements for screen readers */}
+        <div
+          ref={statusAnnouncementRef}
+          aria-live="polite"
+          aria-atomic="true"
+          className="sr-only"
+        />
+
         {/* Messages and evidence container */}
         <div className="flex-1 flex overflow-hidden">
           {/* Messages area */}
@@ -731,24 +786,28 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
                           </div>
 
                           {/* Trust row for assistant messages with annotations */}
-                          {msg.role === "assistant" && msg.annotations && (
-                            <>
-                              {msg.annotations.failure ? (
-                                <FailureRow
-                                  detail={msg.annotations.failure.detail}
-                                  stage={msg.annotations.failure.stage}
-                                  retryable={msg.annotations.failure.retryable}
-                                />
-                              ) : (
-                                <TrustRow
-                                  annotations={msg.annotations}
-                                  messageId={msg.id}
-                                  isSelected={selectedMessageId === msg.id}
-                                  onOpenDetails={handleOpenDetails}
-                                />
-                              )}
-                            </>
-                          )}
+                          {msg.role === "assistant" &&
+                            msg.annotations &&
+                            hasAnnotationContent(msg.annotations) && (
+                              <>
+                                {msg.annotations.failure ? (
+                                  <FailureRow
+                                    detail={msg.annotations.failure.detail}
+                                    stage={msg.annotations.failure.stage}
+                                    retryable={
+                                      msg.annotations.failure.retryable
+                                    }
+                                  />
+                                ) : (
+                                  <TrustRow
+                                    annotations={msg.annotations}
+                                    messageId={msg.id}
+                                    isSelected={selectedMessageId === msg.id}
+                                    onOpenDetails={handleOpenDetails}
+                                  />
+                                )}
+                              </>
+                            )}
                         </div>
                       </div>
                     ))}

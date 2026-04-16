@@ -104,6 +104,19 @@
     color: var(--color-text-muted);
   }
 
+  /* Accessibility: Screen reader only content */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
   /* Message bubble styles */
   .message-user-bubble {
     @apply bg-[#24453a] text-white px-4 py-2 rounded-lg;
@@ -183,6 +196,28 @@
     @apply flex-1 p-4 space-y-4;
   }
 
+  /* Evidence panel - alternative selectors (used in EvidencePanel component) */
+  .evidence-content {
+    @apply bg-[#fbf8f2] rounded-lg flex flex-col max-h-[90vh] overflow-y-auto;
+  }
+
+  .evidence-header {
+    @apply sticky top-0 flex items-center justify-between p-4 border-b border-[#ded6c7] bg-[#fbf8f2];
+  }
+
+  .evidence-close-button {
+    @apply flex items-center justify-center w-8 h-8 rounded hover:bg-[#f0e8da] cursor-pointer transition-colors;
+    color: var(--color-text-muted);
+  }
+
+  .evidence-close-button:hover {
+    color: var(--color-text-primary);
+  }
+
+  .evidence-section-content {
+    @apply space-y-3;
+  }
+
   /* Evidence sections */
   .evidence-section {
     @apply space-y-3;
@@ -201,6 +236,23 @@
     font-size: 14px;
     color: var(--color-text-muted);
     @apply italic py-2;
+  }
+
+  /* Evidence detail items */
+  .evidence-source-item {
+    @apply p-3 bg-[#f6f2ea] rounded border border-[#ded6c7];
+  }
+
+  .evidence-tool-item {
+    @apply p-3 bg-[#f6f2ea] rounded border border-[#ded6c7];
+  }
+
+  .evidence-memory-item {
+    @apply p-3 bg-[#f6f2ea] rounded border border-[#ded6c7];
+  }
+
+  .evidence-failure-item {
+    @apply p-3 bg-[#fae8e5] rounded border border-[#e0b5ad];
   }
 
   /* Detail surfaces */
