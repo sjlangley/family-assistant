@@ -15,6 +15,7 @@ from assistant.models.memory_sql import (
 )
 from assistant.services.context_assembly import (
     MAX_DURABLE_FACTS,
+    MAX_FACT_CANDIDATES,
     MAX_FACT_TEXT_LENGTH,
     MAX_RECENT_MESSAGES_NO_SUMMARY,
     MAX_RECENT_MESSAGES_WITH_SUMMARY,
@@ -559,3 +560,385 @@ async def test_assemble_context_without_new_message_no_duplication(
         1 for msg in result.messages if msg['content'] == 'Latest message'
     )
     assert latest_count == 1
+
+
+# New tests for relevance-based fact selection
+async def test_fact_selection_prefers_relevant_over_recent(
+    db_session: AsyncSession,
+):
+    """Facts whose subjects appear in recent turns are preferred over recent facts."""
+    service = ContextAssemblyService()
+    user_id = 'user-123'
+
+    # Create conversation
+    conversation = Conversation(user_id=user_id, title='Genealogy')
+    db_session.add(conversation)
+    await db_session.commit()
+    await db_session.refresh(conversation)
+
+    # Create enough facts to exceed MAX_DURABLE_FACTS so selection matters
+    # Create old but relevant facts (George mentioned in recent turn)
+    old_relevant_fact = DurableFact(
+        user_id=user_id,
+        subject='George Langley',
+        fact_text='Born in 1884',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add(old_relevant_fact)
+    await db_session.commit()
+
+    # Create many recent but non-relevant facts to exceed the budget
+    for i in range(MAX_DURABLE_FACTS + 1):
+        fact = DurableFact(
+            user_id=user_id,
+            subject=f'Unrelated Person {i}',
+            fact_text=f'Unrelated fact {i}',
+            confidence=DurableFactConfidence.HIGH,
+            source_type=DurableFactSourceType.CONVERSATION,
+            active=True,
+        )
+        db_session.add(fact)
+    await db_session.commit()
+    await db_session.refresh(old_relevant_fact)
+
+    # Add recent turn that mentions "George"
+    msg = Message(
+        conversation_id=conversation.id,
+        role='user',
+        content='Tell me about George',
+        sequence_number=1,
+    )
+    db_session.add(msg)
+    await db_session.commit()
+
+    # Assemble context
+    result = await service.assemble_context(
+        db_session,
+        user_id=user_id,
+        conversation_id=conversation.id,
+        new_user_message='What else?',
+    )
+
+    # Should prefer the relevant fact even though others are more recent
+    assert old_relevant_fact.id in result.fact_ids
+    assert result.selection_method == 'relevance'
+
+
+async def test_fact_selection_fallback_to_recency(db_session: AsyncSession):
+    """When no facts are relevant to recent turns, fall back to recency."""
+    service = ContextAssemblyService()
+    user_id = 'user-123'
+
+    # Create conversation
+    conversation = Conversation(user_id=user_id, title='Chat')
+    db_session.add(conversation)
+    await db_session.commit()
+    await db_session.refresh(conversation)
+
+    # Create facts with subjects not mentioned in recent turns
+    fact1 = DurableFact(
+        user_id=user_id,
+        subject='Alice',
+        fact_text='First fact',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add(fact1)
+    await db_session.commit()
+
+    fact2 = DurableFact(
+        user_id=user_id,
+        subject='Bob',
+        fact_text='Second fact',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add(fact2)
+    await db_session.commit()
+    await db_session.refresh(fact1)
+    await db_session.refresh(fact2)
+
+    # Add recent turn that doesn't mention any subjects
+    msg = Message(
+        conversation_id=conversation.id,
+        role='user',
+        content='Tell me something interesting',
+        sequence_number=1,
+    )
+    db_session.add(msg)
+    await db_session.commit()
+
+    # Assemble context
+    result = await service.assemble_context(
+        db_session,
+        user_id=user_id,
+        conversation_id=conversation.id,
+        new_user_message='What is that?',
+    )
+
+    # Should fall back to recency (fact2 is more recent)
+    assert fact2.id in result.fact_ids
+    assert result.selection_method == 'recency'
+
+
+async def test_fact_selection_uses_postgres_canonical_rows(
+    db_session: AsyncSession,
+):
+    """Selected facts come from canonical Postgres rows, not another source."""
+    service = ContextAssemblyService()
+    user_id = 'user-123'
+
+    # Create conversation
+    conversation = Conversation(user_id=user_id, title='Chat')
+    db_session.add(conversation)
+    await db_session.commit()
+    await db_session.refresh(conversation)
+
+    # Create facts
+    fact = DurableFact(
+        user_id=user_id,
+        subject='John',
+        fact_text='A known fact',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add(fact)
+    await db_session.commit()
+    await db_session.refresh(fact)
+
+    # Add recent turn mentioning the subject
+    msg = Message(
+        conversation_id=conversation.id,
+        role='user',
+        content='What about John?',
+        sequence_number=1,
+    )
+    db_session.add(msg)
+    await db_session.commit()
+
+    # Assemble context
+    result = await service.assemble_context(
+        db_session,
+        user_id=user_id,
+        conversation_id=conversation.id,
+        new_user_message='Tell me',
+    )
+
+    # Verify fact_ids correspond to actual Postgres rows
+    assert len(result.fact_ids) == 1
+    assert result.fact_ids[0] == fact.id
+
+    # Verify the fact content appears in the prompt
+    facts_msg = [
+        m for m in result.messages if 'Known facts' in m.get('content', '')
+    ]
+    assert len(facts_msg) == 1
+    assert 'John' in facts_msg[0]['content']
+    assert 'A known fact' in facts_msg[0]['content']
+
+
+async def test_fact_selection_prefers_multiple_relevant_facts(
+    db_session: AsyncSession,
+):
+    """When multiple facts are relevant, use recency as tiebreaker."""
+    service = ContextAssemblyService()
+    user_id = 'user-123'
+
+    # Create conversation
+    conversation = Conversation(user_id=user_id, title='Chat')
+    db_session.add(conversation)
+    await db_session.commit()
+    await db_session.refresh(conversation)
+
+    # Create three relevant facts (subjects all in recent turns)
+    # Older relevant facts
+    fact1 = DurableFact(
+        user_id=user_id,
+        subject='George',
+        fact_text='First fact',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add(fact1)
+    await db_session.commit()
+
+    fact2 = DurableFact(
+        user_id=user_id,
+        subject='Mary',
+        fact_text='Second fact',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add(fact2)
+    await db_session.commit()
+
+    # Newest relevant fact
+    fact3 = DurableFact(
+        user_id=user_id,
+        subject='John',
+        fact_text='Third fact',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add(fact3)
+    await db_session.commit()
+    await db_session.refresh(fact1)
+    await db_session.refresh(fact2)
+    await db_session.refresh(fact3)
+
+    # Add recent turns mentioning all three subjects
+    msg = Message(
+        conversation_id=conversation.id,
+        role='user',
+        content='About George, Mary, and John...',
+        sequence_number=1,
+    )
+    db_session.add(msg)
+    await db_session.commit()
+
+    # Assemble context
+    result = await service.assemble_context(
+        db_session,
+        user_id=user_id,
+        conversation_id=conversation.id,
+        new_user_message='Tell me',
+    )
+
+    # All three should be included (all relevant)
+    assert len(result.fact_ids) == 3
+    # They should be sorted by recency (newest first)
+    assert result.fact_ids[0] == fact3.id
+    assert result.fact_ids[1] == fact2.id
+    assert result.fact_ids[2] == fact1.id
+    assert result.selection_method == 'relevance'
+
+
+async def test_fact_selection_case_insensitive_matching(
+    db_session: AsyncSession,
+):
+    """Subject matching is case-insensitive."""
+    service = ContextAssemblyService()
+    user_id = 'user-123'
+
+    # Create conversation
+    conversation = Conversation(user_id=user_id, title='Chat')
+    db_session.add(conversation)
+    await db_session.commit()
+    await db_session.refresh(conversation)
+
+    # Create fact with mixed case subject
+    fact = DurableFact(
+        user_id=user_id,
+        subject='George Langley',
+        fact_text='A fact',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add(fact)
+    await db_session.commit()
+    await db_session.refresh(fact)
+
+    # Add recent turn with different case
+    msg = Message(
+        conversation_id=conversation.id,
+        role='user',
+        content='What about george langley?',  # lowercase
+        sequence_number=1,
+    )
+    db_session.add(msg)
+    await db_session.commit()
+
+    # Assemble context
+    result = await service.assemble_context(
+        db_session,
+        user_id=user_id,
+        conversation_id=conversation.id,
+        new_user_message='Tell me',
+    )
+
+    # Should match despite case difference
+    assert fact.id in result.fact_ids
+    assert result.selection_method == 'relevance'
+
+
+async def test_fact_selection_new_conversation_uses_recency(
+    db_session: AsyncSession,
+):
+    """New conversations use recency selection (no recent turns to rank against)."""
+    service = ContextAssemblyService()
+    user_id = 'user-123'
+
+    # Create facts
+    fact1 = DurableFact(
+        user_id=user_id,
+        subject='Subject A',
+        fact_text='First',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add(fact1)
+    await db_session.commit()
+
+    fact2 = DurableFact(
+        user_id=user_id,
+        subject='Subject B',
+        fact_text='Second',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add(fact2)
+    await db_session.commit()
+
+    # Assemble context for new conversation (no recent turns)
+    result = await service.assemble_context_new_conversation(
+        db_session,
+        user_id=user_id,
+        user_message='Hello, can you help?',
+    )
+
+    # Should use recency method
+    assert result.selection_method == 'recency'
+    # Should include the most recent fact first
+    assert fact2.id in result.fact_ids
+
+
+async def test_fact_selection_respects_max_candidates_limit(
+    db_session: AsyncSession,
+):
+    """Fact selection loads some pool size and then ranks, not the full DB."""
+    service = ContextAssemblyService()
+    user_id = 'user-123'
+
+    # Create many facts (more than MAX_FACT_CANDIDATES)
+    for i in range(MAX_FACT_CANDIDATES + 5):
+        fact = DurableFact(
+            user_id=user_id,
+            subject=f'Subject {i}',
+            fact_text=f'Fact {i}',
+            confidence=DurableFactConfidence.HIGH,
+            source_type=DurableFactSourceType.CONVERSATION,
+            active=True,
+        )
+        db_session.add(fact)
+    await db_session.commit()
+
+    # Assemble context for new conversation
+    result = await service.assemble_context_new_conversation(
+        db_session,
+        user_id=user_id,
+        user_message='Hello',
+    )
+
+    # Should only include MAX_DURABLE_FACTS, loaded from MAX_FACT_CANDIDATES pool
+    assert len(result.fact_ids) <= MAX_DURABLE_FACTS

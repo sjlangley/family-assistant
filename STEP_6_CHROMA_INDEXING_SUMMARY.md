@@ -196,26 +196,26 @@ When marking a fact inactive, caller should:
 
 ## Verification Checklist
 
-✅ All 177 backend tests passing  
-✅ Coverage: 93.90% (exceeds 90% requirement)  
-✅ Ruff linting: clean  
-✅ No schema changes needed (uses existing columns)  
-✅ No database migrations needed (index-only)  
-✅ Idempotent retries: verified by tests  
-✅ Stable IDs: verified by tests  
-✅ Inactive fact handling: verified by tests  
-✅ Metadata completeness: verified by tests  
-✅ Error handling: verified by tests  
-✅ Scope limited to memory_storage.py (no ConversationService changes)  
+✅ All 177 backend tests passing
+✅ Coverage: 93.90% (exceeds 90% requirement)
+✅ Ruff linting: clean
+✅ No schema changes needed (uses existing columns)
+✅ No database migrations needed (index-only)
+✅ Idempotent retries: verified by tests
+✅ Stable IDs: verified by tests
+✅ Inactive fact handling: verified by tests
+✅ Metadata completeness: verified by tests
+✅ Error handling: verified by tests
+✅ Scope limited to memory_storage.py (no ConversationService changes)
 
 ## Next Steps
 
-**Step 6, Commit 4:** Wire up BackgroundTask execution → Call indexing methods after memory writes  
-**Step 6, Commit 5:** Add retrieval/ranking logic → Query Chroma with context assembly  
+**Step 6, Commit 4:** Wire up BackgroundTask execution → Call indexing methods after memory writes
+**Step 6, Commit 5:** Add retrieval/ranking logic → Query Chroma with context assembly
 
 ---
 
-**Commit:** `9ec5252`  
+**Commit:** `9ec5252`
 **Files:**
 - `src/assistant/services/memory_storage.py` — 3 indexing methods (99 lines)
 - `tests/services/test_memory_storage.py` — 10 comprehensive tests (265 lines)
