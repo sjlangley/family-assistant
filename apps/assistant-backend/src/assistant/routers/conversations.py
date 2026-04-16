@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, BackgroundTasks, Request, status
 
 from assistant.models.conversation import (
     ConversationWithMessagesResponse,
@@ -66,6 +66,7 @@ async def create_conversation_with_message(
     payload: CreateConversationWithMessageRequest,
     user: CurrentUser,
     session: DBSession,
+    background_tasks: BackgroundTasks,
 ) -> ConversationWithMessagesResponse:
     """Create a new conversation with an initial user message."""
     conversation_service = get_conversation_service()
@@ -73,6 +74,7 @@ async def create_conversation_with_message(
         session=session,
         user_id=user.userid,
         payload=payload,
+        background_tasks=background_tasks,
     )
 
 
@@ -87,6 +89,7 @@ async def add_message_to_conversation(
     payload: CreateMessageRequest,
     user: CurrentUser,
     session: DBSession,
+    background_tasks: BackgroundTasks,
 ) -> ConversationWithMessagesResponse:
     conversation_service = get_conversation_service()
     return await conversation_service.add_message_to_conversation(
@@ -94,4 +97,5 @@ async def add_message_to_conversation(
         user_id=user.userid,
         conversation_id=conversation_id,
         payload=payload,
+        background_tasks=background_tasks,
     )

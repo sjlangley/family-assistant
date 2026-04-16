@@ -2272,3 +2272,340 @@ async def test_add_message_with_llm_failure_persists_error_annotations(
     assert annotations.failure is not None
     assert annotations.failure.stage == FailureAnnotationStage.LLM
     assert annotations.failure.retryable is True
+
+
+# ============================================================================
+# Background Extraction Tests
+# ============================================================================
+
+
+@pytest.fixture
+def mock_background_tasks():
+    """Create a mock BackgroundTasks instance."""
+    mock_tasks = Mock()
+    mock_tasks.add_task = Mock()
+    return mock_tasks
+
+
+async def test_create_conversation_schedules_background_extraction(
+    async_session,
+    mock_llm_service,
+    mock_context_assembly,
+    mock_tool_service,
+    mock_memory_storage,
+    mock_background_tasks,
+):
+    """Test that create_conversation_with_message schedules extraction on success."""
+    # Setup
+    user_id = 'test@example.com'
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        ContextAssemblyResult(
+            messages=[
+                {'role': 'user', 'content': 'Hello'},
+            ],
+            used_summary=False,
+            summary_id=None,
+            fact_ids=[],
+        )
+    )
+    mock_llm_service.complete_messages.return_value = LLMCompletionResult(
+        content='Hi there!',
+        model='test-model',
+        prompt_tokens=10,
+        completion_tokens=5,
+        total_tokens=15,
+        tool_calls=None,
+        finish_reason='stop',
+    )
+
+    service = ConversationService(
+        llm_service=mock_llm_service,
+        context_assembly=mock_context_assembly,
+        tool_service=mock_tool_service,
+        memory_storage=mock_memory_storage,
+    )
+
+    payload = CreateConversationWithMessageRequest(
+        content='Hello',
+        temperature=0.7,
+        max_tokens=100,
+    )
+
+    # Execute
+    result = await service.create_conversation_with_message(
+        async_session,
+        user_id=user_id,
+        payload=payload,
+        background_tasks=mock_background_tasks,
+    )
+
+    # Assert: background task scheduled exactly once
+    assert mock_background_tasks.add_task.call_count == 1
+
+    # Assert: task is called with correct method and args
+    call_args = mock_background_tasks.add_task.call_args
+    assert call_args[0][0].__name__ == 'extract_and_save_background'
+    assert call_args[1]['user_id'] == user_id
+    assert call_args[1]['conversation_id'] == result.conversation.id
+    assert call_args[1]['assistant_message_id'] == result.assistant_message.id
+    assert call_args[1]['latest_user_message_id'] == result.user_message.id
+
+
+async def test_add_message_schedules_background_extraction(
+    async_session,
+    mock_llm_service,
+    mock_context_assembly,
+    mock_tool_service,
+    mock_memory_storage,
+    mock_background_tasks,
+):
+    """Test that add_message_to_conversation schedules extraction on success."""
+    # Setup
+    user_id = 'test@example.com'
+    conv_id = uuid.uuid4()
+
+    # Create initial conversation with user message
+    conversation = Conversation(
+        id=conv_id,
+        user_id=user_id,
+        title='Test Conversation',
+    )
+    async_session.add(conversation)
+
+    user_msg_1 = Message(
+        conversation_id=conv_id,
+        role='user',
+        content='Hello',
+        sequence_number=1,
+    )
+    async_session.add(user_msg_1)
+    await async_session.commit()
+
+    # Setup mocks for add_message
+    mock_context_assembly.assemble_context.return_value = ContextAssemblyResult(
+        messages=[
+            {'role': 'user', 'content': 'Follow-up'},
+        ],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+    mock_llm_service.complete_messages.return_value = LLMCompletionResult(
+        content='Response to follow-up',
+        model='test-model',
+        prompt_tokens=15,
+        completion_tokens=8,
+        total_tokens=23,
+        tool_calls=None,
+        finish_reason='stop',
+    )
+
+    service = ConversationService(
+        llm_service=mock_llm_service,
+        context_assembly=mock_context_assembly,
+        tool_service=mock_tool_service,
+        memory_storage=mock_memory_storage,
+    )
+
+    payload = CreateMessageRequest(
+        content='Follow-up question',
+        temperature=0.7,
+        max_tokens=100,
+    )
+
+    # Execute
+    result = await service.add_message_to_conversation(
+        async_session,
+        user_id=user_id,
+        conversation_id=conv_id,
+        payload=payload,
+        background_tasks=mock_background_tasks,
+    )
+
+    # Assert: background task scheduled exactly once
+    assert mock_background_tasks.add_task.call_count == 1
+
+    # Assert: task receives primitive IDs
+    call_args = mock_background_tasks.add_task.call_args
+    assert call_args[0][0].__name__ == 'extract_and_save_background'
+    assert call_args[1]['user_id'] == user_id
+    assert call_args[1]['conversation_id'] == conv_id
+    assert call_args[1]['assistant_message_id'] == result.assistant_message.id
+
+
+async def test_no_background_extraction_on_terminal_failure(
+    async_session,
+    mock_llm_service,
+    mock_context_assembly,
+    mock_tool_service,
+    mock_background_tasks,
+):
+    """Test that background extraction is NOT scheduled on terminal LLM failure."""
+    # Setup
+    user_id = 'test@example.com'
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        ContextAssemblyResult(
+            messages=[
+                {'role': 'user', 'content': 'Hello'},
+            ],
+            used_summary=False,
+            summary_id=None,
+            fact_ids=[],
+        )
+    )
+
+    # Simulate LLM error
+    mock_llm_service.complete_messages.side_effect = LLMCompletionError(
+        kind=LLMCompletionErrorKind.timeout,
+        message='LLM timeout',
+    )
+
+    service = ConversationService(
+        llm_service=mock_llm_service,
+        context_assembly=mock_context_assembly,
+        tool_service=mock_tool_service,
+    )
+
+    payload = CreateConversationWithMessageRequest(
+        content='Hello',
+        temperature=0.7,
+        max_tokens=100,
+    )
+
+    # Execute and catch HTTPException from terminal failure
+    with pytest.raises(HTTPException):
+        await service.create_conversation_with_message(
+            async_session,
+            user_id=user_id,
+            payload=payload,
+            background_tasks=mock_background_tasks,
+        )
+
+    # Assert: NO background task scheduled on failure
+    assert mock_background_tasks.add_task.call_count == 0
+
+
+async def test_no_background_extraction_without_memory_storage(
+    async_session,
+    mock_llm_service,
+    mock_context_assembly,
+    mock_tool_service,
+    mock_background_tasks,
+):
+    """Test that background extraction is not scheduled if memory_storage is None."""
+    # Setup
+    user_id = 'test@example.com'
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        ContextAssemblyResult(
+            messages=[
+                {'role': 'user', 'content': 'Hello'},
+            ],
+            used_summary=False,
+            summary_id=None,
+            fact_ids=[],
+        )
+    )
+    mock_llm_service.complete_messages.return_value = LLMCompletionResult(
+        content='Hi there!',
+        model='test-model',
+        prompt_tokens=10,
+        completion_tokens=5,
+        total_tokens=15,
+        tool_calls=None,
+        finish_reason='stop',
+    )
+
+    # Create service WITHOUT memory_storage
+    service = ConversationService(
+        llm_service=mock_llm_service,
+        context_assembly=mock_context_assembly,
+        tool_service=mock_tool_service,
+        memory_storage=None,
+    )
+
+    payload = CreateConversationWithMessageRequest(
+        content='Hello',
+        temperature=0.7,
+        max_tokens=100,
+    )
+
+    # Execute
+    result = await service.create_conversation_with_message(
+        async_session,
+        user_id=user_id,
+        payload=payload,
+        background_tasks=mock_background_tasks,
+    )
+
+    # Assert: response succeeds but NO background task scheduled
+    assert result.assistant_message.content == 'Hi there!'
+    assert mock_background_tasks.add_task.call_count == 0
+
+
+async def test_background_extraction_parses_results_correctly():
+    """Test that extraction result parsing works correctly."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+    )
+
+    # Test valid JSON extraction
+    result_text = """
+    {
+        "summary": "User learned about Python",
+        "facts": [
+            {"subject": "User", "fact": "Interested in Python", "confidence": "high"},
+            {"subject": "User", "fact": "Beginner programmer", "confidence": "medium"}
+        ]
+    }
+    """
+
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == 'User learned about Python'
+    assert len(facts) == 2
+    assert facts[0]['subject'] == 'User'
+    assert facts[0]['fact'] == 'Interested in Python'
+
+
+async def test_background_extraction_handles_invalid_json():
+    """Test that extraction gracefully handles invalid JSON."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+    )
+
+    # Invalid JSON
+    result_text = 'Invalid JSON text without any braces'
+
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary is None
+    assert facts is None
+
+
+async def test_background_extraction_filters_empty_facts():
+    """Test that extraction filters out empty facts."""
+    service = ConversationService(
+        llm_service=AsyncMock(spec=LLMService),
+        context_assembly=AsyncMock(spec=ContextAssemblyService),
+        tool_service=Mock(spec=ToolService),
+    )
+
+    result_text = """
+    {
+        "summary": "Test summary",
+        "facts": [
+            {"subject": "User", "fact": "Valid fact", "confidence": "high"},
+            {"subject": "", "fact": "", "confidence": "low"},
+            {"subject": "Valid", "fact": "Another fact", "confidence": "medium"}
+        ]
+    }
+    """
+
+    summary, facts = service._parse_extraction_result(result_text)
+
+    assert summary == 'Test summary'
+    assert len(facts) == 2  # Empty fact filtered out

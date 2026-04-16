@@ -1,7 +1,7 @@
 import uuid
 
 import chromadb
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -221,7 +221,9 @@ class MemoryStorage:
                     .values(**values)
                     .on_conflict_do_update(
                         index_elements=['user_id', 'fact_key', 'active'],
-                        index_where=('fact_key IS NOT NULL AND active = true'),
+                        index_where=text(
+                            'fact_key IS NOT NULL AND active = true'
+                        ),
                         set_=update_values,
                     )
                     .returning(DurableFact)
@@ -240,7 +242,7 @@ class MemoryStorage:
                             'fact_text',
                             'active',
                         ],
-                        index_where=('active = true AND fact_key IS NULL'),
+                        index_where=text('active = true AND fact_key IS NULL'),
                         set_=update_values,
                     )
                     .returning(DurableFact)

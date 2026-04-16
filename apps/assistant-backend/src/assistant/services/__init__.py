@@ -58,4 +58,5 @@ def get_conversation_service() -> ConversationService:
         context_assembly=get_context_assembly_service(),
         tool_service=get_tool_service(),
         annotation_service=AssistantAnnotationService(),
+        memory_storage=get_memory_storage(),
     )

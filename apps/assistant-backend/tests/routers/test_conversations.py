@@ -603,3 +603,114 @@ async def test_add_message_to_conversation_llm_failure(
 
     assert response.status_code == 503
     assert 'unavailable' in response.json()['detail'].lower()
+
+
+# ============================================================================
+# Background Tasks Routing Tests
+# ============================================================================
+
+
+async def test_create_conversation_with_message_passes_background_tasks(
+    authenticated_async_test_client,
+):
+    """Test that create_conversation_with_message passes BackgroundTasks to service."""
+    mock_response = {
+        'conversation': {
+            'id': str(uuid4()),
+            'title': 'New Conversation',
+            'created_at': '2024-01-01T00:00:00Z',
+            'updated_at': '2024-01-01T00:00:00Z',
+        },
+        'user_message': {
+            'id': str(uuid4()),
+            'role': 'user',
+            'content': 'Hello',
+            'sequence_number': 1,
+            'created_at': '2024-01-01T00:00:00Z',
+        },
+        'assistant_message': {
+            'id': str(uuid4()),
+            'role': 'assistant',
+            'content': 'Hi!',
+            'sequence_number': 2,
+            'created_at': '2024-01-01T00:00:00Z',
+        },
+    }
+
+    mock_service = AsyncMock()
+    mock_service.create_conversation_with_message = AsyncMock(
+        return_value=mock_response
+    )
+
+    with patch(
+        'assistant.routers.conversations.get_conversation_service',
+        return_value=mock_service,
+    ):
+        response = await authenticated_async_test_client.post(
+            '/api/v1/conversations/with-message',
+            json={'content': 'Hello', 'temperature': 0.7, 'max_tokens': 100},
+        )
+
+    assert response.status_code == 201
+
+    # Verify service was called with background_tasks parameter
+    assert mock_service.create_conversation_with_message.called
+    call_kwargs = mock_service.create_conversation_with_message.call_args[1]
+    assert 'background_tasks' in call_kwargs
+    assert call_kwargs['background_tasks'] is not None
+
+
+async def test_add_message_to_conversation_passes_background_tasks(
+    authenticated_async_test_client,
+):
+    """Test that add_message_to_conversation passes BackgroundTasks to service."""
+    conv_id = str(uuid4())
+
+    mock_response = {
+        'conversation': {
+            'id': conv_id,
+            'title': 'Test Conversation',
+            'created_at': '2024-01-01T00:00:00Z',
+            'updated_at': '2024-01-01T00:00:00Z',
+        },
+        'user_message': {
+            'id': str(uuid4()),
+            'role': 'user',
+            'content': 'Follow-up',
+            'sequence_number': 3,
+            'created_at': '2024-01-01T00:00:00Z',
+        },
+        'assistant_message': {
+            'id': str(uuid4()),
+            'role': 'assistant',
+            'content': 'Response',
+            'sequence_number': 4,
+            'created_at': '2024-01-01T00:00:00Z',
+        },
+    }
+
+    mock_service = AsyncMock()
+    mock_service.add_message_to_conversation = AsyncMock(
+        return_value=mock_response
+    )
+
+    with patch(
+        'assistant.routers.conversations.get_conversation_service',
+        return_value=mock_service,
+    ):
+        response = await authenticated_async_test_client.post(
+            f'/api/v1/conversations/{conv_id}/messages',
+            json={
+                'content': 'Follow-up',
+                'temperature': 0.7,
+                'max_tokens': 100,
+            },
+        )
+
+    assert response.status_code == 201
+
+    # Verify service was called with background_tasks parameter
+    assert mock_service.add_message_to_conversation.called
+    call_kwargs = mock_service.add_message_to_conversation.call_args[1]
+    assert 'background_tasks' in call_kwargs
+    assert call_kwargs['background_tasks'] is not None
