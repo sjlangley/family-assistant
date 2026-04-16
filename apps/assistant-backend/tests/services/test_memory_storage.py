@@ -670,3 +670,332 @@ async def test_upsert_durable_fact_only_dedupes_active(
     assert second.id != first.id
     assert second.active is True
     assert second.fact_text == 'Red'
+
+
+# Chroma indexing tests
+
+
+def test_index_conversation_summary_writes_stable_doc_id(
+    memory_storage, mock_collection
+):
+    """Indexing a summary writes a stable doc ID based on row ID."""
+    from assistant.models.memory_sql import ConversationMemorySummary
+
+    summary_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    user_id = 'user@example.com'
+    summary_text = 'Meeting summary'
+    source_msg_id = uuid.uuid4()
+
+    summary = ConversationMemorySummary(
+        id=summary_id,
+        conversation_id=conversation_id,
+        user_id=user_id,
+        summary_text=summary_text,
+        source_message_id=source_msg_id,
+        version=1,
+    )
+
+    memory_storage.index_conversation_summary(summary)
+
+    # Verify upsert was called with correct doc ID
+    expected_doc_id = f'summary_{summary_id}'
+    mock_collection.upsert.assert_called_once()
+
+    call_args = mock_collection.upsert.call_args
+    assert call_args[1]['ids'] == [expected_doc_id]
+    assert call_args[1]['documents'] == [summary_text]
+
+    # Verify metadata
+    metadata = call_args[1]['metadatas'][0]
+    assert metadata['type'] == 'summary'
+    assert metadata['summary_id'] == str(summary_id)
+    assert metadata['user_id'] == user_id
+    assert metadata['conversation_id'] == str(conversation_id)
+    assert metadata['version'] == 1
+    assert metadata['source_message_id'] == str(source_msg_id)
+
+
+def test_index_conversation_summary_re_index_does_not_duplicate(
+    memory_storage, mock_collection
+):
+    """Re-indexing the same summary uses same doc ID (upsert)."""
+    from assistant.models.memory_sql import ConversationMemorySummary
+
+    summary_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+
+    summary = ConversationMemorySummary(
+        id=summary_id,
+        conversation_id=conversation_id,
+        user_id='user@example.com',
+        summary_text='First version',
+        version=1,
+    )
+
+    # First index
+    memory_storage.index_conversation_summary(summary)
+
+    # Re-index with same ID
+    memory_storage.index_conversation_summary(summary)
+
+    # Both calls use same stable doc ID
+    assert mock_collection.upsert.call_count == 2
+    for call in mock_collection.upsert.call_args_list:
+        assert call[1]['ids'] == [f'summary_{summary_id}']
+
+
+def test_index_conversation_summary_updated_replaces_content(
+    memory_storage, mock_collection
+):
+    """Indexing an updated summary replaces stored document content."""
+    from assistant.models.memory_sql import ConversationMemorySummary
+
+    summary_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+
+    # First version
+    summary_v1 = ConversationMemorySummary(
+        id=summary_id,
+        conversation_id=conversation_id,
+        user_id='user@example.com',
+        summary_text='Original summary',
+        version=1,
+    )
+    memory_storage.index_conversation_summary(summary_v1)
+
+    # Updated version (same ID, different content)
+    summary_v2 = ConversationMemorySummary(
+        id=summary_id,
+        conversation_id=conversation_id,
+        user_id='user@example.com',
+        summary_text='Updated summary',
+        version=2,
+    )
+    memory_storage.index_conversation_summary(summary_v2)
+
+    # Both use same doc ID
+    assert mock_collection.upsert.call_count == 2
+    doc_id = f'summary_{summary_id}'
+
+    # First call
+    assert mock_collection.upsert.call_args_list[0][1]['ids'] == [doc_id]
+    assert (
+        mock_collection.upsert.call_args_list[0][1]['documents']
+        == ['Original summary']
+    )
+
+    # Second call updates content
+    assert mock_collection.upsert.call_args_list[1][1]['ids'] == [doc_id]
+    assert (
+        mock_collection.upsert.call_args_list[1][1]['documents']
+        == ['Updated summary']
+    )
+
+    # Version updated in metadata
+    assert (
+        mock_collection.upsert.call_args_list[1][1]['metadatas'][0]['version']
+        == 2
+    )
+
+
+def test_index_durable_fact_writes_stable_doc_id(
+    memory_storage, mock_collection
+):
+    """Indexing a fact writes a stable doc ID based on row ID."""
+    from assistant.models.memory_sql import (
+        DurableFact,
+        DurableFactConfidence,
+        DurableFactSourceType,
+    )
+
+    fact_id = uuid.uuid4()
+    conv_id = uuid.uuid4()
+    msg_id = uuid.uuid4()
+
+    fact = DurableFact(
+        id=fact_id,
+        user_id='user@example.com',
+        subject='John',
+        fact_key='user_name',
+        fact_text='His name is John',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        source_conversation_id=conv_id,
+        source_message_id=msg_id,
+        active=True,
+    )
+
+    memory_storage.index_durable_fact(fact)
+
+    expected_doc_id = f'fact_{fact_id}'
+    mock_collection.upsert.assert_called_once()
+
+    call_args = mock_collection.upsert.call_args
+    assert call_args[1]['ids'] == [expected_doc_id]
+    assert call_args[1]['documents'] == ['His name is John']
+
+    # Verify metadata
+    metadata = call_args[1]['metadatas'][0]
+    assert metadata['type'] == 'durable_fact'
+    assert metadata['fact_id'] == str(fact_id)
+    assert metadata['user_id'] == 'user@example.com'
+    assert metadata['subject'] == 'John'
+    assert metadata['fact_key'] == 'user_name'
+    assert metadata['confidence'] == DurableFactConfidence.HIGH
+    assert metadata['source_type'] == DurableFactSourceType.CONVERSATION
+    assert metadata['source_conversation_id'] == str(conv_id)
+    assert metadata['source_message_id'] == str(msg_id)
+    assert metadata['active'] is True
+
+
+def test_index_durable_fact_re_index_does_not_duplicate(
+    memory_storage, mock_collection
+):
+    """Re-indexing the same fact uses same doc ID (upsert)."""
+    from assistant.models.memory_sql import (
+        DurableFact,
+        DurableFactConfidence,
+        DurableFactSourceType,
+    )
+
+    fact_id = uuid.uuid4()
+
+    fact = DurableFact(
+        id=fact_id,
+        user_id='user@example.com',
+        subject='John',
+        fact_text='His name is John',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+
+    # First index
+    memory_storage.index_durable_fact(fact)
+
+    # Re-index same fact
+    memory_storage.index_durable_fact(fact)
+
+    # Both calls use same stable doc ID
+    assert mock_collection.upsert.call_count == 2
+    for call in mock_collection.upsert.call_args_list:
+        assert call[1]['ids'] == [f'fact_{fact_id}']
+
+
+def test_index_durable_fact_updated_replaces_content(
+    memory_storage, mock_collection
+):
+    """Indexing an updated fact replaces stored document content."""
+    from assistant.models.memory_sql import (
+        DurableFact,
+        DurableFactConfidence,
+        DurableFactSourceType,
+    )
+
+    fact_id = uuid.uuid4()
+
+    # First version
+    fact_v1 = DurableFact(
+        id=fact_id,
+        user_id='user@example.com',
+        subject='John',
+        fact_text='Name: John',
+        confidence=DurableFactConfidence.MEDIUM,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    memory_storage.index_durable_fact(fact_v1)
+
+    # Updated version (same ID, different content)
+    fact_v2 = DurableFact(
+        id=fact_id,
+        user_id='user@example.com',
+        subject='John',
+        fact_text='Name: John Smith, age 30',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    memory_storage.index_durable_fact(fact_v2)
+
+    doc_id = f'fact_{fact_id}'
+
+    # Both use same doc ID
+    assert mock_collection.upsert.call_count == 2
+
+    # First call
+    assert mock_collection.upsert.call_args_list[0][1]['ids'] == [doc_id]
+    assert (
+        mock_collection.upsert.call_args_list[0][1]['documents']
+        == ['Name: John']
+    )
+
+    # Second call updates content
+    assert mock_collection.upsert.call_args_list[1][1]['ids'] == [doc_id]
+    assert (
+        mock_collection.upsert.call_args_list[1][1]['documents']
+        == ['Name: John Smith, age 30']
+    )
+
+    # Confidence updated in metadata
+    assert (
+        mock_collection.upsert.call_args_list[1][1]['metadatas'][0][
+            'confidence'
+        ]
+        == DurableFactConfidence.HIGH
+    )
+
+
+def test_index_durable_fact_rejects_inactive(memory_storage, mock_collection):
+    """Indexing an inactive fact raises ValueError."""
+    from assistant.models.memory_sql import (
+        DurableFact,
+        DurableFactConfidence,
+        DurableFactSourceType,
+    )
+
+    inactive_fact = DurableFact(
+        id=uuid.uuid4(),
+        user_id='user@example.com',
+        subject='Old fact',
+        fact_text='Outdated',
+        confidence=DurableFactConfidence.LOW,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=False,  # Inactive
+    )
+
+    with pytest.raises(ValueError, match='Cannot index inactive'):
+        memory_storage.index_durable_fact(inactive_fact)
+
+    # No upsert should have been called
+    mock_collection.upsert.assert_not_called()
+
+
+def test_remove_durable_fact_from_chroma_deletes_doc(
+    memory_storage, mock_collection
+):
+    """Removing a fact calls delete with correct doc ID."""
+    fact_id_str = str(uuid.uuid4())
+    expected_doc_id = f'fact_{fact_id_str}'
+
+    memory_storage.remove_durable_fact_from_chroma(fact_id_str)
+
+    mock_collection.delete.assert_called_once_with(ids=[expected_doc_id])
+
+
+def test_remove_durable_fact_from_chroma_handles_missing(
+    memory_storage, mock_collection
+):
+    """Removing a nonexistent fact does not error."""
+    fact_id_str = str(uuid.uuid4())
+    expected_doc_id = f'fact_{fact_id_str}'
+
+    # Simulate doc not found
+    mock_collection.delete.side_effect = Exception('Document not found')
+
+    # Should not raise
+    memory_storage.remove_durable_fact_from_chroma(fact_id_str)
+
+    # Delete was still called
+    mock_collection.delete.assert_called_once_with(ids=[expected_doc_id])

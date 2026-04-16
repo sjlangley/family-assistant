@@ -10,7 +10,7 @@ Fixed race conditions in the canonical Postgres memory persistence layer by repl
 ConversationMemorySummary has unique constraint on conversation_id.
 Given read-then-insert pattern:
 1. Thread A: SELECT → no row found
-2. Thread B: SELECT → no row found  
+2. Thread B: SELECT → no row found
 3. Thread A: INSERT → succeeds
 4. Thread B: INSERT → IntegrityError (unique constraint violation)
 ```
@@ -54,7 +54,7 @@ Added unique partial indexes via Alembic migration `af123dbd3ffa`:
 
 ```sql
 CREATE UNIQUE INDEX durable_facts_user_fact_key_active_uniq
-ON durable_facts(user_id, fact_key, active)  
+ON durable_facts(user_id, fact_key, active)
 WHERE fact_key IS NOT NULL AND active = true;
 
 CREATE UNIQUE INDEX durable_facts_user_subject_text_active_uniq
@@ -75,7 +75,7 @@ This ensures tests work with SQLite while production uses true atomicity with Po
 ## Semantic Changes
 
 ### Version Increment Behavior
-**Previous semantics:** No-op on identical content (version unchanged)  
+**Previous semantics:** No-op on identical content (version unchanged)
 **New semantics:** Version increments even on identical retries
 
 **Rationale:** Atomic ON CONFLICT always applies the UPDATE clause, so version increments. This is acceptable because:
@@ -91,13 +91,13 @@ This ensures tests work with SQLite while production uses true atomicity with Po
 
 ## Verification
 
-✅ All 168 backend tests passing  
-✅ Coverage: 93.79% (exceeds 90% threshold)  
-✅ Ruff linting: clean (no style issues)  
-✅ No IntegrityError on concurrent retries (atomic semantics)  
-✅ No duplicate rows for retry conflicts  
-✅ Per-user isolation maintained  
-✅ Schema migration idempotent (upgrade/downgrade)  
+✅ All 168 backend tests passing
+✅ Coverage: 93.79% (exceeds 90% threshold)
+✅ Ruff linting: clean (no style issues)
+✅ No IntegrityError on concurrent retries (atomic semantics)
+✅ No duplicate rows for retry conflicts
+✅ Per-user isolation maintained
+✅ Schema migration idempotent (upgrade/downgrade)
 
 ## Production Guarantees
 
@@ -127,7 +127,7 @@ This ensures tests work with SQLite while production uses true atomicity with Po
 
 ## Commit Details
 
-**Commit:** `1558128`  
+**Commit:** `1558128`
 **Files:**
 - `src/assistant/services/memory_storage.py` — Atomic upsert implementation + fallback
 - `src/assistant/models/memory_sql.py` — Unique index definitions

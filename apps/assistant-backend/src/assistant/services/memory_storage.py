@@ -304,3 +304,105 @@ class MemoryStorage:
         existing_fact.source_excerpt = source_excerpt
         await session.flush()
         return existing_fact
+
+    def index_conversation_summary(
+        self,
+        summary: ConversationMemorySummary,
+    ) -> None:
+        """
+        Index a conversation summary into Chroma.
+
+        Uses stable document ID derived from Postgres row ID to support
+        idempotent retries and upserts.
+
+        Args:
+            summary: ConversationMemorySummary row to index
+        """
+        doc_id = f'summary_{summary.id}'
+
+        metadata = {
+            'type': 'summary',
+            'summary_id': str(summary.id),
+            'user_id': summary.user_id,
+            'conversation_id': str(summary.conversation_id),
+            'version': summary.version,
+        }
+
+        if summary.source_message_id:
+            metadata['source_message_id'] = str(summary.source_message_id)
+
+        # Upsert (overwrites existing doc with same ID)
+        self.collection.upsert(
+            ids=[doc_id],
+            documents=[summary.summary_text],
+            metadatas=[metadata],
+        )
+
+    def index_durable_fact(
+        self,
+        fact: DurableFact,
+    ) -> None:
+        """
+        Index an active durable fact into Chroma.
+
+        Uses stable document ID derived from Postgres row ID to support
+        idempotent retries and upserts. Only indexes active facts.
+
+        Args:
+            fact: DurableFact row to index (must be active)
+
+        Raises:
+            ValueError: If fact is not active
+        """
+        if not fact.active:
+            raise ValueError('Cannot index inactive durable fact')
+
+        doc_id = f'fact_{fact.id}'
+
+        metadata = {
+            'type': 'durable_fact',
+            'fact_id': str(fact.id),
+            'user_id': fact.user_id,
+            'subject': fact.subject,
+            'confidence': fact.confidence,
+            'source_type': fact.source_type,
+            'active': fact.active,
+        }
+
+        if fact.fact_key:
+            metadata['fact_key'] = fact.fact_key
+
+        if fact.source_conversation_id:
+            metadata['source_conversation_id'] = str(
+                fact.source_conversation_id
+            )
+
+        if fact.source_message_id:
+            metadata['source_message_id'] = str(fact.source_message_id)
+
+        # Upsert (overwrites existing doc with same ID)
+        self.collection.upsert(
+            ids=[doc_id],
+            documents=[fact.fact_text],
+            metadatas=[metadata],
+        )
+
+    def remove_durable_fact_from_chroma(
+        self,
+        fact_id: str,
+    ) -> None:
+        """
+        Remove a durable fact from Chroma index.
+
+        Call this to clean up indexed docs when a fact is deactivated.
+        Uses the stable document ID format.
+
+        Args:
+            fact_id: String representation of the DurableFact.id UUID
+        """
+        doc_id = f'fact_{fact_id}'
+        try:
+            self.collection.delete(ids=[doc_id])
+        except Exception:
+            # Silently ignore if doc does not exist
+            pass
