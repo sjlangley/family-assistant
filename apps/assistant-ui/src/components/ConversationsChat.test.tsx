@@ -793,4 +793,67 @@ describe("ConversationsChat", () => {
       expect(onLogout).toHaveBeenCalledOnce();
     });
   });
+
+  describe("Pending assistant placeholder", () => {
+    it("sends message and displays user and assistant messages", async () => {
+      const user = userEvent.setup({ delay: null });
+      mockListConversations.mockResolvedValueOnce({ items: [] });
+
+      const mockResponse = {
+        conversation: {
+          id: "new-conv",
+          title: "New Conversation",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+        user_message: {
+          id: "msg-1",
+          role: "user" as const,
+          content: "Hello",
+          sequence_number: 1,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+          annotations: null,
+        },
+        assistant_message: {
+          id: "msg-2",
+          role: "assistant" as const,
+          content: "Hi there!",
+          sequence_number: 2,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+          annotations: null,
+        },
+      };
+
+      mockCreateConversationWithMessage.mockResolvedValueOnce(mockResponse);
+
+      renderWithAuth();
+
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(
+            /type a message to start a new conversation/i,
+          ),
+        ).toBeInTheDocument();
+      });
+
+      const input = screen.getByPlaceholderText(
+        /type a message to start a new conversation/i,
+      );
+      await user.type(input, "Hello");
+      await user.click(screen.getByRole("button", { name: /send/i }));
+
+      // Should display both messages (pending placeholder handled internally)
+      await waitFor(() => {
+        expect(screen.getByText("Hello")).toBeInTheDocument();
+        expect(screen.getByText("Hi there!")).toBeInTheDocument();
+      });
+
+      // Verify the API was called correctly
+      expect(mockCreateConversationWithMessage).toHaveBeenCalledWith({
+        content: "Hello",
+      });
+    });
+  });
 });

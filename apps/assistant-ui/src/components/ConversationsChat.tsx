@@ -17,6 +17,22 @@ interface ConversationsChatProps {
   onLogout: () => void;
 }
 
+// UUID for pending assistant placeholder message
+const PENDING_MESSAGE_ID = "pending-assistant-placeholder";
+
+// Create a pending assistant placeholder message
+function createPendingAssistantMessage(): Message {
+  return {
+    id: PENDING_MESSAGE_ID,
+    role: "assistant",
+    content: "Thinking...",
+    sequence_number: -1, // Placeholder sequence
+    created_at: new Date().toISOString(),
+    error: null,
+    annotations: null,
+  };
+}
+
 export function ConversationsChat({ onLogout }: ConversationsChatProps) {
   const { authState } = useAuth();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -25,7 +41,8 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
   >(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
+  const [sendingMessage, setSendingMessage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conversationsLoading, setConversationsLoading] = useState(true);
   const [conversationsError, setConversationsError] = useState<string | null>(
@@ -86,7 +103,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
     const controller = new AbortController();
     const loadMessages = async () => {
       try {
-        setIsLoading(true);
+        setTranscriptLoading(true);
         setError(null);
         const response = await getConversationMessages(
           activeConversationId,
@@ -105,7 +122,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
           setError("Failed to load messages");
         }
       } finally {
-        setIsLoading(false);
+        setTranscriptLoading(false);
       }
     };
 
@@ -162,7 +179,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
     const trimmedMessage = inputMessage.trim();
     if (!trimmedMessage) return;
 
-    setIsLoading(true);
+    setSendingMessage(true);
     setError(null);
 
     try {
@@ -170,11 +187,57 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
 
       if (activeConversationId) {
         // Add message to existing conversation
-        response = await addMessageToConversation(activeConversationId, {
+        // Immediately show user message and pending assistant placeholder
+        const userMessage: Message = {
+          id: `temp-user-${Date.now()}`,
+          role: "user",
           content: trimmedMessage,
-        });
+          sequence_number: -1,
+          created_at: new Date().toISOString(),
+          error: null,
+          annotations: null,
+        };
+        const pendingMessage = createPendingAssistantMessage();
+        setMessages((prev) => [...prev, userMessage, pendingMessage]);
+        setInputMessage("");
+
+        try {
+          response = await addMessageToConversation(activeConversationId, {
+            content: trimmedMessage,
+          });
+
+          // Replace pending placeholder with real assistant message
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === PENDING_MESSAGE_ID ? response.assistant_message : msg,
+            ),
+          );
+
+          // Update conversations list
+          updateConversationsList(response);
+        } catch (err) {
+          // Remove pending message on error
+          setMessages((prev) =>
+            prev.filter((msg) => msg.id !== PENDING_MESSAGE_ID),
+          );
+          throw err;
+        }
       } else {
         // Create new conversation with message
+        // Immediately show user message and pending placeholder
+        const userMessage: Message = {
+          id: `temp-user-${Date.now()}`,
+          role: "user",
+          content: trimmedMessage,
+          sequence_number: 1,
+          created_at: new Date().toISOString(),
+          error: null,
+          annotations: null,
+        };
+        const pendingMessage = createPendingAssistantMessage();
+        setMessages([userMessage, pendingMessage]);
+        setInputMessage("");
+
         response = await createConversationWithMessage({
           content: trimmedMessage,
         });
@@ -182,34 +245,15 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
         // Update conversations list
         updateConversationsList(response);
 
-        // Set messages before activating (they're not appended, they're the initial messages)
-        setMessages([response.user_message, response.assistant_message]);
-
         // Mark this conversation to skip the initial fetch
         skipFetchForConversation.current = response.conversation.id;
 
+        // Set messages with real user and assistant messages, removing placeholder
+        setMessages([response.user_message, response.assistant_message]);
+
         // Set active conversation to the new one (this will trigger useEffect but it will skip fetch)
         setActiveConversationId(response.conversation.id);
-
-        // Clear input
-        setInputMessage("");
-
-        // Early return since we've handled everything for new conversation
-        return;
       }
-
-      // Update conversations list (for existing conversation)
-      updateConversationsList(response);
-
-      // Update messages with the response (append the new messages)
-      setMessages((prev) => [
-        ...prev,
-        response.user_message,
-        response.assistant_message,
-      ]);
-
-      // Clear input
-      setInputMessage("");
     } catch (err) {
       if (err instanceof Error) {
         if (err.message === "UNAUTHORIZED") {
@@ -221,7 +265,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
         setError("Failed to send message");
       }
     } finally {
-      setIsLoading(false);
+      setSendingMessage(false);
     }
   };
 
@@ -308,7 +352,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
         <div className="flex-1 overflow-y-auto p-4">
           {activeConversationId ? (
             <>
-              {isLoading && messages.length === 0 ? (
+              {transcriptLoading && messages.length === 0 ? (
                 <div className="text-gray-500">Loading messages...</div>
               ) : (
                 <div className="space-y-4 max-w-3xl mx-auto">
@@ -325,7 +369,9 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
                             ? "bg-blue-500 text-white"
                             : msg.error
                               ? "bg-red-100 text-red-900 border border-red-300"
-                              : "bg-white text-gray-900 border border-gray-200"
+                              : msg.id === PENDING_MESSAGE_ID
+                                ? "bg-gray-300 text-gray-700 italic"
+                                : "bg-white text-gray-900 border border-gray-200"
                         }`}
                       >
                         {msg.role === "assistant" ? (
@@ -380,15 +426,15 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
                   ? "Type your message..."
                   : "Type a message to start a new conversation..."
               }
-              disabled={isLoading}
+              disabled={sendingMessage}
               className="flex-1 border border-gray-300 rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
             />
             <button
               onClick={handleSendMessage}
-              disabled={isLoading || !inputMessage.trim()}
+              disabled={sendingMessage || !inputMessage.trim()}
               className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
             >
-              {isLoading ? "Sending..." : "Send"}
+              {sendingMessage ? "Sending..." : "Send"}
             </button>
           </div>
         </div>
