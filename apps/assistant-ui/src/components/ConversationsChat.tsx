@@ -3,6 +3,8 @@ import type {
   ConversationSummary,
   Message,
   ConversationWithMessagesResponse,
+  AssistantAnnotations,
+  ToolAnnotation,
 } from "../types/api";
 import {
   listConversations,
@@ -31,6 +33,82 @@ function createPendingAssistantMessage(): Message {
     error: null,
     annotations: null,
   };
+}
+
+// TrustPill: Compact metadata item from annotations
+interface TrustPillProps {
+  label: string;
+  value?: string | number;
+}
+
+function TrustPill({ label, value }: TrustPillProps) {
+  return (
+    <div className="trust-pill">
+      <span className="trust-pill-label">{label}</span>
+      {value !== undefined && <span className="trust-pill-value">{value}</span>}
+    </div>
+  );
+}
+
+// TrustRow: Renders compact trust metadata under assistant messages
+interface TrustRowProps {
+  annotations: AssistantAnnotations;
+}
+
+function TrustRow({ annotations }: TrustRowProps) {
+  return (
+    <div className="trust-row">
+      {/* Tools used */}
+      {annotations.tools && annotations.tools.length > 0 && (
+        <TrustPill
+          label="Tools"
+          value={annotations.tools.map((t) => t.name).join(", ")}
+        />
+      )}
+
+      {/* Source count */}
+      {annotations.sources && annotations.sources.length > 0 && (
+        <TrustPill label="Sources" value={annotations.sources.length} />
+      )}
+
+      {/* Memory hits */}
+      {annotations.memory_hits && annotations.memory_hits.length > 0 && (
+        <TrustPill label="Memory" value={annotations.memory_hits.length} />
+      )}
+
+      {/* Memory saved */}
+      {annotations.memory_saved && annotations.memory_saved.length > 0 && (
+        <TrustPill label="Saved" value={annotations.memory_saved.length} />
+      )}
+    </div>
+  );
+}
+
+// FailureRow: Renders failure annotations distinctly
+interface FailureRowProps {
+  detail: string | null | undefined;
+  stage: string;
+  retryable: boolean;
+}
+
+function FailureRow({ detail, stage, retryable }: FailureRowProps) {
+  let stageLabel = "Unknown error";
+  if (stage === "llm") stageLabel = "LLM error";
+  if (stage === "tool") stageLabel = "Tool error";
+  if (stage === "annotation") stageLabel = "Processing error";
+
+  return (
+    <div className="failure-row">
+      <span className="failure-icon">⚠</span>
+      <div className="flex-1">
+        <div className="failure-text font-medium">{stageLabel}</div>
+        {detail && <div className="failure-text text-xs mt-1">{detail}</div>}
+        {retryable && (
+          <div className="failure-text text-xs mt-1">(May be retryable)</div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function ConversationsChat({ onLogout }: ConversationsChatProps) {
@@ -314,16 +392,16 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
                   <button
                     key={conv.id}
                     onClick={() => handleSelectConversation(conv.id)}
-                    className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors ${
+                    className={`w-full text-left px-4 py-3 hover:bg-[#f6f2ea] transition-colors ${
                       activeConversationId === conv.id
-                        ? "bg-blue-50 border-r-2 border-blue-500"
+                        ? "bg-[#f0e8da] border-r-2 border-[#24453a]"
                         : ""
                     }`}
                   >
-                    <div className="font-medium text-sm truncate">
+                    <div className="type-body-sm font-medium truncate">
                       {conv.title}
                     </div>
-                    <div className="text-xs text-gray-500 mt-1">
+                    <div className="type-meta mt-1">
                       {new Date(conv.updated_at).toLocaleDateString()}
                     </div>
                   </button>
@@ -364,27 +442,49 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
                       }`}
                     >
                       <div
-                        className={`max-w-md px-4 py-2 rounded-lg ${
-                          msg.role === "user"
-                            ? "bg-blue-500 text-white"
-                            : msg.error
-                              ? "bg-red-100 text-red-900 border border-red-300"
-                              : msg.id === PENDING_MESSAGE_ID
-                                ? "bg-gray-300 text-gray-700 italic"
-                                : "bg-white text-gray-900 border border-gray-200"
-                        }`}
+                        className={
+                          msg.role === "user" ? "max-w-md" : "max-w-md"
+                        }
                       >
-                        {msg.role === "assistant" ? (
-                          <MarkdownContent content={msg.content} />
-                        ) : (
-                          <div className="whitespace-pre-wrap">
-                            {msg.content}
-                          </div>
-                        )}
-                        {msg.error && (
-                          <div className="text-xs mt-2 font-medium">
-                            Error: {msg.error}
-                          </div>
+                        {/* Message bubble */}
+                        <div
+                          className={`px-4 py-2 rounded-lg ${
+                            msg.role === "user"
+                              ? "message-user-bubble"
+                              : msg.error
+                                ? "message-error-bubble"
+                                : msg.id === PENDING_MESSAGE_ID
+                                  ? "message-pending-bubble"
+                                  : "message-assistant-bubble"
+                          }`}
+                        >
+                          {msg.role === "assistant" ? (
+                            <MarkdownContent content={msg.content} />
+                          ) : (
+                            <div className="whitespace-pre-wrap">
+                              {msg.content}
+                            </div>
+                          )}
+                          {msg.error && !msg.annotations?.failure && (
+                            <div className="text-xs mt-2 font-medium">
+                              Error: {msg.error}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Trust row for assistant messages with annotations */}
+                        {msg.role === "assistant" && msg.annotations && (
+                          <>
+                            {msg.annotations.failure ? (
+                              <FailureRow
+                                detail={msg.annotations.failure.detail}
+                                stage={msg.annotations.failure.stage}
+                                retryable={msg.annotations.failure.retryable}
+                              />
+                            ) : (
+                              <TrustRow annotations={msg.annotations} />
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
@@ -393,13 +493,15 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
               )}
             </>
           ) : (
-            <div className="flex items-center justify-center h-full text-gray-400">
+            <div className="flex items-center justify-center h-full">
               <div className="text-center">
                 <div className="text-6xl mb-4" aria-hidden="true">
                   💬
                 </div>
-                <div className="text-xl mb-2">Welcome to Family Assistant</div>
-                <div className="text-sm">
+                <div className="type-heading-md text-[#24453a] mb-2">
+                  Welcome to Family Assistant
+                </div>
+                <div className="type-body-sm text-[#6e675d]">
                   Select a conversation or start a new chat below
                 </div>
               </div>
@@ -407,7 +509,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
           )}
 
           {error && (
-            <div className="max-w-3xl mx-auto mt-4 p-4 bg-red-100 text-red-700 rounded">
+            <div className="max-w-3xl mx-auto mt-4 p-4 bg-[#f8e9e6] text-[#a54034] rounded border border-[#e0b5ad]">
               Error: {error}
             </div>
           )}
@@ -427,12 +529,12 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
                   : "Type a message to start a new conversation..."
               }
               disabled={sendingMessage}
-              className="flex-1 border border-gray-300 rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+              className="flex-1 border border-[#ded6c7] rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#24453a] disabled:bg-[#f6f2ea]"
             />
             <button
               onClick={handleSendMessage}
               disabled={sendingMessage || !inputMessage.trim()}
-              className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+              className="bg-[#24453a] text-white px-6 py-2 rounded hover:bg-[#1a3428] transition-colors disabled:bg-[#d6cebd] disabled:cursor-not-allowed"
             >
               {sendingMessage ? "Sending..." : "Send"}
             </button>

@@ -559,9 +559,10 @@ describe("ConversationsChat", () => {
         .closest("button");
       await user.click(firstConv!);
 
-      // Should have selected styling
+      // Should have selected styling (raised surface with moss border)
       await waitFor(() => {
-        expect(firstConv).toHaveClass("bg-blue-50");
+        expect(firstConv).toHaveClass("border-r-2");
+        expect(firstConv).toHaveClass("border-[#24453a]");
       });
     });
   });
@@ -853,6 +854,275 @@ describe("ConversationsChat", () => {
       // Verify the API was called correctly
       expect(mockCreateConversationWithMessage).toHaveBeenCalledWith({
         content: "Hello",
+      });
+    });
+  });
+
+  describe("Trust metadata rendering", () => {
+    it("renders trust metadata when assistant message has annotations", async () => {
+      const user = userEvent.setup({ delay: null });
+      mockListConversations.mockResolvedValueOnce({ items: [] });
+
+      const mockResponse = {
+        conversation: {
+          id: "new-conv",
+          title: "New Conversation",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+        user_message: {
+          id: "msg-1",
+          role: "user" as const,
+          content: "What does the web say",
+          sequence_number: 1,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+          annotations: null,
+        },
+        assistant_message: {
+          id: "msg-2",
+          role: "assistant" as const,
+          content: "Here is what I found...",
+          sequence_number: 2,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+          annotations: {
+            sources: [
+              {
+                title: "Example.com",
+                url: "https://example.com",
+                snippet: "Sample snippet",
+                rationale: "Relevant to query",
+              },
+            ],
+            tools: [{ name: "web_search", status: "completed" as const }],
+            memory_hits: [
+              { label: "Saved fact", summary: "Previous knowledge" },
+            ],
+            memory_saved: [],
+            failure: null,
+          },
+        },
+      };
+
+      mockCreateConversationWithMessage.mockResolvedValueOnce(mockResponse);
+
+      renderWithAuth();
+
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(
+            /type a message to start a new conversation/i,
+          ),
+        ).toBeInTheDocument();
+      });
+
+      const input = screen.getByPlaceholderText(
+        /type a message to start a new conversation/i,
+      );
+      await user.type(input, "What does the web say");
+      await user.click(screen.getByRole("button", { name: /send/i }));
+
+      // Should display trust metadata
+      await waitFor(() => {
+        expect(screen.getByText(/web_search/)).toBeInTheDocument();
+        expect(screen.getByText(/Here is what I found/)).toBeInTheDocument();
+        // Check for the trust pills by finding text pattern that's unique
+        const trustPills = screen.getAllByText(/Tools|Sources|Memory/);
+        expect(trustPills.length).toBeGreaterThan(0);
+      });
+    });
+
+    it("does not render trust row when annotations are null", async () => {
+      const user = userEvent.setup({ delay: null });
+      mockListConversations.mockResolvedValueOnce({ items: [] });
+
+      const mockResponse = {
+        conversation: {
+          id: "new-conv",
+          title: "New Conversation",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+        user_message: {
+          id: "msg-1",
+          role: "user" as const,
+          content: "Hello",
+          sequence_number: 1,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+          annotations: null,
+        },
+        assistant_message: {
+          id: "msg-2",
+          role: "assistant" as const,
+          content: "Hi there!",
+          sequence_number: 2,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+          annotations: null,
+        },
+      };
+
+      mockCreateConversationWithMessage.mockResolvedValueOnce(mockResponse);
+
+      renderWithAuth();
+
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(
+            /type a message to start a new conversation/i,
+          ),
+        ).toBeInTheDocument();
+      });
+
+      const input = screen.getByPlaceholderText(
+        /type a message to start a new conversation/i,
+      );
+      await user.type(input, "Hello");
+      await user.click(screen.getByRole("button", { name: /send/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText("Hi there!")).toBeInTheDocument();
+      });
+
+      // Should not render trust metadata when annotations is null
+      expect(screen.queryByText(/Tools/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Sources/)).not.toBeInTheDocument();
+    });
+
+    it("renders partial annotations safely", async () => {
+      const user = userEvent.setup({ delay: null });
+      mockListConversations.mockResolvedValueOnce({ items: [] });
+
+      const mockResponse = {
+        conversation: {
+          id: "new-conv",
+          title: "New Conversation",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+        user_message: {
+          id: "msg-1",
+          role: "user" as const,
+          content: "What time is it",
+          sequence_number: 1,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+          annotations: null,
+        },
+        assistant_message: {
+          id: "msg-2",
+          role: "assistant" as const,
+          content: "The current time is...",
+          sequence_number: 2,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+          annotations: {
+            sources: [],
+            tools: [{ name: "get_current_time", status: "completed" as const }],
+            memory_hits: [],
+            memory_saved: [],
+            failure: null,
+          },
+        },
+      };
+
+      mockCreateConversationWithMessage.mockResolvedValueOnce(mockResponse);
+
+      renderWithAuth();
+
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(
+            /type a message to start a new conversation/i,
+          ),
+        ).toBeInTheDocument();
+      });
+
+      const input = screen.getByPlaceholderText(
+        /type a message to start a new conversation/i,
+      );
+      await user.type(input, "What time is it");
+      await user.click(screen.getByRole("button", { name: /send/i }));
+
+      // Should render only available annotations (tools, not sources/memory)
+      await waitFor(() => {
+        expect(screen.getByText(/Tools/)).toBeInTheDocument();
+        expect(screen.getByText(/get_current_time/)).toBeInTheDocument();
+        expect(screen.queryByText(/Sources/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Memory/)).not.toBeInTheDocument();
+      });
+    });
+
+    it("renders failure annotations distinctly", async () => {
+      const user = userEvent.setup({ delay: null });
+      mockListConversations.mockResolvedValueOnce({ items: [] });
+
+      const failureAnnotation = {
+        sources: [] as never[],
+        tools: [] as never[],
+        memory_hits: [] as never[],
+        memory_saved: [] as never[],
+        failure: {
+          stage: "tool" as const,
+          retryable: true,
+          detail: "Web search service timeout",
+        },
+      };
+
+      const mockResponse = {
+        conversation: {
+          id: "new-conv",
+          title: "New Conversation",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+        user_message: {
+          id: "msg-1",
+          role: "user" as const,
+          content: "Search the web",
+          sequence_number: 1,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+          annotations: null,
+        },
+        assistant_message: {
+          id: "msg-2",
+          role: "assistant" as const,
+          content: "I encountered an error",
+          sequence_number: 2,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+          annotations: failureAnnotation,
+        },
+      };
+
+      mockCreateConversationWithMessage.mockResolvedValueOnce(mockResponse);
+
+      renderWithAuth();
+
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(
+            /type a message to start a new conversation/i,
+          ),
+        ).toBeInTheDocument();
+      });
+
+      const input = screen.getByPlaceholderText(
+        /type a message to start a new conversation/i,
+      );
+      await user.type(input, "Search the web");
+      await user.click(screen.getByRole("button", { name: /send/i }));
+
+      // Should render failure row with error icon and details
+      await waitFor(() => {
+        expect(screen.getByText(/Tool error/)).toBeInTheDocument();
+        expect(
+          screen.getByText(/Web search service timeout/),
+        ).toBeInTheDocument();
+        expect(screen.getByText(/retryable/i)).toBeInTheDocument();
       });
     });
   });

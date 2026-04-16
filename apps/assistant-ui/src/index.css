@@ -1,13 +1,173 @@
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Instrument+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
 
 @source "../../index.html";
 @source "../src/**/*.{ts,tsx}";
 
+@layer theme {
+  :root {
+    /* Typography - DESIGN.md font roles */
+    --font-serif: "Instrument Serif", serif;
+    --font-sans: "Instrument Sans", sans-serif;
+    --font-mono: "IBM Plex Mono", monospace;
+
+    /* Color palette - DESIGN.md */
+    --color-primary: #24453a;
+    --color-secondary: #b86a3e;
+
+    /* Neutrals - warm tone */
+    --color-paper: #fbf8f2;
+    --color-parchment: #f6f2ea;
+    --color-surface: #f0e8da;
+    --color-border-soft: #ded6c7;
+    --color-border-strong: #c9bfae;
+    --color-text-muted: #6e675d;
+    --color-text-primary: #1f1c18;
+
+    /* Semantic */
+    --color-success: #2f6b53;
+    --color-warning: #a36a2b;
+    --color-error: #a54034;
+    --color-info: #315c85;
+  }
+}
+
+@layer components {
+  /* Core surfaces */
+  .surface-paper {
+    @apply bg-[#fbf8f2];
+  }
+
+  .surface-parchment {
+    @apply bg-[#f6f2ea];
+  }
+
+  .surface-raised {
+    @apply bg-[#f0e8da];
+  }
+
+  /* Typography roles */
+  .type-display-lg {
+    font-family: var(--font-serif);
+    font-size: 56px;
+    line-height: 1.02;
+  }
+
+  .type-display-md {
+    font-family: var(--font-serif);
+    font-size: 40px;
+    line-height: 1.05;
+  }
+
+  .type-heading-lg {
+    font-family: var(--font-serif);
+    font-size: 32px;
+    line-height: 1.1;
+  }
+
+  .type-heading-md {
+    font-family: var(--font-sans);
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1.15;
+  }
+
+  .type-heading-sm {
+    font-family: var(--font-sans);
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  .type-body-lg {
+    font-family: var(--font-sans);
+    font-size: 18px;
+    line-height: 1.55;
+  }
+
+  .type-body-md {
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.55;
+  }
+
+  .type-body-sm {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .type-meta {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--color-text-muted);
+  }
+
+  /* Message bubble styles */
+  .message-user-bubble {
+    @apply bg-[#24453a] text-white px-4 py-2 rounded-lg;
+    font-family: var(--font-sans);
+  }
+
+  .message-assistant-bubble {
+    @apply bg-[#fbf8f2] text-[#1f1c18] px-4 py-2 rounded-lg border border-[#ded6c7];
+    font-family: var(--font-sans);
+  }
+
+  .message-error-bubble {
+    @apply bg-[#f8e9e6] text-[#a54034] px-4 py-2 rounded-lg border border-[#e0b5ad];
+    font-family: var(--font-sans);
+  }
+
+  .message-pending-bubble {
+    @apply bg-[#f0e8da] text-[#6e675d] px-4 py-2 rounded-lg italic;
+    font-family: var(--font-sans);
+  }
+
+  /* Trust metadata row */
+  .trust-row {
+    @apply flex flex-wrap gap-3 mt-2 pt-2 border-t border-[#ddd6c7];
+  }
+
+  .trust-pill {
+    @apply inline-flex items-center gap-1 px-2 py-1 bg-[#f6f2ea] text-[#6e675d] rounded text-xs;
+    font-family: var(--font-mono);
+  }
+
+  .trust-pill-label {
+    @apply font-medium;
+    color: var(--color-text-muted);
+  }
+
+  .trust-pill-value {
+    color: var(--color-text-muted);
+  }
+
+  /* Failure row styling */
+  .failure-row {
+    @apply flex items-center gap-2 mt-2 p-2 bg-[#f8e9e6] rounded border-l-2 border-[#a54034];
+  }
+
+  .failure-icon {
+    @apply text-[#a54034] font-bold;
+  }
+
+  .failure-text {
+    @apply text-[#853d30] text-xs;
+    font-family: var(--font-mono);
+  }
+}
+
 body {
   margin: 0;
-  font-family:
+  font-family: var(
+    --font-sans,
     ui-sans-serif,
     system-ui,
     -apple-system,
-    sans-serif;
+    sans-serif
+  );
+  color: var(--color-text-primary);
+  background-color: var(--color-parchment);
 }
