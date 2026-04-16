@@ -163,7 +163,7 @@ class MemoryStorage:
                 and_(
                     DurableFact.user_id == user_id,
                     DurableFact.fact_key == fact_key,
-                    DurableFact.active is True,
+                    DurableFact.active == True,  # noqa: E712
                 )
             )
         else:
