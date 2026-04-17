@@ -479,9 +479,10 @@ async def test_add_message_to_conversation_success(
     assert data['user_message']['annotations'] is None
     assert data['assistant_message']['content'] == 'Follow-up response'
     assert data['assistant_message']['annotations'] is not None
-    assert data['assistant_message']['annotations']['memory_hits'][0][
-        'label'
-    ] == 'Saved family detail'
+    assert (
+        data['assistant_message']['annotations']['memory_hits'][0]['label']
+        == 'Saved family detail'
+    )
 
 
 async def test_add_message_to_conversation_default_params(

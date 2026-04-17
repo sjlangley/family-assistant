@@ -1,4 +1,7 @@
+from collections.abc import Mapping
+from dataclasses import dataclass
 import logging
+from typing import Any
 import uuid
 
 import chromadb
@@ -15,6 +18,17 @@ from assistant.models.memory_sql import (
 from assistant.utils.datetime_utils import utc_now
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class DurableFactSearchResult:
+    """A Chroma-ranked durable fact candidate tied to canonical Postgres data."""
+
+    fact_id: uuid.UUID
+    document: str
+    distance: float | None = None
+    subject: str | None = None
+    fact_key: str | None = None
 
 
 class MemoryStorage:
@@ -62,6 +76,101 @@ class MemoryStorage:
         )
         documents = results['documents'][0] if results['documents'] else []
         return documents
+
+    def query_durable_fact_candidates(
+        self, user_id: str, query: str, n_results: int = 5
+    ) -> list[DurableFactSearchResult]:
+        """Retrieve Chroma-ranked durable fact candidates for a query.
+
+        Chroma is used only for retrieval and ranking here. Callers must reload
+        the returned ``fact_id`` values from Postgres before using any fact in
+        prompt assembly.
+        """
+        logger.debug(
+            'Querying Chroma durable facts for user_id=%s n_results=%s query=%r',
+            user_id,
+            n_results,
+            query,
+        )
+        results = self.collection.query(
+            query_texts=[query],
+            n_results=n_results,
+            where={
+                '$and': [
+                    {'user_id': user_id},
+                    {'type': 'durable_fact'},
+                ]
+            },
+            include=['documents', 'metadatas', 'distances'],
+        )
+
+        documents = results['documents'][0] if results['documents'] else []
+        metadatas = results['metadatas'][0] if results['metadatas'] else []
+        distances = results['distances'][0] if results['distances'] else []
+
+        candidates: list[DurableFactSearchResult] = []
+        for metadata, document, distance in zip(
+            metadatas,
+            documents,
+            distances,
+            strict=False,
+        ):
+            fact_id = self._parse_fact_id(metadata)
+            if fact_id is None:
+                continue
+
+            candidates.append(
+                DurableFactSearchResult(
+                    fact_id=fact_id,
+                    document=document,
+                    distance=float(distance) if distance is not None else None,
+                    subject=self._metadata_string(metadata, 'subject'),
+                    fact_key=self._metadata_string(metadata, 'fact_key'),
+                )
+            )
+
+        candidates.sort(
+            key=lambda candidate: (
+                candidate.distance is None,
+                candidate.distance if candidate.distance is not None else 0.0,
+            )
+        )
+
+        logger.debug(
+            'Chroma durable fact query returned %s ranked candidates for user_id=%s',
+            len(candidates),
+            user_id,
+        )
+
+        return candidates
+
+    @staticmethod
+    def _parse_fact_id(
+        metadata: Mapping[str, Any] | None,
+    ) -> uuid.UUID | None:
+        """Parse a durable fact UUID from Chroma metadata."""
+        if metadata is None:
+            return None
+
+        raw_fact_id = metadata.get('fact_id')
+        if not isinstance(raw_fact_id, str):
+            return None
+
+        try:
+            return uuid.UUID(raw_fact_id)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _metadata_string(
+        metadata: Mapping[str, Any] | None, key: str
+    ) -> str | None:
+        """Return a metadata value only when it is a string."""
+        if metadata is None:
+            return None
+
+        value = metadata.get(key)
+        return value if isinstance(value, str) else None
 
     @staticmethod
     def _build_summary_upsert_statement(

@@ -5,11 +5,12 @@ Prepares the final message list using:
 - Latest conversation summary (canonical Postgres)
 - Durable facts for the current user (canonical Postgres)
 
-All data comes from authoritative Postgres sources.
-Chroma retrieval support is deferred to future work (Step 6+).
+Postgres remains the authoritative source for all injected context.
+Chroma may assist with ranking durable facts for new conversations.
 """
 
 from dataclasses import dataclass, field
+import logging
 import re
 from typing import TYPE_CHECKING
 import uuid
@@ -21,7 +22,11 @@ from assistant.models.conversation_sql import Message
 from assistant.models.memory_sql import ConversationMemorySummary, DurableFact
 
 if TYPE_CHECKING:
-    from assistant.services.memory_storage import MemoryStorage
+    from assistant.services.memory_storage import (
+        MemoryStorage,
+    )
+
+logger = logging.getLogger(__name__)
 
 # Explicit prompt budget constants
 MAX_RECENT_MESSAGES_WITH_SUMMARY = 4  # Last N messages when summary exists
@@ -59,7 +64,7 @@ class ContextAssemblyService:
     - Return prepared message list
 
     Postgres is the canonical source of truth for all memory data.
-    Chroma is available for future use as a retrieval/ranking index.
+    Chroma can assist with retrieval/ranking, but Postgres remains canonical.
     """
 
     def __init__(self, memory_storage: 'MemoryStorage | None' = None) -> None:
@@ -67,7 +72,7 @@ class ContextAssemblyService:
 
         Args:
             memory_storage: Optional MemoryStorage for Chroma-assisted ranking
-                           (reserved for future use, not used in current version)
+                           when assembling new-conversation durable facts
         """
         self.memory_storage = memory_storage
 
@@ -146,7 +151,8 @@ class ContextAssemblyService:
         """Assemble context for a new conversation (first message).
 
         No summary or history exists yet, but we can include durable facts.
-        Facts are selected by recency since there's no conversation context.
+        When Chroma is available, durable facts are ranked semantically against
+        the new user message and then reloaded from canonical Postgres rows.
 
         Args:
             session: Database session
@@ -156,9 +162,14 @@ class ContextAssemblyService:
         Returns:
             ContextAssemblyResult with prepared messages and metadata
         """
-        # Load active durable facts for this user (no recent turns for ranking yet)
-        facts, selection_method = await self._load_active_facts(
-            session, user_id=user_id, recent_turns=None
+        (
+            facts,
+            candidate_fact_ids,
+            selection_method,
+        ) = await self._load_new_conversation_facts(
+            session,
+            user_id=user_id,
+            user_message=user_message,
         )
 
         # Build message list with just facts and the new user message
@@ -174,9 +185,94 @@ class ContextAssemblyService:
             used_summary=False,
             summary_id=None,
             fact_ids=[f.id for f in facts],
-            candidate_fact_ids=[],
+            candidate_fact_ids=candidate_fact_ids,
             selection_method=selection_method,
         )
+
+    async def _load_new_conversation_facts(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: str,
+        user_message: str,
+    ) -> tuple[list[DurableFact], list[uuid.UUID], str]:
+        """Load durable facts for a brand-new conversation.
+
+        Prefer Chroma-ranked durable fact candidates when available, but always
+        reload the actual facts from canonical Postgres before prompt assembly.
+        If Chroma returns nothing or fails, fall back to recency-based loading.
+        """
+        if self.memory_storage is not None:
+            try:
+                candidates = self.memory_storage.query_durable_fact_candidates(
+                    user_id=user_id,
+                    query=user_message,
+                    n_results=MAX_FACT_CANDIDATES,
+                )
+            except Exception:
+                logger.warning(
+                    'Falling back to recency for new-conversation facts after '
+                    'Chroma retrieval failed',
+                    exc_info=True,
+                )
+            else:
+                logger.debug(
+                    'Chroma returned %s durable fact candidates for new '
+                    'conversation user_id=%s',
+                    len(candidates),
+                    user_id,
+                )
+                candidate_fact_ids = self._dedupe_fact_ids(
+                    [candidate.fact_id for candidate in candidates]
+                )
+                logger.debug(
+                    'Deduped Chroma durable fact candidates down to %s ids for '
+                    'user_id=%s',
+                    len(candidate_fact_ids),
+                    user_id,
+                )
+                if candidate_fact_ids:
+                    facts = await self._load_facts_by_ranked_ids(
+                        session,
+                        user_id=user_id,
+                        ranked_fact_ids=candidate_fact_ids,
+                    )
+                    if facts:
+                        logger.debug(
+                            'Using %s Postgres-backed durable facts from '
+                            'Chroma ranking for user_id=%s',
+                            min(len(facts), MAX_DURABLE_FACTS),
+                            user_id,
+                        )
+                        return (
+                            facts[:MAX_DURABLE_FACTS],
+                            candidate_fact_ids,
+                            'chroma',
+                        )
+                    logger.debug(
+                        'Chroma returned candidate ids but no active Postgres '
+                        'facts were reloadable for user_id=%s; falling back to '
+                        'recency',
+                        user_id,
+                    )
+                else:
+                    logger.debug(
+                        'Chroma returned no durable fact candidate ids for '
+                        'user_id=%s; falling back to recency',
+                        user_id,
+                    )
+
+        facts, selection_method = await self._load_active_facts(
+            session, user_id=user_id, recent_turns=None
+        )
+        logger.debug(
+            'Using %s durable facts via %s fallback for new conversation '
+            'user_id=%s',
+            len(facts),
+            selection_method,
+            user_id,
+        )
+        return facts, [], selection_method
 
     async def _load_latest_summary(
         self,
@@ -286,6 +382,50 @@ class ContextAssemblyService:
 
         # Fallback: no relevant facts, use recency
         return candidates[:MAX_DURABLE_FACTS], 'recency'
+
+    async def _load_facts_by_ranked_ids(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: str,
+        ranked_fact_ids: list[uuid.UUID],
+    ) -> list[DurableFact]:
+        """Reload active facts from Postgres and preserve the given ranking."""
+        stmt = select(DurableFact).where(
+            # pyrefly: ignore [bad-argument-type]
+            DurableFact.user_id == user_id,
+            # pyrefly: ignore [bad-argument-type]
+            DurableFact.active == True,  # noqa: E712
+            # pyrefly: ignore [missing-attribute]
+            DurableFact.id.in_(ranked_fact_ids),
+        )
+        result = await session.execute(stmt)
+        facts_by_id = {fact.id: fact for fact in result.scalars().all()}
+
+        ranked_facts = [
+            facts_by_id[fact_id]
+            for fact_id in ranked_fact_ids
+            if fact_id in facts_by_id
+        ]
+        logger.debug(
+            'Reloaded %s/%s ranked durable facts from Postgres for user_id=%s',
+            len(ranked_facts),
+            len(ranked_fact_ids),
+            user_id,
+        )
+        return ranked_facts
+
+    @staticmethod
+    def _dedupe_fact_ids(fact_ids: list[uuid.UUID]) -> list[uuid.UUID]:
+        """Remove duplicate fact IDs while preserving the first-seen order."""
+        seen: set[uuid.UUID] = set()
+        deduped: list[uuid.UUID] = []
+        for fact_id in fact_ids:
+            if fact_id in seen:
+                continue
+            seen.add(fact_id)
+            deduped.append(fact_id)
+        return deduped
 
     async def _load_recent_turns(
         self,
