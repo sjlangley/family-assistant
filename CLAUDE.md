@@ -6,6 +6,43 @@ All font choices, colors, spacing, and aesthetic direction are defined there.
 Do not deviate without explicit user approval.
 In QA mode, flag any code that doesn't match `DESIGN.md`.
 
+## Required Validation Before Commit Or Push
+Treat local validation as a hard gate.
+Do not create a commit, push a branch, or open a PR until every relevant check for the files you changed has been run locally and is passing.
+Do not rely on CI as a substitute for running the checks yourself.
+
+### Frontend changes: `apps/assistant-ui/**`
+Run these from `apps/assistant-ui` whenever you touch frontend code, styles, config, or tests:
+
+```bash
+npm run format
+npm run lint
+npm run typecheck
+npm run test:coverage
+npm run build
+```
+
+### Backend changes: `apps/assistant-backend/**`
+Run these from `apps/assistant-backend` whenever you touch backend code, migrations, config, or tests:
+
+```bash
+ruff format src/ tests/
+ruff check src/ tests/
+ruff format --check src/ tests/
+pyrefly check src/
+pytest -v
+```
+
+### Scope rules
+- If you touch both apps, run both validation suites.
+- If you only change documentation such as `*.md` files, app-specific checks are not required.
+- Do not claim checks were run when they were skipped.
+
+### Reporting requirements
+- Explicitly report which validation commands you ran and whether they passed.
+- Explicitly report any skipped checks and why they were skipped.
+- If a required check fails or cannot be run, stop before commit or push and explain the blocker.
+
 ## Database Migrations
 
 ### Alembic Infrastructure
