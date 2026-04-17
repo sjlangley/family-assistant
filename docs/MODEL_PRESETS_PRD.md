@@ -2,18 +2,24 @@
 
 ## Summary
 
-This document defines the first implementation plan for user-selectable
-model presets in Family Assistant.
+This document defines the implementation plan for user-selectable model
+presets in Family Assistant.
 
 The product goal is to let users choose between a small curated set of
 assistant modes per message, while keeping model-specific prompt
 construction, reasoning controls, response parsing, and memory extraction
 logic behind backend abstractions.
 
-This work is both:
+## Prerequisites
 
-- a learning project for experimenting with multiple local model setups
-- a foundation for a real product feature with stable UI behavior
+This work assumes the following capabilities have been implemented
+independently:
+
+- **Streaming Support:** The backend and frontend must support Server-Sent
+  Events (SSE) for real-time response generation.
+- **Multimodal (Vision) Support:** The system is assumed to have a base
+  capability for image handling (upload, storage, and model-native
+  payloads) if multimodal presets are to be included.
 
 ## Product Goals
 
@@ -33,7 +39,8 @@ This work is both:
 - Exposing every locally installed Ollama model directly to end users
 - Committing to one universal reasoning token format across models
 - Refactoring the full memory storage schema up front
-- Solving image generation in this scope
+- **Implementing Streaming or Image Storage:** These are treated as
+  independent architectural prerequisites.
 
 ## Confirmed Product Decisions
 
@@ -117,28 +124,30 @@ configuration, not an implicit copy of the visible chat preset.
 
 ## Capability-Specific Handling
 
+The system adapts its behavior based on the `capabilities` defined in the
+preset registry, assuming the necessary independent prerequisites (like
+Streaming and Vision) are active.
+
 ### Multimodal (Vision) Support
 
-When a preset includes the `vision` capability:
+If a preset includes the `vision` capability:
 
-- **Request Payload:** The frontend should include image attachments in the
-  `user_message` payload.
-- **Request Adapter:** The adapter is responsible for formatting the images into the
-  standard message content shape (e.g., using `image_url` or base64 data) required
-  by the LLM backend.
-- **Validation:** The backend should reject messages with image attachments if the
-  selected preset does not explicitly declare `vision` capability.
+- **Request Payload:** The frontend includes image attachments in the
+  `user_message` payload (handled by the independent Vision project).
+- **Request Adapter:** The adapter formats the images into the required
+  Ollama/OpenAI payload shape.
+- **Validation:** The backend rejects image attachments if the selected
+  preset lacks the `vision` capability.
 
 ### Streaming for Reasoning Presets
 
-Reasoning models (like `thinking` presets) can have significantly higher latency
-due to long-running thought traces.
+Reasoning models (like `thinking` presets) benefit from real-time feedback
+as thought traces are generated.
 
-- **Policy:** Presets that support reasoning **should prioritize streaming** to
-  provide immediate feedback to the user.
-- **Thought Disclosure:** The streaming implementation should distinguish between
-  "thinking" tokens and "content" tokens, allowing the UI to render the reasoning
-  trace in a distinct (often collapsible) area as it arrives.
+- **Policy:** Presets with `reasoning` capabilities use the independent
+  Streaming infrastructure to show thought traces as they arrive.
+- **Thought Disclosure:** The response adapter identifies and separates
+  "thinking" tokens from "content" tokens for distinct UI rendering.
 
 ## Proposed Solution
 
@@ -416,15 +425,6 @@ Decouple memory extraction from the user-facing preset.
   - Registry-driven extraction preset resolver.
   - Update `extract_and_save_background` to use the configured extraction preset.
   - Tests verifying extraction consistency regardless of chat preset.
-
-### Phase 7: Multimodal (Vision) Support
-
-Add the capability for image-based conversation presets.
-
-- **Deliverables:**
-  - `VisionModelAdapter` for image formatting.
-  - Backend validation for image payloads vs. preset capabilities.
-  - Registry update with a `vision` preset.
 
 ## Testing Strategy
 
