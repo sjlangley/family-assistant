@@ -221,12 +221,7 @@ function EvidencePanel({ message, onClose }: EvidencePanelProps) {
   if (!message.annotations) return null;
 
   const { annotations } = message;
-  const hasContent =
-    annotations.sources.length > 0 ||
-    annotations.tools.length > 0 ||
-    annotations.memory_hits.length > 0 ||
-    annotations.memory_saved.length > 0 ||
-    annotations.failure;
+  const hasContent = hasAnnotationContent(annotations);
 
   if (!hasContent) return null;
 
@@ -340,7 +335,7 @@ function EvidencePanel({ message, onClose }: EvidencePanelProps) {
   );
 
   return (
-    <div className="evidence-panel-desktop">
+    <div className="evidence-panel">
       {content}
     </div>
   );
