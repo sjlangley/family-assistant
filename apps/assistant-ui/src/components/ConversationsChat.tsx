@@ -385,24 +385,24 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
 
   // Ref for aria-live announcements
   const statusAnnouncementRef = useRef<HTMLDivElement>(null);
+  const prevSendingMessageRef = useRef(false);
 
   // Announce pending/response status changes for accessibility
+  // Only announce "Response received" when sendingMessage transitions from true to false,
+  // ensuring we don't announce for historical messages when loading conversations
   useEffect(() => {
     if (!statusAnnouncementRef.current) return;
 
     if (sendingMessage) {
       statusAnnouncementRef.current.textContent =
         "Thinking... Your question is being processed.";
-    } else if (messages.some((m) => m.id === PENDING_MESSAGE_ID)) {
-      // Pending message exists but we're not sending - this shouldn't happen
-      // but handle gracefully
-    } else if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage.role === "assistant") {
-        statusAnnouncementRef.current.textContent = "Response received.";
-      }
+    } else if (!sendingMessage && prevSendingMessageRef.current) {
+      // Just transitioned from sending to not sending - response received
+      statusAnnouncementRef.current.textContent = "Response received.";
     }
-  }, [sendingMessage, messages]);
+
+    prevSendingMessageRef.current = sendingMessage;
+  }, [sendingMessage]);
 
   // Handle Escape key to close evidence panel
   useEffect(() => {
