@@ -146,9 +146,7 @@ interface SourceDetailProps {
 function SourceDetail({ title, url, snippet, rationale }: SourceDetailProps) {
   return (
     <div className="evidence-source-item">
-      <h4 className="type-body-sm font-medium text-[#1f1c18] mb-1">
-        {title}
-      </h4>
+      <h4 className="type-body-sm font-medium text-[#1f1c18] mb-1">{title}</h4>
       <p className="type-meta text-[#6e675d] mb-2">{rationale}</p>
       <p className="type-body-sm text-[#1f1c18] mb-2">{snippet}</p>
       <a
@@ -203,9 +201,7 @@ function MemoryDetail({ label, summary, type }: MemoryDetailProps) {
       <span className="inline-block px-2 py-1 bg-[#2f6b53] text-white rounded text-xs font-medium mb-2">
         {type === "hit" ? "Memory Hit" : "Memory Saved"}
       </span>
-      <h4 className="type-body-sm font-medium text-[#1f1c18] mb-1">
-        {label}
-      </h4>
+      <h4 className="type-body-sm font-medium text-[#1f1c18] mb-1">{label}</h4>
       <p className="type-meta text-[#6e675d]">{summary}</p>
     </div>
   );
@@ -334,11 +330,7 @@ function EvidencePanel({ message, onClose }: EvidencePanelProps) {
     </div>
   );
 
-  return (
-    <div className="evidence-panel">
-      {content}
-    </div>
-  );
+  return <div className="evidence-panel">{content}</div>;
 }
 
 export function ConversationsChat({ onLogout }: ConversationsChatProps) {
@@ -755,11 +747,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
                           msg.role === "user" ? "justify-end" : "justify-start"
                         }`}
                       >
-                        <div
-                          className={
-                            msg.role === "user" ? "max-w-md" : "max-w-md"
-                          }
-                        >
+                        <div className="max-w-md">
                           {/* Message bubble */}
                           <div
                             className={`px-4 py-2 rounded-lg ${
@@ -873,8 +861,6 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
           </div>
         </div>
       </div>
-
-
     </div>
   );
 }

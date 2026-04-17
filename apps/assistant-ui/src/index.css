@@ -373,8 +373,6 @@
     @apply text-xs text-[#6e675d] mt-2 pt-2 border-t border-[#ded6c7];
   }
 
-
-
   .failure-icon {
     @apply text-[#a54034] font-bold;
   }
