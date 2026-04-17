@@ -116,6 +116,31 @@ Extraction has different goals:
 We should therefore treat extraction model selection as preset-driven
 configuration, not an implicit copy of the visible chat preset.
 
+## Capability-Specific Handling
+
+### Multimodal (Vision) Support
+
+When a preset includes the `vision` capability:
+
+- **Request Payload:** The frontend should include image attachments in the
+  `user_message` payload.
+- **Request Adapter:** The adapter is responsible for formatting the images into the
+  standard message content shape (e.g., using `image_url` or base64 data) required
+  by the LLM backend.
+- **Validation:** The backend should reject messages with image attachments if the
+  selected preset does not explicitly declare `vision` capability.
+
+### Streaming for Reasoning Presets
+
+Reasoning models (like `thinking` presets) can have significantly higher latency
+due to long-running thought traces.
+
+- **Policy:** Presets that support reasoning **should prioritize streaming** to
+  provide immediate feedback to the user.
+- **Thought Disclosure:** The streaming implementation should distinguish between
+  "thinking" tokens and "content" tokens, allowing the UI to render the reasoning
+  trace in a distinct (often collapsible) area as it arrives.
+
 ## Proposed Solution
 
 ### Curated preset registry
@@ -141,10 +166,9 @@ Each preset should define:
 Field intent:
 
 - `capabilities`
-  - a structured description of what the preset can support, such as
-    reasoning, tools, or vision
+  - a list of features supported by the preset (e.g., `["text", "vision", "tools", "reasoning"]`)
   - used by the backend to validate behavior and by the UI to decide
-    whether optional affordances should appear
+    whether optional affordances (like image upload) should appear
 - `request_strategy`
   - a stable identifier for the request adapter behavior used to build
     prompts and reasoning controls for this preset
@@ -311,20 +335,16 @@ The initial UI change is intentionally small:
 - remember the last selected preset locally for convenience
 - send the chosen preset id with each message
 
-Future UI enhancements may include:
+### Preset Transition Logic
 
-- preset descriptions
-- reasoning indicators
-- optional reasoning disclosure panels
+The UI must adapt its composer state when a user switches presets:
 
-The UI does not need to enforce a strict naming philosophy for preset
-labels.
-
-The label should be whatever makes sense to the developer and the
-intended users, as long as it is clear enough in the dropdown.
-
-The underlying model name remains backend metadata and does not need to
-appear in the primary model selector UI.
+- **Capability Enforcement:** If a user switches from a `vision`-capable preset to a
+  text-only preset, the UI should warn the user that current image attachments
+  will be ignored or removed.
+- **Visual Cues:** The UI should use subtle indicators (e.g., a "Thinking" badge or
+  an "Image Supported" icon) to reflect the capabilities of the currently active
+  preset.
 
 ## Reasoning Display Policy
 
