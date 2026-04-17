@@ -562,6 +562,8 @@ This branch finished the first real research path: `web_search` for discovery an
 - trust data is driven by persisted annotations
 - reload produces the same trust UI as the original response
 
+Desktop Step 8 delivery now lives in the current chat shell. Mobile-specific rail/menu behavior and bottom-sheet evidence details are intentionally deferred and tracked in [TODOS.md](/Users/stuartlangley/src/sjlangley/family-assistant/TODOS.md).
+
 ### Step 9. Test everything added by the plan
 
 **Backend tests**
@@ -607,11 +609,11 @@ This branch finished the first real research path: `web_search` for discovery an
 [x] terminal assistant failure rows persist on backend failure
 [x] BackgroundTasks extraction writes summaries/facts
 [x] chat reload returns persisted annotations
-[ ] pending placeholder UI works
-[ ] trust row renders from persisted annotations
-[ ] evidence panel works on desktop and mobile
+[x] pending placeholder UI works
+[x] trust row renders from persisted annotations
+[x] desktop evidence panel works from persisted annotations
 [x] backend tests updated
-[ ] frontend tests updated
+[x] frontend tests updated
 ```
 
 ## Commands To Run During Delivery
