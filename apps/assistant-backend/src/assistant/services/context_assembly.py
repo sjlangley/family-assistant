@@ -23,7 +23,6 @@ from assistant.models.memory_sql import ConversationMemorySummary, DurableFact
 
 if TYPE_CHECKING:
     from assistant.services.memory_storage import (
-        DurableFactSearchResult,
         MemoryStorage,
     )
 
@@ -217,15 +216,14 @@ class ContextAssemblyService:
                     exc_info=True,
                 )
             else:
-                ranked_candidates = self._sort_chroma_candidates(candidates)
                 logger.debug(
                     'Chroma returned %s durable fact candidates for new '
                     'conversation user_id=%s',
-                    len(ranked_candidates),
+                    len(candidates),
                     user_id,
                 )
                 candidate_fact_ids = self._dedupe_fact_ids(
-                    [candidate.fact_id for candidate in ranked_candidates]
+                    [candidate.fact_id for candidate in candidates]
                 )
                 logger.debug(
                     'Deduped Chroma durable fact candidates down to %s ids for '
@@ -428,19 +426,6 @@ class ContextAssemblyService:
             seen.add(fact_id)
             deduped.append(fact_id)
         return deduped
-
-    @staticmethod
-    def _sort_chroma_candidates(
-        candidates: list['DurableFactSearchResult'],
-    ) -> list['DurableFactSearchResult']:
-        """Sort Chroma candidates by ascending distance with stable ties."""
-        return sorted(
-            candidates,
-            key=lambda candidate: (
-                candidate.distance is None,
-                candidate.distance if candidate.distance is not None else 0.0,
-            ),
-        )
 
     async def _load_recent_turns(
         self,
