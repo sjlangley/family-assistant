@@ -44,6 +44,9 @@ class FailureAnnotation(BaseModel):
 
 
 class AssistantAnnotations(BaseModel):
+    thought: str | None = Field(
+        None, description='The reasoning trace or chain of thought'
+    )
     sources: list[SourceAnnotation] = Field(default_factory=list)
     tools: list[ToolAnnotation] = Field(default_factory=list)
     memory_hits: list[MemoryHitAnnotation] = Field(default_factory=list)

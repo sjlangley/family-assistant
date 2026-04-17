@@ -55,9 +55,12 @@ Initially, we may stream the reasoning/content until a tool call is
 identified, execute the tool, and then continue streaming the next turn.
 
 ### Persistence happens at the end
-To maintain a consistent history, messages should be saved to the
-canonical Postgres database only after the stream has successfully
-finished. Partial/interrupted streams should be handled gracefully.
+To maintain a consistent history, messages are saved to the canonical Postgres
+database only after the stream has successfully finished.
+- **Reasoning Persistence:** The full reasoning trace (if generated) is persisted
+  in the `thought` field within the message's `annotations` JSON object.
+- **Error Handling:** Partial/interrupted streams result in an assistant message
+  with an `error` field and any content received before the interruption.
 
 ### Streaming reasoning vs. content
 For models that emit reasoning traces (like DeepSeek-R1 or Gemma thinking),
