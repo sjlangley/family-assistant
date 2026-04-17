@@ -116,30 +116,29 @@ Update `Chat.tsx` and `ConversationsChat.tsx` to:
 
 ## Rollout Plan
 
-### Phase 1: Shared Streaming Infrastructure
-- **PR 1.1:** Add `ChatCompletionStreamResponse` and chunk-parsing models in `models/llm.py`.
-- **PR 1.2:** Implement an `SSEEncoder` utility to format payloads into `data: ...\n\n` strings.
-- **PR 1.3:** Create a mock streaming endpoint `GET /api/v1/debug/stream` for pipe testing.
+### Phase 1: Models & Parsing (Backend)
+- **PR 1:** Add `ChatCompletionStreamResponse` models and the `StreamParser` utility
+  to handle reasoning/content detection.
 
-### Phase 2: Frontend Foundation
-- **PR 2.1:** Implement a streaming `fetch` consumer in `lib/api.ts` that handles the SSE protocol.
-- **PR 2.2:** Update `Chat.tsx` to manage "transient" streaming state for the latest message.
+### Phase 2: LLM Service Refactor (Backend)
+- **PR 2:** Refactor `LLMService` to unify request construction and implement the
+  `stream_messages` generator.
 
-### Phase 3: LLM Service Streaming
-- **PR 3.1:** Implement `LLMService.stream_messages()` using `httpx.AsyncClient.stream`.
-- **PR 3.2:** Add unit tests with mock streaming LLM responses.
+### Phase 3: SSE Infrastructure (Infrastructure)
+- **PR 3:** Implement the `SSEEncoder` utility and a debug endpoint to verify the
+  delivery pipeline.
 
-### Phase 4: End-to-End Streaming (Base)
-- **PR 4.1:** Implement `add_message_and_stream_response()` in `ConversationService` (yields tokens, persists user message).
-- **PR 4.2:** Update router to return FastAPI `StreamingResponse` when `stream: true` is requested.
+### Phase 4: Streaming Hook (Frontend)
+- **PR 4:** Implement the `useStreamingConversation` custom hook to encapsulate SSE
+  consumption and transient state management.
 
-### Phase 5: Persistence & Finalization
-- **PR 5.1:** Add logic to persist the full accumulated assistant message to Postgres after the stream completes.
-- **PR 5.2:** Ensure background extraction is triggered correctly post-persistence.
+### Phase 5: Conversation Lifecycle (Backend)
+- **PR 5:** Implement the full streaming lifecycle in `ConversationService`,
+  including immediate user message persistence and deferred assistant persistence.
 
-### Phase 6: Advanced Logic (Reasoning & Tools)
-- **PR 6.1:** Add support for the `thought` event type and update UI for reasoning display.
-- **PR 6.2:** Handle streaming transitions through multi-round tool-calling loops.
+### Phase 6: UI Integration (Frontend)
+- **PR 6:** Integrate the streaming hook into the main Chat UI and add styling for
+  thought traces.
 
 ## Testing Strategy
 
@@ -196,28 +195,31 @@ sequenceDiagram
         OLL-->>LLM: SSE Chunk (OpenAI Format)
         LLM-->>BE: Yield Token/Thought
         BE-->>UI: SSE Event (App Protocol)
-        UI->>UI: Append to transient state
+        UI->>UI: Append to transient state via hook
     end
 
     BE->>BE: Persist full assistant message
     BE->>BE: Trigger background extraction
-    BE-->>UI: [DONE] Event
+    BE-->>UI: [DONE] Event (includes persistence confirmation)
 ```
 
 ### Protocol Details
 
 1.  **Ollama Support:** Ollama supports streaming natively via its OpenAI-compatible
     `/v1/chat/completions` endpoint. By setting `stream: true`, Ollama emits standard
-    SSE chunks (`data: { "choices": [...] }`).
-2.  **Backend Passthrough:** The `LLMService` uses `httpx.AsyncClient.stream()` to
-    consume Ollama's stream. It parses these chunks and yields them to the
-    `ConversationService`.
+    SSE chunks.
+2.  **Backend Passthrough:**
+    - **LLMService:** Uses `httpx.AsyncClient.stream()` to consume Ollama's stream.
+    - **StreamParser:** A dedicated utility parses raw chunks into `thought` vs
+      `content` segments, shielding the transport layer from model-specific
+      tags/fields.
 3.  **App-Level SSE:** The `ConversationService` wraps the generator in a FastAPI
     `StreamingResponse`. It translates raw LLM chunks into our structured app
     events:
-    - `thought`: For reasoning tokens (detected via `<think>` tags or Ollama fields).
+    - `thought`: For reasoning tokens.
     - `token`: For user-facing content.
-    - `done`: Final metadata and persistence confirmation.
+    - `error`: Typed error detail for mid-stream failures.
+    - `done`: Final metadata, complete content, and persistence confirmation.
 
 ## References
 
