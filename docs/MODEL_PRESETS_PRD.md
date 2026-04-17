@@ -262,6 +262,7 @@ The initial UI change is intentionally small:
 
 - add a dropdown selector near the message composer
 - fetch presets from the backend
+- show the curated preset label in the dropdown
 - remember the last selected preset locally for convenience
 - send the chosen preset id with each message
 
@@ -270,6 +271,15 @@ Future UI enhancements may include:
 - preset descriptions
 - reasoning indicators
 - optional reasoning disclosure panels
+
+The UI does not need to enforce a strict naming philosophy for preset
+labels.
+
+The label should be whatever makes sense to the developer and the
+intended users, as long as it is clear enough in the dropdown.
+
+The underlying model name remains backend metadata and does not need to
+appear in the primary model selector UI.
 
 ## Reasoning Display Policy
 
@@ -356,8 +366,6 @@ We should add coverage for:
 - Do we want one extraction preset globally, or per user-facing preset?
 - When Gemma presets are introduced, should we use Ollama-native
   reasoning controls, prompt tokens, or both?
-- Should the UI expose only human-friendly labels, or also show the
-  underlying model name for debugging?
 
 ## Recommended First Milestone
 
