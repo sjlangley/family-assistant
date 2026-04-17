@@ -248,13 +248,26 @@ At minimum, we likely need assistant and or user message metadata for:
 - resolved model id
 - reasoning mode
 
-This may require either:
+Recommended initial approach:
 
-- extending the canonical message schema
-- or introducing a small structured metadata field if we want to avoid
-  multiple new columns
+- store preset usage in a structured message metadata field
+- avoid adding multiple dedicated columns in the first iteration
 
-The exact schema decision is still open.
+This gives us flexibility while we experiment with which fields are
+actually useful to persist.
+
+Example shape:
+
+```json
+{
+  "preset_id": "qwen-thinking",
+  "resolved_model": "qwen2.5:7b",
+  "reasoning_mode": "thinking"
+}
+```
+
+We can later promote stable high-value fields such as `preset_id` to
+dedicated columns if querying, indexing, or analytics needs justify it.
 
 ## UI Changes
 
@@ -360,8 +373,6 @@ We should add coverage for:
 
 ## Open Questions
 
-- Should preset metadata be stored in dedicated message columns or in a
-  structured metadata field?
 - Should reasoning traces ever be persisted beyond transient UI metadata?
 - Do we want one extraction preset globally, or per user-facing preset?
 - When Gemma presets are introduced, should we use Ollama-native
