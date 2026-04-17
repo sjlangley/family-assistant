@@ -1192,12 +1192,12 @@ describe("ConversationsChat", () => {
       await user.click(screen.getByRole("button", { name: /send/i }));
 
       // Open evidence panel
-      await waitFor(() => {
+      await waitFor(async () => {
         const trustRowButton = screen.queryByRole("button", {
           name: /open evidence/i,
         });
         if (trustRowButton) {
-          userEvent.click(trustRowButton);
+          await userEvent.click(trustRowButton);
         }
       });
 
