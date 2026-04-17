@@ -1,5 +1,8 @@
 """Tests for ContextAssemblyService."""
 
+from unittest.mock import Mock
+import uuid
+
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -22,6 +25,7 @@ from assistant.services.context_assembly import (
     MAX_SUMMARY_TEXT_LENGTH,
     ContextAssemblyService,
 )
+from assistant.services.memory_storage import DurableFactSearchResult
 
 pytestmark = pytest.mark.asyncio
 
@@ -877,10 +881,364 @@ async def test_fact_selection_case_insensitive_matching(
     assert result.selection_method == 'relevance'
 
 
+async def test_new_conversation_fact_selection_uses_chroma_distance_order(
+    db_session: AsyncSession,
+):
+    """New conversations preserve semantic ranking by ascending distance."""
+    user_id = 'user-123'
+    closer_fact = DurableFact(
+        user_id=user_id,
+        subject='Name',
+        fact_text='The user name is Barry.',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    farther_fact = DurableFact(
+        user_id=user_id,
+        subject='Location',
+        fact_text='The user lives in Sydney.',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add_all([closer_fact, farther_fact])
+    await db_session.commit()
+    await db_session.refresh(closer_fact)
+    await db_session.refresh(farther_fact)
+
+    memory_storage = Mock()
+    memory_storage.query_durable_fact_candidates.return_value = [
+        DurableFactSearchResult(
+            fact_id=farther_fact.id,
+            document='Farther Chroma doc',
+            distance=0.8,
+        ),
+        DurableFactSearchResult(
+            fact_id=closer_fact.id,
+            document='Closer Chroma doc',
+            distance=0.1,
+        ),
+    ]
+    service = ContextAssemblyService(memory_storage=memory_storage)
+
+    result = await service.assemble_context_new_conversation(
+        db_session,
+        user_id=user_id,
+        user_message='what is my name?',
+    )
+
+    memory_storage.query_durable_fact_candidates.assert_called_once_with(
+        user_id=user_id,
+        query='what is my name?',
+        n_results=MAX_FACT_CANDIDATES,
+    )
+    assert result.selection_method == 'chroma'
+    assert result.candidate_fact_ids == [closer_fact.id, farther_fact.id]
+    assert result.fact_ids == [closer_fact.id, farther_fact.id]
+
+
+async def test_new_conversation_prefers_older_relevant_fact_over_newer_irrelevant(
+    db_session: AsyncSession,
+):
+    """A semantically relevant older fact beats newer irrelevant facts."""
+    user_id = 'user-123'
+    older_relevant_fact = DurableFact(
+        user_id=user_id,
+        subject='Name',
+        fact_text='The user name is Barry.',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add(older_relevant_fact)
+    await db_session.commit()
+    await db_session.refresh(older_relevant_fact)
+
+    newer_irrelevant_facts: list[DurableFact] = []
+    for i in range(MAX_DURABLE_FACTS):
+        fact = DurableFact(
+            user_id=user_id,
+            subject=f'Unrelated {i}',
+            fact_text=f'Irrelevant fact {i}',
+            confidence=DurableFactConfidence.HIGH,
+            source_type=DurableFactSourceType.CONVERSATION,
+            active=True,
+        )
+        db_session.add(fact)
+        newer_irrelevant_facts.append(fact)
+    await db_session.commit()
+    for fact in newer_irrelevant_facts:
+        await db_session.refresh(fact)
+
+    memory_storage = Mock()
+    memory_storage.query_durable_fact_candidates.return_value = [
+        DurableFactSearchResult(
+            fact_id=older_relevant_fact.id,
+            document='The user name is Barry.',
+            distance=0.01,
+        )
+    ] + [
+        DurableFactSearchResult(
+            fact_id=fact.id,
+            document=fact.fact_text,
+            distance=0.1 + (index * 0.1),
+        )
+        for index, fact in enumerate(newer_irrelevant_facts)
+    ]
+    service = ContextAssemblyService(memory_storage=memory_storage)
+
+    result = await service.assemble_context_new_conversation(
+        db_session,
+        user_id=user_id,
+        user_message='what is my name?',
+    )
+
+    assert older_relevant_fact.id in result.fact_ids
+    assert len(result.fact_ids) == MAX_DURABLE_FACTS
+
+
+async def test_new_conversation_prefers_older_relevant_fact_over_contradiction(
+    db_session: AsyncSession,
+):
+    """A semantically relevant older fact can displace newer contradictions."""
+    user_id = 'user-123'
+    correct_fact = DurableFact(
+        user_id=user_id,
+        subject='Name',
+        fact_text='The user name is Barry.',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add(correct_fact)
+    await db_session.commit()
+    await db_session.refresh(correct_fact)
+
+    contradictory_fact = DurableFact(
+        user_id=user_id,
+        subject='Name',
+        fact_text="The assistant does not know the user's name.",
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add(contradictory_fact)
+
+    filler_facts: list[DurableFact] = []
+    for i in range(MAX_DURABLE_FACTS - 1):
+        fact = DurableFact(
+            user_id=user_id,
+            subject=f'Profile {i}',
+            fact_text=f'Other profile fact {i}',
+            confidence=DurableFactConfidence.HIGH,
+            source_type=DurableFactSourceType.CONVERSATION,
+            active=True,
+        )
+        db_session.add(fact)
+        filler_facts.append(fact)
+    await db_session.commit()
+    await db_session.refresh(contradictory_fact)
+    for fact in filler_facts:
+        await db_session.refresh(fact)
+
+    memory_storage = Mock()
+    memory_storage.query_durable_fact_candidates.return_value = [
+        DurableFactSearchResult(
+            fact_id=contradictory_fact.id,
+            document=contradictory_fact.fact_text,
+            distance=0.9,
+        ),
+        DurableFactSearchResult(
+            fact_id=correct_fact.id,
+            document=correct_fact.fact_text,
+            distance=0.01,
+        ),
+    ] + [
+        DurableFactSearchResult(
+            fact_id=fact.id,
+            document=fact.fact_text,
+            distance=0.1 + (index * 0.1),
+        )
+        for index, fact in enumerate(filler_facts)
+    ]
+    service = ContextAssemblyService(memory_storage=memory_storage)
+
+    result = await service.assemble_context_new_conversation(
+        db_session,
+        user_id=user_id,
+        user_message='what is my name?',
+    )
+
+    assert correct_fact.id in result.fact_ids
+    assert contradictory_fact.id not in result.fact_ids
+
+
+async def test_new_conversation_chroma_hits_reload_canonical_postgres_rows(
+    db_session: AsyncSession,
+):
+    """Chroma hits are reloaded from Postgres before prompt injection."""
+    user_id = 'user-123'
+    active_fact = DurableFact(
+        user_id=user_id,
+        subject='Name',
+        fact_text='Canonical fact from Postgres',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    inactive_fact = DurableFact(
+        user_id=user_id,
+        subject='Old Name',
+        fact_text='Inactive fact from Postgres',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=False,
+    )
+    other_user_fact = DurableFact(
+        user_id='user-456',
+        subject='Name',
+        fact_text='Other user fact',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add_all([active_fact, inactive_fact, other_user_fact])
+    await db_session.commit()
+    await db_session.refresh(active_fact)
+    await db_session.refresh(inactive_fact)
+    await db_session.refresh(other_user_fact)
+
+    missing_fact_id = uuid.uuid4()
+    memory_storage = Mock()
+    memory_storage.query_durable_fact_candidates.return_value = [
+        DurableFactSearchResult(
+            fact_id=active_fact.id,
+            document='Stale Chroma text',
+            distance=0.01,
+        ),
+        DurableFactSearchResult(
+            fact_id=inactive_fact.id,
+            document='Inactive Chroma text',
+            distance=0.02,
+        ),
+        DurableFactSearchResult(
+            fact_id=other_user_fact.id,
+            document='Other user Chroma text',
+            distance=0.03,
+        ),
+        DurableFactSearchResult(
+            fact_id=missing_fact_id,
+            document='Missing Chroma text',
+            distance=0.04,
+        ),
+    ]
+    service = ContextAssemblyService(memory_storage=memory_storage)
+
+    result = await service.assemble_context_new_conversation(
+        db_session,
+        user_id=user_id,
+        user_message='what is my name?',
+    )
+
+    assert result.selection_method == 'chroma'
+    assert result.candidate_fact_ids == [
+        active_fact.id,
+        inactive_fact.id,
+        other_user_fact.id,
+        missing_fact_id,
+    ]
+    assert result.fact_ids == [active_fact.id]
+    assert 'Canonical fact from Postgres' in result.messages[0]['content']
+    assert 'Stale Chroma text' not in result.messages[0]['content']
+
+
+async def test_new_conversation_chroma_empty_falls_back_to_recency(
+    db_session: AsyncSession,
+):
+    """If Chroma has no hits, new-conversation facts fall back to recency."""
+    user_id = 'user-123'
+    fact1 = DurableFact(
+        user_id=user_id,
+        subject='Subject A',
+        fact_text='First',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    fact2 = DurableFact(
+        user_id=user_id,
+        subject='Subject B',
+        fact_text='Second',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add_all([fact1, fact2])
+    await db_session.commit()
+    await db_session.refresh(fact2)
+
+    memory_storage = Mock()
+    memory_storage.query_durable_fact_candidates.return_value = []
+    service = ContextAssemblyService(memory_storage=memory_storage)
+
+    result = await service.assemble_context_new_conversation(
+        db_session,
+        user_id=user_id,
+        user_message='hello',
+    )
+
+    assert result.selection_method == 'recency'
+    assert result.fact_ids[0] == fact2.id
+    assert result.candidate_fact_ids == []
+
+
+async def test_new_conversation_chroma_failure_falls_back_to_recency(
+    db_session: AsyncSession,
+):
+    """If Chroma retrieval fails, new-conversation facts fall back safely."""
+    user_id = 'user-123'
+    fact1 = DurableFact(
+        user_id=user_id,
+        subject='Subject A',
+        fact_text='First',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    fact2 = DurableFact(
+        user_id=user_id,
+        subject='Subject B',
+        fact_text='Second',
+        confidence=DurableFactConfidence.HIGH,
+        source_type=DurableFactSourceType.CONVERSATION,
+        active=True,
+    )
+    db_session.add_all([fact1, fact2])
+    await db_session.commit()
+    await db_session.refresh(fact2)
+
+    memory_storage = Mock()
+    memory_storage.query_durable_fact_candidates.side_effect = RuntimeError(
+        'Chroma unavailable'
+    )
+    service = ContextAssemblyService(memory_storage=memory_storage)
+
+    result = await service.assemble_context_new_conversation(
+        db_session,
+        user_id=user_id,
+        user_message='hello',
+    )
+
+    assert result.selection_method == 'recency'
+    assert result.fact_ids[0] == fact2.id
+    assert result.candidate_fact_ids == []
+
+
 async def test_fact_selection_new_conversation_uses_recency(
     db_session: AsyncSession,
 ):
-    """New conversations use recency selection (no recent turns to rank against)."""
+    """New conversations without Chroma fall back to recency selection."""
     service = ContextAssemblyService()
     user_id = 'user-123'
 

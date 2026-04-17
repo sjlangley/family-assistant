@@ -11,7 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
 
-from assistant.services.memory_storage import MemoryStorage
+from assistant.services.memory_storage import (
+    DurableFactSearchResult,
+    MemoryStorage,
+)
 
 
 @pytest.fixture
@@ -394,6 +397,171 @@ def test_query_memory_with_custom_n_results(
     # Verify n_results parameter was passed through
     call_args = mock_collection.query.call_args
     assert call_args[1]['n_results'] == 10
+
+
+def test_query_durable_fact_candidates_success(
+    memory_storage,
+    mock_collection,
+    test_user_id,
+):
+    """It returns ranked fact candidates with canonical fact IDs."""
+    query = 'what is my name?'
+    fact_id = uuid.UUID('12345678-1234-5678-1234-567812345678')
+    mock_collection.query.return_value = {
+        'documents': [['The user name is Barry.']],
+        'metadatas': [
+            [
+                {
+                    'fact_id': str(fact_id),
+                    'user_id': test_user_id,
+                    'type': 'durable_fact',
+                    'subject': 'Name',
+                    'fact_key': 'user_name',
+                }
+            ]
+        ],
+        'distances': [[0.12]],
+    }
+
+    results = memory_storage.query_durable_fact_candidates(
+        user_id=test_user_id,
+        query=query,
+    )
+
+    mock_collection.query.assert_called_once_with(
+        query_texts=[query],
+        n_results=5,
+        where={
+            '$and': [
+                {'user_id': test_user_id},
+                {'type': 'durable_fact'},
+            ]
+        },
+        include=['documents', 'metadatas', 'distances'],
+    )
+    assert results == [
+        DurableFactSearchResult(
+            fact_id=fact_id,
+            document='The user name is Barry.',
+            distance=0.12,
+            subject='Name',
+            fact_key='user_name',
+        )
+    ]
+
+
+def test_query_durable_fact_candidates_sorts_by_distance(
+    memory_storage,
+    mock_collection,
+    test_user_id,
+):
+    """It returns candidates ordered by ascending Chroma distance."""
+    farther_id = uuid.uuid4()
+    closer_id = uuid.uuid4()
+    mock_collection.query.return_value = {
+        'documents': [['Farther fact', 'Closer fact']],
+        'metadatas': [
+            [
+                {'fact_id': str(farther_id), 'type': 'durable_fact'},
+                {'fact_id': str(closer_id), 'type': 'durable_fact'},
+            ]
+        ],
+        'distances': [[0.8, 0.1]],
+    }
+
+    results = memory_storage.query_durable_fact_candidates(
+        user_id=test_user_id,
+        query='what is my name?',
+    )
+
+    assert [result.fact_id for result in results] == [closer_id, farther_id]
+    assert [result.distance for result in results] == [0.1, 0.8]
+
+
+def test_query_durable_fact_candidates_passes_custom_n_results(
+    memory_storage,
+    mock_collection,
+    test_user_id,
+):
+    """It forwards custom candidate limits to Chroma."""
+    mock_collection.query.return_value = {
+        'documents': [[]],
+        'metadatas': [[]],
+        'distances': [[]],
+    }
+
+    memory_storage.query_durable_fact_candidates(
+        user_id=test_user_id,
+        query='name',
+        n_results=8,
+    )
+
+    call_args = mock_collection.query.call_args
+    assert call_args[1]['n_results'] == 8
+
+
+def test_query_durable_fact_candidates_skips_missing_or_invalid_fact_ids(
+    memory_storage,
+    mock_collection,
+    test_user_id,
+):
+    """It drops Chroma hits that cannot be mapped to Postgres fact IDs."""
+    valid_fact_id = uuid.uuid4()
+    mock_collection.query.return_value = {
+        'documents': [['Missing ID', 'Bad UUID', 'Valid fact']],
+        'metadatas': [
+            [
+                {'user_id': test_user_id, 'type': 'durable_fact'},
+                {
+                    'fact_id': 'not-a-uuid',
+                    'user_id': test_user_id,
+                    'type': 'durable_fact',
+                },
+                {
+                    'fact_id': str(valid_fact_id),
+                    'user_id': test_user_id,
+                    'type': 'durable_fact',
+                    'subject': 'Name',
+                },
+            ]
+        ],
+        'distances': [[0.4, 0.3, 0.2]],
+    }
+
+    results = memory_storage.query_durable_fact_candidates(
+        user_id=test_user_id,
+        query='who am i?',
+    )
+
+    assert results == [
+        DurableFactSearchResult(
+            fact_id=valid_fact_id,
+            document='Valid fact',
+            distance=0.2,
+            subject='Name',
+            fact_key=None,
+        )
+    ]
+
+
+def test_query_durable_fact_candidates_empty_results(
+    memory_storage,
+    mock_collection,
+    test_user_id,
+):
+    """It returns an empty list when Chroma has no durable fact hits."""
+    mock_collection.query.return_value = {
+        'documents': [[]],
+        'metadatas': [[]],
+        'distances': [[]],
+    }
+
+    results = memory_storage.query_durable_fact_candidates(
+        user_id=test_user_id,
+        query='what is my name?',
+    )
+
+    assert results == []
 
 
 # Postgres-backed upsert tests
