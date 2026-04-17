@@ -4,6 +4,7 @@ import type {
   Message,
   ConversationWithMessagesResponse,
   AssistantAnnotations,
+  FailureAnnotation,
 } from "../types/api";
 import {
   listConversations,
@@ -107,7 +108,7 @@ function TrustRow({
 // FailureRow: Renders failure annotations distinctly
 interface FailureRowProps {
   detail: string | null | undefined;
-  stage: string;
+  stage: FailureAnnotation["stage"];
   retryable: boolean;
 }
 
