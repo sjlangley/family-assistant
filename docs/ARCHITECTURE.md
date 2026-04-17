@@ -71,6 +71,15 @@ Background extraction runs after the visible assistant response is persisted. It
 
 ---
 
+## Trust & Evidence UI
+
+- Assistant messages can persist compact `annotations` payloads that describe fetched sources, tools used, memory hits, saved memory, and terminal failure metadata
+- The desktop chat UI renders those persisted annotations directly as an inline trust row plus an evidence details panel
+- Reloaded conversations reuse the stored annotations instead of regenerating provenance on the client
+- Mobile-specific trust UI behavior is intentionally deferred and tracked in `TODOS.md`
+
+---
+
 ## Security
 
 - Google OAuth 2.0 authentication

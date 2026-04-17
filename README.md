@@ -2,6 +2,7 @@
 
 A self-hosted, multi-user AI assistant designed for household use.
 Supports **text chat with a local LLM**, **persistent conversation history**, **background summary and durable-fact memory**, **bounded web research tools**, and **per-user authentication**.
+Desktop conversations now also show **persisted trust metadata and evidence details** for assistant replies that use tools or saved memory.
 
 ---
 
@@ -17,6 +18,8 @@ Supports **text chat with a local LLM**, **persistent conversation history**, **
   Text chat powered by a local OpenAI-compatible LLM runtime, with Docker Compose now defaulting to Ollama.
 - **Bounded web research**
   Conversation replies can now use a native tool loop with `web_search` for discovery and `web_fetch` for grounded page reads.
+- **Trust UI**
+  Assistant replies can now render desktop trust rows and evidence details from persisted annotations, including tools used, source counts, memory hits, and terminal failure context.
 - **Authentication & security**
   Google OAuth 2.0 with server-side session cookies. Per-user data isolation enforced at the API layer.
 
