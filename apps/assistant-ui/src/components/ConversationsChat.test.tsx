@@ -1161,7 +1161,8 @@ describe("ConversationsChat", () => {
                 title: "React Official Docs",
                 url: "https://react.dev",
                 snippet: "A JavaScript library for building UIs",
-                rationale: "Official documentation provides accurate information",
+                rationale:
+                  "Official documentation provides accurate information",
               },
             ],
             tools: [],
@@ -1534,9 +1535,7 @@ describe("ConversationsChat", () => {
               { label: "Fact 1", summary: "Summary 1" },
               { label: "Fact 2", summary: "Summary 2" },
             ],
-            memory_saved: [
-              { label: "New fact", summary: "New summary" },
-            ],
+            memory_saved: [{ label: "New fact", summary: "New summary" }],
             failure: null,
           },
         },
