@@ -18,13 +18,10 @@ interface ConversationsChatProps {
   onLogout: () => void;
 }
 
-// UUID for pending assistant placeholder message
-const PENDING_MESSAGE_ID = "pending-assistant-placeholder";
-
-// Create a pending assistant placeholder message
-function createPendingAssistantMessage(): Message {
+// Create a pending assistant placeholder message with a unique ID
+function createPendingAssistantMessage(pendingId: string): Message {
   return {
-    id: PENDING_MESSAGE_ID,
+    id: pendingId,
     role: "assistant",
     content: "Thinking...",
     sequence_number: -1, // Placeholder sequence
@@ -534,6 +531,9 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
     setSendingMessage(true);
     setError(null);
 
+    // Generate unique pending message ID for this send attempt
+    const pendingId = crypto.randomUUID();
+
     try {
       let response: ConversationWithMessagesResponse;
 
@@ -549,7 +549,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
           error: null,
           annotations: null,
         };
-        const pendingMessage = createPendingAssistantMessage();
+        const pendingMessage = createPendingAssistantMessage(pendingId);
         setMessages((prev) => [...prev, userMessage, pendingMessage]);
 
         try {
@@ -560,7 +560,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
           // Replace pending placeholder with real assistant message AND replace optimistic user message with persisted version
           setMessages((prev) =>
             prev.map((msg) => {
-              if (msg.id === PENDING_MESSAGE_ID) {
+              if (msg.id === pendingId) {
                 return response.assistant_message;
               }
               if (msg.id === userMessage.id && response.user_message) {
@@ -581,7 +581,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
           setMessages((prev) =>
             prev.filter(
               (msg) =>
-                msg.id !== PENDING_MESSAGE_ID && msg.id !== userMessage.id,
+                msg.id !== pendingId && msg.id !== userMessage.id,
             ),
           );
           throw err;
@@ -598,7 +598,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
           error: null,
           annotations: null,
         };
-        const pendingMessage = createPendingAssistantMessage();
+        const pendingMessage = createPendingAssistantMessage(pendingId);
         setMessages([userMessage, pendingMessage]);
 
         try {
@@ -754,7 +754,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
                                 ? "message-user-bubble"
                                 : msg.error
                                   ? "message-error-bubble"
-                                  : msg.id === PENDING_MESSAGE_ID
+                                  : msg.content === "Thinking..."
                                     ? "message-pending-bubble"
                                     : "message-assistant-bubble"
                             }`}
