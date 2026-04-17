@@ -1,4 +1,5 @@
-
+x-assistant-backend-version: 0.0.1
+x-assistant-ui-version: 0.0.1
 
 services:
   postgres:
