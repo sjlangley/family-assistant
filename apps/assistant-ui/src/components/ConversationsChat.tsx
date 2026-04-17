@@ -63,7 +63,7 @@ interface TrustRowProps {
   annotations: AssistantAnnotations;
   messageId: string;
   isSelected: boolean;
-  onOpenDetails: (messageId: string) => void;
+  onOpenDetails: (messageId: string, triggerElement: HTMLElement) => void;
 }
 
 function TrustRow({
@@ -72,9 +72,16 @@ function TrustRow({
   isSelected,
   onOpenDetails,
 }: TrustRowProps) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
   return (
     <button
-      onClick={() => onOpenDetails(messageId)}
+      ref={buttonRef}
+      onClick={() => {
+        if (buttonRef.current) {
+          onOpenDetails(messageId, buttonRef.current);
+        }
+      }}
       className={`trust-row ${isSelected ? "trust-row-active" : ""}`}
       aria-pressed={isSelected}
       aria-label="Open evidence and details"
@@ -204,13 +211,37 @@ function MemoryDetail({ label, summary, type }: MemoryDetailProps) {
   );
 }
 
-// EvidencePanel: Desktop detail surface for evidence display
+// EvidencePanel: Desktop detail surface for evidence display with WCAG modal semantics
 interface EvidencePanelProps {
   message: Message;
   onClose: () => void;
+  triggerElement?: HTMLElement;
 }
 
-function EvidencePanel({ message, onClose }: EvidencePanelProps) {
+function EvidencePanel({
+  message,
+  onClose,
+  triggerElement,
+}: EvidencePanelProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Manage focus: move to dialog on open, restore to trigger on close
+  // Must be called before early returns (React Hooks rule)
+  useEffect(() => {
+    if (dialogRef.current) {
+      // Move focus to close button for keyboard navigation
+      closeButtonRef.current?.focus();
+    }
+
+    return () => {
+      // Restore focus to the trigger element that opened this modal
+      if (triggerElement && triggerElement instanceof HTMLElement) {
+        triggerElement.focus();
+      }
+    };
+  }, [triggerElement]);
+
   if (!message.annotations) return null;
 
   const { annotations } = message;
@@ -221,8 +252,11 @@ function EvidencePanel({ message, onClose }: EvidencePanelProps) {
   const content = (
     <div className="evidence-panel-content">
       <div className="evidence-panel-header">
-        <h3 className="evidence-panel-title">Evidence & Details</h3>
+        <h3 className="evidence-panel-title" id="evidence-panel-title">
+          Evidence & Details
+        </h3>
         <button
+          ref={closeButtonRef}
           onClick={onClose}
           className="evidence-panel-close"
           aria-label="Close evidence details"
@@ -328,7 +362,28 @@ function EvidencePanel({ message, onClose }: EvidencePanelProps) {
     </div>
   );
 
-  return <div className="evidence-panel">{content}</div>;
+  return (
+    <div
+      className="evidence-panel"
+      role="presentation"
+      onClick={(e) => {
+        // Close when clicking on the overlay background
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="evidence-panel-title"
+        className="evidence-panel-content"
+      >
+        {content}
+      </div>
+    </div>
+  );
 }
 
 export function ConversationsChat({ onLogout }: ConversationsChatProps) {
@@ -351,6 +406,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(
     null,
   );
+  const focusTriggerRef = useRef<HTMLElement | null>(null);
 
   // Track conversations for which we've just set messages to skip redundant fetches
   const skipFetchForConversation = useRef<string | null>(null);
@@ -364,9 +420,13 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
     : null;
 
   // Handle opening evidence details
-  const handleOpenDetails = useCallback((messageId: string) => {
-    setSelectedMessageId(messageId);
-  }, []);
+  const handleOpenDetails = useCallback(
+    (messageId: string, triggerElement: HTMLElement) => {
+      focusTriggerRef.current = triggerElement;
+      setSelectedMessageId(messageId);
+    },
+    [],
+  );
 
   // Handle closing evidence details
   const handleCloseDetails = useCallback(() => {
@@ -834,6 +894,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
             <EvidencePanel
               message={selectedMessage}
               onClose={handleCloseDetails}
+              triggerElement={focusTriggerRef.current ?? undefined}
             />
           )}
         </div>
