@@ -913,6 +913,7 @@ class ConversationService:
 
         # Merge: preserve all existing fields, update only memory_saved
         enriched_annotations = AssistantAnnotations(
+            thought=current_annotations.thought,  # PRESERVE: reasoning trace
             sources=current_annotations.sources,
             tools=current_annotations.tools,
             memory_hits=current_annotations.memory_hits,
