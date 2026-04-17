@@ -138,6 +138,24 @@ Each preset should define:
 - `show_reasoning_in_ui`
 - `memory_extraction_preset`
 
+Field intent:
+
+- `capabilities`
+  - a structured description of what the preset can support, such as
+    reasoning, tools, or vision
+  - used by the backend to validate behavior and by the UI to decide
+    whether optional affordances should appear
+- `request_strategy`
+  - a stable identifier for the request adapter behavior used to build
+    prompts and reasoning controls for this preset
+  - example values might look like `default_chat`,
+    `ollama_native_think`, or `gemma_think_token`
+- `response_strategy`
+  - a stable identifier for the response adapter behavior used to parse
+    assistant output for this preset
+  - example values might look like `plain_content`,
+    `ollama_thinking_field`, or `gemma_tag_stripping`
+
 Example conceptual presets:
 
 - `qwen-quick`
@@ -242,11 +260,18 @@ Future behavior:
 
 We should plan for message-level metadata that records preset usage.
 
-At minimum, we likely need assistant and or user message metadata for:
+At minimum, we should distinguish between user-message metadata and
+assistant-message metadata.
 
-- selected preset id
-- resolved model id
-- reasoning mode
+On user messages:
+
+- `selected_preset_id`
+
+On assistant messages:
+
+- `selected_preset_id`
+- `resolved_model`
+- `reasoning_mode`
 
 Recommended initial approach:
 
@@ -265,6 +290,13 @@ Example shape:
   "reasoning_mode": "thinking"
 }
 ```
+
+The exact contents can differ by message role.
+
+For example:
+
+- a user message may only need `selected_preset_id`
+- an assistant message may include the resolved model and reasoning mode
 
 We can later promote stable high-value fields such as `preset_id` to
 dedicated columns if querying, indexing, or analytics needs justify it.
