@@ -231,100 +231,99 @@ function EvidencePanel({ message, onClose }: EvidencePanelProps) {
         </button>
       </div>
       <div className="evidence-panel-body">
-
-      {/* Sources */}
-      {annotations.sources.length > 0 && (
-        <div className="evidence-section">
-          <h4 className="evidence-section-title">Sources</h4>
-          <div className="evidence-section-content">
-            {annotations.sources.map((source, idx) => (
-              <SourceDetail
-                key={idx}
-                title={source.title}
-                url={source.url}
-                snippet={source.snippet}
-                rationale={source.rationale}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Tools */}
-      {annotations.tools.length > 0 && (
-        <div className="evidence-section">
-          <h4 className="evidence-section-title">Tools Used</h4>
-          <div className="evidence-section-content">
-            {annotations.tools.map((tool, idx) => (
-              <ToolDetail key={idx} name={tool.name} status={tool.status} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Memory Hits */}
-      {annotations.memory_hits.length > 0 && (
-        <div className="evidence-section">
-          <h4 className="evidence-section-title">Memory Hits</h4>
-          <div className="evidence-section-content">
-            {annotations.memory_hits.map((hit, idx) => (
-              <MemoryDetail
-                key={idx}
-                label={hit.label}
-                summary={hit.summary}
-                type="hit"
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Memory Saved */}
-      {annotations.memory_saved.length > 0 && (
-        <div className="evidence-section">
-          <h4 className="evidence-section-title">Memory Saved</h4>
-          <div className="evidence-section-content">
-            {annotations.memory_saved.map((saved, idx) => (
-              <MemoryDetail
-                key={idx}
-                label={saved.label}
-                summary={saved.summary}
-                type="saved"
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Failure Details */}
-      {annotations.failure && (
-        <div className="evidence-section">
-          <h4 className="evidence-section-title">Failure Information</h4>
-          <div className="evidence-section-content">
-            <div className="evidence-failure-item">
-              <p className="type-body-sm font-medium text-[#a54034] mb-1">
-                {annotations.failure.stage === "llm"
-                  ? "LLM Phase Error"
-                  : annotations.failure.stage === "tool"
-                    ? "Tool Phase Error"
-                    : annotations.failure.stage === "annotation"
-                      ? "Processing Error"
-                      : "Unknown Error"}
-              </p>
-              {annotations.failure.detail && (
-                <p className="type-body-sm text-[#1f1c18] mb-2">
-                  {annotations.failure.detail}
-                </p>
-              )}
-              {annotations.failure.retryable && (
-                <p className="type-meta text-[#2f6b53]">
-                  This error may be retryable.
-                </p>
-              )}
+        {/* Sources */}
+        {annotations.sources.length > 0 && (
+          <div className="evidence-section">
+            <h4 className="evidence-section-title">Sources</h4>
+            <div className="evidence-section-content">
+              {annotations.sources.map((source, idx) => (
+                <SourceDetail
+                  key={idx}
+                  title={source.title}
+                  url={source.url}
+                  snippet={source.snippet}
+                  rationale={source.rationale}
+                />
+              ))}
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Tools */}
+        {annotations.tools.length > 0 && (
+          <div className="evidence-section">
+            <h4 className="evidence-section-title">Tools Used</h4>
+            <div className="evidence-section-content">
+              {annotations.tools.map((tool, idx) => (
+                <ToolDetail key={idx} name={tool.name} status={tool.status} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Memory Hits */}
+        {annotations.memory_hits.length > 0 && (
+          <div className="evidence-section">
+            <h4 className="evidence-section-title">Memory Hits</h4>
+            <div className="evidence-section-content">
+              {annotations.memory_hits.map((hit, idx) => (
+                <MemoryDetail
+                  key={idx}
+                  label={hit.label}
+                  summary={hit.summary}
+                  type="hit"
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Memory Saved */}
+        {annotations.memory_saved.length > 0 && (
+          <div className="evidence-section">
+            <h4 className="evidence-section-title">Memory Saved</h4>
+            <div className="evidence-section-content">
+              {annotations.memory_saved.map((saved, idx) => (
+                <MemoryDetail
+                  key={idx}
+                  label={saved.label}
+                  summary={saved.summary}
+                  type="saved"
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Failure Details */}
+        {annotations.failure && (
+          <div className="evidence-section">
+            <h4 className="evidence-section-title">Failure Information</h4>
+            <div className="evidence-section-content">
+              <div className="evidence-failure-item">
+                <p className="type-body-sm font-medium text-[#a54034] mb-1">
+                  {annotations.failure.stage === "llm"
+                    ? "LLM Phase Error"
+                    : annotations.failure.stage === "tool"
+                      ? "Tool Phase Error"
+                      : annotations.failure.stage === "annotation"
+                        ? "Processing Error"
+                        : "Unknown Error"}
+                </p>
+                {annotations.failure.detail && (
+                  <p className="type-body-sm text-[#1f1c18] mb-2">
+                    {annotations.failure.detail}
+                  </p>
+                )}
+                {annotations.failure.retryable && (
+                  <p className="type-meta text-[#2f6b53]">
+                    This error may be retryable.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -586,8 +585,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
           // Keep input text so user can retry
           setMessages((prev) =>
             prev.filter(
-              (msg) =>
-                msg.id !== pendingId && msg.id !== userMessage.id,
+              (msg) => msg.id !== pendingId && msg.id !== userMessage.id,
             ),
           );
           throw err;
