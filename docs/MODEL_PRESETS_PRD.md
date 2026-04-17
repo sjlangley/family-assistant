@@ -421,26 +421,34 @@ controls, prompt tokens, or both?
   Ollama's native support for a specific model's reasoning mode is missing or
   inconsistent.
 
-### How do we ensure correct prompting across multiple models?
+### Should reasoning traces be persisted?
 
-**Question:** When we support multiple models, how shall we ensure we prompt the
-model correctly?
+**Question:** Should reasoning traces ever be persisted beyond transient UI metadata?
 
-**Recommendation:** Implement an **Adapter Pattern** at the LLM service layer to
-decouple conversation logic from model-specific implementation details.
+**Recommendation:** Yes, reasoning traces should be persisted as **structured metadata**
+within the assistant message's `annotations` field, but kept separate from the
+canonical `content`.
 
-1.  **Preset Registry:** Centralize configuration mapping each preset to a
-    specific model ID and its associated strategies.
-2.  **Request Adapters:** Responsible for selecting the system prompt, injecting
-    model-specific control tokens, and setting appropriate request parameters (like
-    `temperature` or `think: true`).
-3.  **Response Adapters:** Responsible for extracting the final user-facing
-    content, normalizing reasoning traces into standard metadata, and stripping
-    any model-specific artifacts before persistence.
+- **Why:** Persisting reasoning traces enables debugging, model evaluation, and
+  features like "Show Thinking" for past messages in the UI.
+- **Policy:** While persisted, these traces should **not** be included in the
+  conversation history sent back to the LLM in future turns. This prevents
+  "context contamination" and keeps the prompt focused on the actual dialogue.
 
-This approach ensures that the core conversation service remains model-agnostic
-while allowing each model to be prompted and parsed according to its unique
-behavior.
+### Global vs. Per-Preset Extraction
+
+**Question:** Do we want one extraction preset globally, or per user-facing preset?
+
+**Recommendation:** We should use a **global default extraction preset** with the
+capability for **per-preset overrides** in the registry.
+
+- **Why:** For most chat presets, a single stable model (like `qwen2.5:7b`) is the
+  most reliable for memory extraction. However, specialized presets (e.g., for
+  coding or structured data) may eventually require specialized extraction models
+  or prompts.
+- **Implementation:** The `ModelPresetRegistry` should include an optional
+  `memory_extraction_preset` field. If omitted, the system falls back to the
+  configured global default.
 
 ## Recommended First Milestone
 
