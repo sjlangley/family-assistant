@@ -116,25 +116,30 @@ Update `Chat.tsx` and `ConversationsChat.tsx` to:
 
 ## Rollout Plan
 
-### Phase 1: Streaming Infrastructure (SSE)
-- Implement a basic SSE endpoint that streams a "Hello World" or hardcoded
-  message.
-- Update the frontend to consume and display this stream.
+### Phase 1: Shared Streaming Infrastructure
+- **PR 1.1:** Add `ChatCompletionStreamResponse` and chunk-parsing models in `models/llm.py`.
+- **PR 1.2:** Implement an `SSEEncoder` utility to format payloads into `data: ...\n\n` strings.
+- **PR 1.3:** Create a mock streaming endpoint `GET /api/v1/debug/stream` for pipe testing.
 
-### Phase 2: Streaming LLM Service
-- Refactor `LLMService.complete_messages` or add a streaming variant to
-  proxy tokens from Ollama.
-- Handle basic text-only streaming.
+### Phase 2: Frontend Foundation
+- **PR 2.1:** Implement a streaming `fetch` consumer in `lib/api.ts` that handles the SSE protocol.
+- **PR 2.2:** Update `Chat.tsx` to manage "transient" streaming state for the latest message.
 
-### Phase 3: Streaming Persistence
-- Ensure the full message is persisted to Postgres once the stream ends.
-- Update `ConversationService` to handle the transition from transient
-  streaming tokens to persisted DB rows.
+### Phase 3: LLM Service Streaming
+- **PR 3.1:** Implement `LLMService.stream_messages()` using `httpx.AsyncClient.stream`.
+- **PR 3.2:** Add unit tests with mock streaming LLM responses.
 
-### Phase 4: Streaming Tool Calls & Reasoning
-- Add support for streaming tool call markers and reasoning traces.
-- Update the UI to render reasoning in a distinct area.
-- Integrate with existing `AssistantAnnotationService`.
+### Phase 4: End-to-End Streaming (Base)
+- **PR 4.1:** Implement `add_message_and_stream_response()` in `ConversationService` (yields tokens, persists user message).
+- **PR 4.2:** Update router to return FastAPI `StreamingResponse` when `stream: true` is requested.
+
+### Phase 5: Persistence & Finalization
+- **PR 5.1:** Add logic to persist the full accumulated assistant message to Postgres after the stream completes.
+- **PR 5.2:** Ensure background extraction is triggered correctly post-persistence.
+
+### Phase 6: Advanced Logic (Reasoning & Tools)
+- **PR 6.1:** Add support for the `thought` event type and update UI for reasoning display.
+- **PR 6.2:** Handle streaming transitions through multi-round tool-calling loops.
 
 ## Testing Strategy
 
