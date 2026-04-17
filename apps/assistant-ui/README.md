@@ -1,11 +1,12 @@
 # Family Assistant UI
 
-Frontend for the Family Assistant application. Implements Google OAuth authentication with the backend API.
+Frontend for the Family Assistant application.
+Implements Google OAuth-backed auth, the conversation sidebar and transcript shell, and the desktop trust UI for persisted assistant annotations.
 
 ## Technology Stack
 
 - **Vite** - Build tool and dev server
-- **React 18** - UI framework
+- **React 19** - UI framework
 - **TypeScript** - Type safety
 - **Tailwind CSS** - Styling
 - **Vitest** - Testing framework
@@ -53,16 +54,20 @@ The app will be available at `http://localhost:5173`
 
 ## Testing
 
-Run tests:
+Run the validation suite from `apps/assistant-ui`:
+
+```bash
+npm run format
+npm run lint
+npm run typecheck
+npm run test:coverage
+npm run build
+```
+
+Run tests without coverage:
 
 ```bash
 npm run test
-```
-
-Run tests with coverage:
-
-```bash
-npm run test:coverage
 ```
 
 Watch mode for development:
@@ -73,13 +78,22 @@ npm run test:watch
 
 Coverage requirements: >80%
 
+## UI Behavior
+
+### Logged In Conversation Shell
+
+The main application view includes:
+
+- a conversation rail for browsing and creating chats
+- a transcript that renders persisted user and assistant messages
+- one pending assistant placeholder while a request is in flight
+- replacement of that placeholder with the final persisted assistant row
+- an inline trust row for assistant messages with annotations
+- a desktop evidence panel showing sources, tool usage, memory hits, memory saves, and failure metadata
+
+Reloaded conversations reuse persisted annotations returned by the API, so trust metadata remains stable after refresh.
+
 ## Code Quality
-
-Lint code:
-
-```bash
-npm run lint
-```
 
 Format code:
 
@@ -178,13 +192,16 @@ Displayed while checking authentication status on app startup.
 
 ### Logged In — Conversations Chat
 
-A two-panel chat interface:
+A two-panel chat interface with trust-aware assistant rendering:
 
 - **Left sidebar**: List of past conversations with a "+ New Chat" button and a Logout button
   showing the logged-in user's email, name, or user ID.
 - **Main panel**: Message history for the selected conversation and a message composer
-  (text input + Send button). Typing and pressing Enter or clicking Send sends the message
-  to the LLM and appends both the user message and the assistant reply.
+  (text input + Send button). Typing and pressing Enter or clicking Send sends the message,
+  shows one pending assistant placeholder, and then swaps in the persisted assistant reply
+  returned by the conversation API.
+- **Trust metadata**: Assistant messages may render a compact trust row that opens a desktop
+  evidence panel sourced from persisted backend annotations.
 
 Starting a new message without an active conversation automatically creates a new conversation.
 

@@ -4,27 +4,26 @@ Backend service for the Family Assistant application.
 
 Provides authenticated REST APIs for user management, conversation history, and LLM chat
 completions. Uses Google OAuth 2.0 for authentication, PostgreSQL for persistent storage,
-and an external OpenAI-compatible LLM server for inference.
+Chroma for retrieval support, and an external OpenAI-compatible LLM server for inference.
 
 ---
 
 ## Implemented Features
 
-* **Google OAuth 2.0 authentication** — verifies Google ID tokens and manages server-side sessions
-* **Session management** — cookie-based sessions via Starlette `SessionMiddleware`
-* **User API** — retrieve the currently authenticated user
-* **LLM chat completions** — proxies chat requests to a local OpenAI-compatible LLM server
-* **Shared LLM completion seam** — one typed backend path now powers both the direct chat endpoint and conversation replies, with common response validation and error handling
-* **Bounded conversation context assembly** — existing conversation replies now use the latest saved summary, active per-user durable facts, and a capped recent-turn window instead of blindly resending the full transcript
-* **Initial tool layer** — `BaseTool`, `ToolFactory`, and `ToolService` now provide one explicit backend tool seam with typed execution results and shared allowlist-based dispatch
-* **Bounded native tool loop** — conversation replies can now expose allowed tools to the model, execute requested tool calls, and feed tool outputs back through a capped multi-round completion loop
-* **Built-in backend tools** — `get_current_time` ships as the deterministic validation tool, and the first real research path is now live through `web_search` and `web_fetch`
-* **Grounded web research path** — `web_search` uses DuckDuckGo result discovery and `web_fetch` returns cleaned HTML content so the model can read selected pages before answering
-* **Fetch safety** — `web_fetch` is limited to public `http` and `https` targets, validates redirect hops, and rejects localhost and private-network destinations
-* **Conversation management** — create conversations, add messages, list and retrieve history
-* **Health check endpoint**
-* **PostgreSQL storage** — async SQLModel / SQLAlchemy with automatic schema creation
-* **CORS middleware** — configurable allowed origins
+- **Google OAuth 2.0 authentication** — verifies Google ID tokens and manages server-side sessions
+- **Session-backed auth** — cookie-based sessions via Starlette `SessionMiddleware`
+- **User API** — retrieves the currently authenticated user
+- **Shared LLM completion seam** — one typed path powers both `/api/v1/chat/completions` and conversation replies
+- **Conversation orchestration** — creates conversations, appends messages, and persists terminal assistant failures instead of dropping outcomes
+- **Bounded context assembly** — conversation replies use recent turns, one latest saved summary, and active per-user durable facts from PostgreSQL
+- **Canonical memory storage** — conversation summaries and durable facts are stored in Postgres and mirrored into Chroma only for retrieval support
+- **Tool orchestration** — `ToolFactory` and `ToolService` expose an explicit allowlist with a bounded model-native tool loop
+- **Built-in tools** — `get_current_time` is the deterministic validation tool, and the shipped research path is `web_search` plus `web_fetch`
+- **Fetch safety** — `web_fetch` only allows public `http` and `https` targets, re-validates redirects, and blocks localhost and private-network destinations
+- **Persisted trust annotations** — assistant rows can store sources, tools, memory hits, memory saves, and terminal failure metadata
+- **Background extraction** — successful replies schedule summary and durable-fact extraction after the response is persisted
+- **Health check endpoint**
+- **CORS middleware** — configurable allowed origins
 
 ---
 
@@ -75,7 +74,11 @@ Copy `.env.example` to `.env` and configure:
 | `DATABASE_NAME` | PostgreSQL database name | No (default: `conversations`) |
 | `DATABASE_USER` | PostgreSQL username | No (default: `nobody`) |
 | `DATABASE_PASSWORD` | PostgreSQL password | No |
+| `CHROMA_HOST` | Chroma host name | Yes |
+| `CHROMA_PORT` | Chroma port | No (default: `8100`) |
+| `CHROMA_COLLECTION_NAME` | Chroma collection for mirrored memory docs | No (default: `assistant_memory`) |
 | `CLIENT_ORIGINS` | Comma-separated allowed CORS origins | No |
+| `ALLOWED_HOSTED_DOMAINS` | Optional Google Workspace hosted domains allowlist | No |
 | `AUTH_DISABLED` | Disable auth for local development | No (default: `false`) |
 | `ENVIRONMENT` | `development`, `staging`, or `production` | No (default: `production`) |
 | `LOG_LEVEL` | Logging level | No (default: `INFO`) |
@@ -93,6 +96,16 @@ The server will run at:
 ```
 http://localhost:8080
 ```
+
+## Database Migrations
+
+Use Alembic for schema changes on existing databases:
+
+```bash
+alembic upgrade head
+```
+
+The app still calls `SQLModel.metadata.create_all()` during startup so an empty local database can bootstrap the base tables. Treat that as local convenience, not the schema migration strategy for evolving installs.
 
 ---
 
@@ -116,27 +129,17 @@ Coverage target: **90%** (enforced in CI).
 
 ---
 
-## Linting and Static Analysis
+## Validation
 
-Code quality is enforced with:
-
-* **Ruff** — linting and formatting
-* **Pyrefly** — static type analysis
-
-Run Ruff:
+Run the backend validation suite from `apps/assistant-backend`:
 
 ```bash
-ruff check src/ tests/
 ruff format src/ tests/
-```
-
-Run Pyrefly:
-
-```bash
+ruff check src/ tests/
+ruff format --check src/ tests/
 pyrefly check src/
+pytest -v
 ```
-
-All commits must pass formatting, linting, tests, and static analysis.
 
 ---
 
