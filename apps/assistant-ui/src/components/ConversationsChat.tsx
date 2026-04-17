@@ -528,6 +528,9 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
     const trimmedMessage = inputMessage.trim();
     if (!trimmedMessage) return;
 
+    // Guard against concurrent sends while request is in flight
+    if (sendingMessage) return;
+
     setSendingMessage(true);
     setError(null);
 
