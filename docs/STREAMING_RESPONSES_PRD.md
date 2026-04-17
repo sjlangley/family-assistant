@@ -74,13 +74,12 @@ Refactor `LLMService` to support a streaming mode that yields tokens from
 the Ollama/OpenAI API.
 
 ### Backend: Streaming Conversation Service
-Introduce a new endpoint or update existing ones to return a
-`StreamingResponse` (FastAPI).
+Update existing endpoints to return a `StreamingResponse` (FastAPI) when
+the request body includes `stream: true`.
 
-New endpoint structure (conceptual):
-```text
-POST /api/v1/conversations/{id}/messages/stream
-```
+Affected endpoints:
+- `POST /api/v1/conversations/with-message`
+- `POST /api/v1/conversations/{id}/messages`
 
 ### Backend: Event Protocol
 Define a clear SSE event protocol:
