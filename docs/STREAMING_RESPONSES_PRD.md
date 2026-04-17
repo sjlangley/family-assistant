@@ -54,13 +54,21 @@ emit tokens to the user and when to pause for tool execution.
 Initially, we may stream the reasoning/content until a tool call is
 identified, execute the tool, and then continue streaming the next turn.
 
-### Persistence happens at the end
-To maintain a consistent history, messages are saved to the canonical Postgres
-database only after the stream has successfully finished.
-- **Reasoning Persistence:** The full reasoning trace (if generated) is persisted
-  in the `thought` field within the message's `annotations` JSON object.
-- **Error Handling:** Partial/interrupted streams result in an assistant message
-  with an `error` field and any content received before the interruption.
+### Persistence distinguishes user vs. assistant messages
+To maintain a consistent history while preserving failure recovery semantics,
+the user message is persisted to the canonical Postgres database as soon as
+the request is accepted, while the assistant message is persisted after the
+stream reaches a terminal state.
+- **User Message Persistence:** Persist the user turn immediately so the
+  conversation history is durable even if generation or streaming fails.
+- **Assistant Message Persistence:** Persist the assistant turn when the
+  stream successfully completes, including the final assembled content.
+- **Reasoning Persistence:** The full reasoning trace (if generated) is
+  persisted in the `thought` field within the message's `annotations` JSON
+  object.
+- **Error Handling:** If the stream is interrupted after assistant output has
+  begun, persist an assistant message in a terminal error state with an
+  `error` field and any content received before the interruption.
 
 ### Streaming reasoning vs. content
 For models that emit reasoning traces (like DeepSeek-R1 or Gemma thinking),
@@ -82,12 +90,19 @@ Affected endpoints:
 - `POST /api/v1/conversations/{id}/messages`
 
 ### Backend: Event Protocol
-Define a clear SSE event protocol:
-- `token`: Partial content or reasoning token.
+Define the authoritative SSE event protocol for frontend and backend
+implementations:
+
+- `thought`: Partial reasoning trace token intended for thought-trace UI.
+- `token`: Partial assistant content token intended for the final visible
+  response.
 - `tool_call`: Metadata about a tool being executed.
 - `done`: Final completion metadata, including full content for
-  persistence.
+  persistence and the finalized message ID.
 - `error`: Terminal failure information.
+
+Reasoning traces must be emitted as `thought` events, while user-visible
+response text must be emitted as `token` events.
 
 ### Frontend: Streaming API Client
 Update the frontend API client (e.g., using `fetch` with `ReadableStream`)
