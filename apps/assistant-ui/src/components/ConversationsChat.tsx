@@ -218,17 +218,18 @@ function EvidencePanel({ message, onClose }: EvidencePanelProps) {
   if (!hasContent) return null;
 
   const content = (
-    <div className="evidence-content">
-      <div className="evidence-header">
-        <h3 className="type-heading-sm text-[#24453a]">Evidence & Details</h3>
+    <div className="evidence-panel-content">
+      <div className="evidence-panel-header">
+        <h3 className="evidence-panel-title">Evidence & Details</h3>
         <button
           onClick={onClose}
-          className="evidence-close-button"
+          className="evidence-panel-close"
           aria-label="Close evidence details"
         >
           ✕
         </button>
       </div>
+      <div className="evidence-panel-body">
 
       {/* Sources */}
       {annotations.sources.length > 0 && (
@@ -323,6 +324,7 @@ function EvidencePanel({ message, onClose }: EvidencePanelProps) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 
