@@ -1,87 +1,95 @@
 # Family AI Assistant Architecture
 
-## Overview
+## Current Scope
 
-This assistant is **multi-user, multi-modal, fully self-hosted**, designed to run on local or cloud hardware with Google OAuth access. It separates **user memory**, **household memory**, and **tool orchestration**.
+The current product is a self-hosted, multi-user text assistant.
+It is centered on trustworthy conversation replies, not a general multimodal agent platform.
 
----
+Today the shipped system includes:
+
+- Google-authenticated multi-user chat
+- canonical transcript storage in PostgreSQL
+- bounded context assembly from recent turns, one latest conversation summary, and per-user durable facts
+- a shared LLM completion seam used by both direct chat and conversation replies
+- a bounded native tool loop with `web_search` and `web_fetch`
+- persisted assistant `annotations` for trust metadata and evidence
+- desktop trust UI with an inline trust row and evidence panel
 
 ## High-Level Architecture
 
 ```mermaid
 flowchart TD
-    A[Web / App UI<br>(React + TypeScript)] -->|OAuth Token / Auth Request| B[FastAPI Backend<br>(Python)]
-    B --> C[Agent Orchestration<br>(LangGraph / Custom)]
+    UI["React + Vite UI"] --> API["FastAPI routers"]
+    API --> CS["ConversationService"]
+    API --> CHAT["Direct chat route"]
 
-    C --> D[LLM Runtime<br>(llama.cpp / Ollama)]
-    C --> E[Image Generation<br>(Stable Diffusion)]
-    C --> F[Audio / TTS Generation<br>(Coqui / Bark)]
-    C --> G[Video Generation<br>(Gen-1 / Kaiber)]
+    CS --> CONTEXT["ContextAssemblyService"]
+    CS --> LLM["LLMService"]
+    CS --> TOOLS["ToolService + ToolFactory"]
+    CS --> ANNO["AssistantAnnotationService"]
+    CS --> BG["BackgroundTasks extraction"]
 
-    B --> H[Session Memory<br>(last N messages)]
-    B --> I[User Memory<br>(Vector DB + Structured DB)]
-    B --> J[Household Memory<br>(Shared lists, calendar, devices)]
+    CHAT --> LLM
 
-    D -->|Uses| H
-    D -->|Uses| I
-    D -->|Uses| J
-    E -->|Uses| I
-    F -->|Uses| I
-    G -->|Uses| I
+    CONTEXT --> PG["PostgreSQL"]
+    BG --> PG
+    BG --> CHROMA["Chroma"]
 
-    style A fill:#f9f,stroke:#333,stroke-width:1px
-    style B fill:#bbf,stroke:#333,stroke-width:1px
-    style C fill:#bfb,stroke:#333,stroke-width:1px
-    style D fill:#ffe4b3,stroke:#333,stroke-width:1px
-    style E fill:#ffcccc,stroke:#333,stroke-width:1px
-    style F fill:#ccffcc,stroke:#333,stroke-width:1px
-    style G fill:#cce0ff,stroke:#333,stroke-width:1px
-    style H fill:#fff2cc,stroke:#333,stroke-width:1px
-    style I fill:#d9ead3,stroke:#333,stroke-width:1px
-    style J fill:#cfe2f3,stroke:#333,stroke-width:1px
-    ```
+    TOOLS --> WEB["Public web"]
+    LLM --> MODEL["OpenAI-compatible LLM runtime"]
+```
 
+## Conversation Request Flow
 
----
+1. The conversation API persists the user message in PostgreSQL.
+2. `ContextAssemblyService` loads the latest conversation summary, relevant per-user durable facts, and a capped recent-turn window from Postgres.
+3. `LLMService` sends the prepared prompt to the configured OpenAI-compatible model.
+4. If the model requests a tool, `ToolService` executes the allowlisted tool and feeds structured output back through the bounded tool loop.
+5. `AssistantAnnotationService` builds compact persisted annotations from tool usage, fetched evidence, and memory hits.
+6. The assistant row is persisted with final content, any terminal failure detail, and the stored annotations payload.
+7. On successful replies, a background task extracts refreshed summary and durable-fact memory, writes them to Postgres, and mirrors saved text into Chroma for retrieval support.
 
-## Memory Model
+## Storage Model
 
-- **Session memory:** last N messages per conversation, loaded from canonical Postgres rows during prompt assembly
-- **Conversation memory:** latest per-conversation summary stored canonically in Postgres and refreshed after successful assistant replies
-- **User memory:** durable per-user facts stored canonically in Postgres and mirrored into Chroma only for retrieval support
-- **Household memory:** shared info like grocery lists, calendars, devices
+### Canonical PostgreSQL tables
 
-All memory is **retrieved and injected dynamically** for LLM prompts.
+- `conversations` and `messages` store transcript history
+- assistant `messages` also store nullable `annotations`
+- `conversation_memory_summaries` stores one latest summary per conversation
+- `durable_facts` stores per-user memory facts with source metadata and active/inactive state
 
-Background extraction runs after the visible assistant response is persisted. It refreshes summaries and durable facts without blocking the request path, then mirrors saved rows into Chroma for retrieval support.
+### Retrieval support
 
----
+Chroma is not the source of truth.
+Saved summaries and durable facts are mirrored into Chroma only to support later retrieval and ranking workflows.
 
-## Tool Orchestration
+### Schema evolution
 
-- LLM decides which **tool or modality** to use per user request
-- The backend exposes an explicit allowlist of tools through `ToolFactory` and executes them through `ToolService`
-- Current research tools:
-  - `web_search` for candidate-source discovery
-  - `web_fetch` for grounded page reads with public-web-only URL validation
-- Example future tools:
-  - Calendar queries
-  - Grocery/shopping list management
-  - Home automation endpoints
+Alembic is the migration path for existing databases.
+The app still bootstraps missing base tables at startup for empty local environments, but schema changes should be applied through Alembic migrations.
 
----
+## Trust and Evidence Model
 
-## Trust & Evidence UI
+Assistant annotations are the reload-safe source for UI provenance.
+The stored payload can include:
 
-- Assistant messages can persist compact `annotations` payloads that describe fetched sources, tools used, memory hits, saved memory, and terminal failure metadata
-- The desktop chat UI renders those persisted annotations directly as an inline trust row plus an evidence details panel
-- Reloaded conversations reuse the stored annotations instead of regenerating provenance on the client
-- Mobile-specific trust UI behavior is intentionally deferred and tracked in `TODOS.md`
+- fetched evidence sources
+- tools used and whether they completed or failed
+- memory hits injected into prompt assembly
+- memory saved after background extraction
+- terminal failure metadata
 
----
+The frontend never regenerates this trust metadata client-side.
+It renders what the backend persisted on the assistant message.
 
-## Security
+## Current Boundaries
 
-- Google OAuth 2.0 authentication
-- Domain-restricted access (Workspace users only)
-- Memory isolation per user
+The shipped architecture intentionally does not include:
+
+- true streaming stage-by-stage assistant updates
+- image, audio, or video generation
+- Google Drive ingestion
+- household shared-memory features
+- mobile-specific trust detail surfaces
+
+Those follow-on items are tracked in [TODOS.md](../TODOS.md).
