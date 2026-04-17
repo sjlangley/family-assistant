@@ -499,3 +499,13 @@ The smallest meaningful slice is:
 
 That gives us a real user-facing feature and the core abstraction seam
 without forcing all model-specific parsing work into the first pass.
+
+## References
+
+- **Ollama:** [https://ollama.com/](https://ollama.com/)
+- **Ollama API (Search for `think`):** [https://ollama.com/blog/v0.9](https://ollama.com/blog/v0.9)
+- **Gemma 4:** [https://ai.google.dev/gemma](https://ai.google.dev/gemma)
+- **Qwen 2.5:** [https://qwenlm.github.io/blog/qwen2.5/](https://qwenlm.github.io/blog/qwen2.5/)
+- **Adapter Pattern:** [https://refactoring.guru/design-patterns/adapter](https://refactoring.guru/design-patterns/adapter)
+- **Pydantic:** [https://docs.pydantic.dev/](https://docs.pydantic.dev/)
+- **OpenAI Chat Completions API:** [https://platform.openai.com/docs/api-reference/chat](https://platform.openai.com/docs/api-reference/chat)
