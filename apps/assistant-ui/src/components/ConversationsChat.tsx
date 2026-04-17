@@ -4,7 +4,6 @@ import type {
   Message,
   ConversationWithMessagesResponse,
   AssistantAnnotations,
-  ToolAnnotation,
 } from "../types/api";
 import {
   listConversations,
