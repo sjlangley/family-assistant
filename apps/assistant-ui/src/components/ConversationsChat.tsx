@@ -818,7 +818,8 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
                                 ? "message-user-bubble"
                                 : msg.error
                                   ? "message-error-bubble"
-                                  : msg.content === "Thinking..."
+                                  : msg.role === "assistant" &&
+                                      msg.sequence_number === -1
                                     ? "message-pending-bubble"
                                     : "message-assistant-bubble"
                             }`}
