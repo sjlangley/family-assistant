@@ -359,57 +359,77 @@ thought traces.
 
 ## Rollout Plan
 
-### Phase 1
+### Phase 1: Preset Registry & Registry API
 
-Create the preset registry and backend preset API.
+Deliver a testable backend registry and the endpoint for the UI to consume.
 
-Deliverables:
+- **Deliverables:**
+  - `ModelPreset` Pydantic model and registry configuration (JSON or Python).
+  - Registry loader service.
+  - `GET /api/v1/model-presets` endpoint.
+  - Unit tests for registry loading and API contract.
 
-- checked-in preset config
-- preset registry loader
-- `GET /api/v1/model-presets`
+### Phase 2: Backend Payload & Persistence Support
 
-### Phase 2
+Add the ability for the backend to receive and persist `preset_id` without
+changing existing LLM behavior yet.
 
-Add per-message preset selection end to end.
+- **Deliverables:**
+  - Update `CreateMessageRequest` and `CreateConversationWithMessageRequest`
+    to include `preset_id`.
+  - Update `Message` SQL model (metadata/annotations) to store the selected preset.
+  - Update `ConversationService` to extract and persist the preset ID.
+  - Tests for message creation with/without preset IDs.
 
-Deliverables:
+### Phase 3: Frontend Model Selector
 
-- frontend dropdown selector
-- request payload updates
-- backend handling of preset id per message
-- persistence of preset metadata
+Implement the UI for selecting presets and passing the ID to the backend.
 
-### Phase 3
+- **Deliverables:**
+  - Frontend API client updates.
+  - Dropdown component near the message composer.
+  - Logic to remember the last-selected preset.
+  - Handling of capability transitions (e.g., clearing images if switching to
+    text-only).
 
-Introduce request and response adapter abstractions.
+### Phase 4: Adapter Architecture & Default Adapter
 
-Deliverables:
+Refactor the LLM service to use the Adapter Pattern, preserving current behavior
+as the "Default" strategy.
 
-- adapter interfaces
-- default adapter for current `qwen2.5` behavior
-- first reasoning-capable adapter path
+- **Deliverables:**
+  - `BaseModelAdapter` interface.
+  - `DefaultModelAdapter` (current `qwen2.5` logic).
+  - Refactor `LLMService.complete_messages` to delegate to the resolver/adapter.
+  - Integration tests ensuring zero regression for standard messages.
 
-### Phase 4
+### Phase 5: First Reasoning Preset (Thinking Mode)
 
-Separate extraction preset configuration from user-facing reply preset
-selection.
+Implement the first non-default behavior: a "Thinking" preset.
 
-Deliverables:
+- **Deliverables:**
+  - `ReasoningModelAdapter` with `think` control and reasoning parsing.
+  - Registry update to include a `thinking` preset.
+  - Persistence of reasoning traces into assistant message annotations.
+  - Tests for reasoning extraction and persistence.
 
-- extraction preset config
-- extraction path reads configured preset
-- tests covering extraction independence
+### Phase 6: Separate Extraction Configuration
 
-### Phase 5
+Decouple memory extraction from the user-facing preset.
 
-Experiment with additional presets and model-specific parsing behavior.
+- **Deliverables:**
+  - Registry-driven extraction preset resolver.
+  - Update `extract_and_save_background` to use the configured extraction preset.
+  - Tests verifying extraction consistency regardless of chat preset.
 
-Deliverables:
+### Phase 7: Multimodal (Vision) Support
 
-- Gemma-specific preset support if adopted
-- reasoning visibility decisions in the UI
-- tuning and evaluation notes
+Add the capability for image-based conversation presets.
+
+- **Deliverables:**
+  - `VisionModelAdapter` for image formatting.
+  - Backend validation for image payloads vs. preset capabilities.
+  - Registry update with a `vision` preset.
 
 ## Testing Strategy
 
