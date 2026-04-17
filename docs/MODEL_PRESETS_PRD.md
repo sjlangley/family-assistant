@@ -23,8 +23,7 @@ This work is both:
     `thinking`
   - different Ollama models entirely
 - Apply the selected preset per message, not per conversation.
-- Keep the UI simple with a dropdown model selector near the message
-  composer.
+- The UI features a dropdown model selector near the message composer.
 - Allow experimentation with prompt construction, reasoning controls,
   response parsing, and extraction models without changing the UI
   contract.
@@ -39,14 +38,14 @@ This work is both:
 ## Confirmed Product Decisions
 
 - Preset selection is per message.
-- The first UI can be a simple dropdown below or beside the text input.
+- The initial UI is a dropdown below or beside the text input.
 - Initial presets may all point at the same base model.
 - Curated presets only; no raw Ollama model picker in the main product
   UI.
-- The curated preset list can live in the repository as checked-in
+- The curated preset list lives in the repository as checked-in
   configuration.
-- Memory extraction should remain configurable and may later use a
-  simpler or smaller model than the user-facing reply preset.
+- Memory extraction is configurable and uses a stable model independent
+  from the user-facing reply preset.
 
 ## Problem Statement
 
@@ -145,12 +144,13 @@ due to long-running thought traces.
 
 ### Curated preset registry
 
-Introduce a checked-in backend registry of user-facing model presets.
+The backend maintains a checked-in registry of user-facing model presets
+located in `apps/assistant-backend/src/assistant/config/model_presets.py`.
 
-The initial implementation can use a Python module or JSON file in the
-repository.
+The implementation uses a Python-based registry for type-safe
+configuration and ease of integration.
 
-Each preset should define:
+Each preset defines:
 
 - `id`
 - `label`
@@ -282,10 +282,8 @@ Future behavior:
 
 ## Data Model Implications
 
-We should plan for message-level metadata that records preset usage.
-
-At minimum, we should distinguish between user-message metadata and
-assistant-message metadata.
+Preset usage is recorded in message-level metadata within the existing
+`annotations` field.
 
 On user messages:
 
@@ -297,15 +295,14 @@ On assistant messages:
 - `resolved_model`
 - `reasoning_mode`
 
-Recommended initial approach:
+Standard approach:
 
-- store preset usage in a structured message metadata field
-- avoid adding multiple dedicated columns in the first iteration
+- Store preset usage in the `annotations` JSON field.
+- Avoid adding new dedicated columns in the initial implementation.
 
-This gives us flexibility while we experiment with which fields are
-actually useful to persist.
+This provides flexibility while maintaining a clean schema.
 
-Example shape:
+Example shape in `annotations`:
 
 ```json
 {
@@ -315,15 +312,10 @@ Example shape:
 }
 ```
 
-The exact contents can differ by message role.
+The exact contents differ by message role:
 
-For example:
-
-- a user message may only need `selected_preset_id`
-- an assistant message may include the resolved model and reasoning mode
-
-We can later promote stable high-value fields such as `preset_id` to
-dedicated columns if querying, indexing, or analytics needs justify it.
+- A user message stores `selected_preset_id`.
+- An assistant message includes the resolved model and reasoning mode.
 
 ## UI Changes
 
@@ -348,14 +340,17 @@ The UI must adapt its composer state when a user switches presets:
 
 ## Reasoning Display Policy
 
-Initial recommendation:
+Policy for handling reasoning traces:
 
-- persist clean final assistant content as the canonical message body
-- do not include prior reasoning traces in normal conversation history
-- treat reasoning as optional metadata for display or debugging
+- Persist clean final assistant content as the canonical message body.
+- Reasoning traces are stored as structured metadata in `annotations`.
+- **Do not** include reasoning traces in conversation history for future
+  turns to avoid context contamination.
+- Reasoning traces are treated as optional metadata for display or
+  debugging.
 
-This avoids contaminating future turns and memory extraction with raw
-thought traces.
+This ensures that the main dialogue remains focused and that memory
+extraction logic is not confused by internal reasoning steps.
 
 ## Rollout Plan
 
