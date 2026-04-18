@@ -188,7 +188,7 @@ class TestStreamParserTagBased:
         assert 'end of response' in output.token
 
     def test_parse_think_tag_split_across_chunks(self, parser):
-        """It handles <think> tag split across multiple chunks."""
+        """It handles <think> tag split across multiple chunks and streams incremental thought."""
         # Chunk 1: Opening tag with partial content
         chunk1 = {
             'id': 'chatcmpl-123',
@@ -206,8 +206,8 @@ class TestStreamParserTagBased:
 
         output1 = parser.parse_chunk(chunk1)
         assert output1.token == 'Start '
-        # Thought buffer accumulates but not yet emitted
-        assert output1.thought is None
+        # Now streams incremental thought immediately
+        assert output1.thought == 'partial reason'
 
         # Chunk 2: Continuation of reasoning
         chunk2 = {
@@ -226,7 +226,8 @@ class TestStreamParserTagBased:
 
         output2 = parser.parse_chunk(chunk2)
         assert output2.token is None
-        assert output2.thought is None  # Still accumulating
+        # Streams incremental thought
+        assert output2.thought == 'ing continued'
 
         # Chunk 3: Closing tag
         chunk3 = {
@@ -244,7 +245,8 @@ class TestStreamParserTagBased:
         }
 
         output3 = parser.parse_chunk(chunk3)
-        assert output3.thought == 'partial reasoning continued'
+        # No more thought content (tag closed)
+        assert output3.thought is None
         assert output3.token == 'End'
 
     def test_parse_multiple_think_tags_in_chunks(self, parser):
@@ -558,3 +560,45 @@ class TestStreamParserEdgeCases:
         # First thought block is captured
         assert 'thought1' in output.thought or 'thought2' in output.thought
         assert 'response' in output.token
+
+    def test_think_tag_split_at_character_boundary(self, parser):
+        """It correctly handles opening tag split across chunks (<thi...nk>)."""
+        # Chunk 1: Ends in middle of opening tag
+        chunk1 = {
+            'id': 'chatcmpl-123',
+            'object': 'chat.completion.chunk',
+            'created': 1234567890,
+            'model': 'test-model',
+            'choices': [
+                {
+                    'index': 0,
+                    'delta': {'content': 'Thinking <thi'},
+                    'finish_reason': None,
+                }
+            ],
+        }
+
+        output1 = parser.parse_chunk(chunk1)
+        assert output1.token == 'Thinking '
+        # Should not extract thinking yet - tag not complete
+        assert output1.thought is None
+
+        # Chunk 2: Completes opening tag and has content
+        chunk2 = {
+            'id': 'chatcmpl-123',
+            'object': 'chat.completion.chunk',
+            'created': 1234567890,
+            'model': 'test-model',
+            'choices': [
+                {
+                    'index': 0,
+                    'delta': {'content': 'nk>process this</think>done'},
+                    'finish_reason': None,
+                }
+            ],
+        }
+
+        output2 = parser.parse_chunk(chunk2)
+        # Opening tag now complete, extracts thinking content
+        assert output2.thought == 'process this'
+        assert output2.token == 'done'

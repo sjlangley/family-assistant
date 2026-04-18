@@ -547,6 +547,46 @@ class CreateChatCompletionResponse(BaseModel):
 # Streaming-specific models
 
 
+class ChatCompletionStreamResponseDeltaToolCallFunction(BaseModel):
+    """Function object in a streaming tool call delta.
+
+    In streaming responses, this may be partial:
+    - First chunk: has name and empty arguments
+    - Subsequent chunks: may only have argument deltas, name may be omitted
+    """
+
+    name: str | None = Field(
+        None,
+        description='Function name (typically only in first chunk of tool call)',
+    )
+    arguments: str | None = Field(
+        None, description='Incremental JSON arguments string'
+    )
+
+
+class ChatCompletionStreamResponseDeltaToolCall(BaseModel):
+    """Tool call in a streaming response delta.
+
+    Streaming tool calls are sent incrementally:
+    - First chunk: has id, type, and function with name
+    - Subsequent chunks: have index and function with argument deltas
+    """
+
+    index: int | None = Field(
+        None,
+        description='Index of the tool call (optional; some providers omit it in deltas)',
+    )
+    id: str | None = Field(
+        None, description='Tool call ID (typically only in first chunk)'
+    )
+    type: Literal['function'] | None = Field(
+        None, description="Type is 'function' (typically only in first chunk)"
+    )
+    function: ChatCompletionStreamResponseDeltaToolCallFunction | None = Field(
+        None, description='Function information (progressive updates)'
+    )
+
+
 class ChatCompletionStreamResponseDelta(BaseModel):
     """Incremental content in a streaming chunk.
 
@@ -557,8 +597,9 @@ class ChatCompletionStreamResponseDelta(BaseModel):
     content: str | None = Field(
         None, description='Partial content token for user-visible output'
     )
-    tool_calls: list[ChatCompletionMessageToolCall] | None = Field(
-        None, description='Tool calls (typically only in first delta)'
+    tool_calls: list[ChatCompletionStreamResponseDeltaToolCall] | None = Field(
+        None,
+        description='Tool call deltas (index always present, other fields progressive)',
     )
     role: str | None = Field(
         None, description='Role (typically only in first delta)'

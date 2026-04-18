@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 import re
 
 from assistant.models.llm import (
+    ChatCompletionMessageToolCall,
+    ChatCompletionMessageToolCallFunction,
     ChatCompletionStreamResponse,
     StreamParserOutput,
 )
@@ -31,7 +33,9 @@ class StreamParserState:
 
     in_thought: bool = False
     thought_buffer: str = field(default_factory=str)
+    thought_returned: str = field(default_factory=str)
     pending_close_tag: str = field(default_factory=str)
+    chunk_boundary_buffer: str = field(default_factory=str)
     reasoning_start_tag: str = '<think>'
     reasoning_end_tag: str = '</think>'
 
@@ -39,7 +43,9 @@ class StreamParserState:
         """Reset parser state for a new conversation."""
         self.in_thought = False
         self.thought_buffer = ''
+        self.thought_returned = ''
         self.pending_close_tag = ''
+        self.chunk_boundary_buffer = ''
 
 
 class StreamParser:
@@ -108,9 +114,35 @@ class StreamParser:
             # Empty delta (can happen mid-stream)
             pass
 
-        # Preserve tool calls
+        # Preserve tool calls: convert streaming-tool-call deltas to the
+        # message-level `ChatCompletionMessageToolCall` shape expected by
+        # callers. Streaming deltas may be partial; only convert entries
+        # that include the required fields (id/type/function.name/arguments).
         if delta.tool_calls:
-            output.tool_calls = delta.tool_calls
+            converted: list[ChatCompletionMessageToolCall] = []
+            for t in delta.tool_calls:
+                try:
+                    if (
+                        t.id is not None
+                        and t.type is not None
+                        and t.function is not None
+                        and t.function.name is not None
+                        and t.function.arguments is not None
+                    ):
+                        func = ChatCompletionMessageToolCallFunction(
+                            name=t.function.name,
+                            arguments=t.function.arguments,
+                        )
+                        converted.append(
+                            ChatCompletionMessageToolCall(
+                                id=t.id, type=t.type, function=func
+                            )
+                        )
+                except Exception:
+                    # Skip malformed/partial entries rather than raising.
+                    continue
+
+            output.tool_calls = converted if converted else None
 
         # Terminal metadata
         if choice.finish_reason:
@@ -129,93 +161,137 @@ class StreamParser:
         - Closing tag at start of chunk (completing previous thought)
         - Complete tag within single chunk
         - No tags (regular token)
+        - Tags split across chunk boundaries (buffers last 20 chars)
+
+        Returns incremental thought deltas, not accumulated buffers.
 
         Args:
             content: Content delta from this chunk
 
         Returns:
-            Dict with 'thought' and/or 'token' keys
+            Dict with 'thought' and/or 'token' keys (incremental deltas)
         """
         result: dict[str, str | None] = {'thought': None, 'token': None}
 
-        # If we have pending close tag, check if this chunk contains it
-        if self.state.pending_close_tag:
-            close_match = re.search(
-                re.escape(self.state.reasoning_end_tag), content, re.DOTALL
-            )
-            if close_match:
-                # Found closing tag - extract accumulated thought
-                thought_tail = content[: close_match.start()]
-                self.state.thought_buffer += thought_tail
-                result['thought'] = self.state.thought_buffer
+        prev_buf = self.state.chunk_boundary_buffer
+        combined = prev_buf + content
+        offset = len(prev_buf)
 
-                # Extract remaining content after closing tag
-                remaining = content[close_match.end() :]
+        start_tag = self.state.reasoning_start_tag
+        end_tag = self.state.reasoning_end_tag
+
+        # If we're currently inside a thought (pending close), stream incremental content
+        if self.state.pending_close_tag:
+            close_match = re.search(re.escape(end_tag), combined, re.DOTALL)
+            if close_match:
+                # Closing tag found: stream anything new up to the closing tag
+                thought_end = combined[: close_match.start()]
+                new_thought = thought_end[len(self.state.thought_returned) :]
+                if new_thought:
+                    result['thought'] = new_thought
+
+                # Remaining content after closing tag should be processed normally
+                remaining = combined[close_match.end() :]
+                # Reset thought state
                 self.state.in_thought = False
                 self.state.thought_buffer = ''
+                self.state.thought_returned = ''
                 self.state.pending_close_tag = ''
+                self.state.chunk_boundary_buffer = ''
 
-                # Process remaining content recursively
                 if remaining:
-                    remaining_result = self._process_content_for_tags(remaining)
-                    if remaining_result['thought']:
-                        result['thought'] = (
-                            result['thought'] or ''
-                        ) + remaining_result['thought']
-                    if remaining_result['token']:
-                        result['token'] = remaining_result['token']
+                    rem = self._process_content_for_tags(remaining)
+                    if rem['thought']:
+                        result['thought'] = (result['thought'] or '') + rem[
+                            'thought'
+                        ]
+                    if rem['token']:
+                        result['token'] = rem['token']
             else:
-                # No closing tag found - accumulate as thought
-                self.state.thought_buffer += content
+                # No closing tag yet: stream new content since last returned
+                new_thought = combined[len(self.state.thought_returned) :]
+                if new_thought:
+                    result['thought'] = new_thought
+
+                # Mark everything as returned so we don't duplicate
+                self.state.thought_buffer = combined
+                self.state.thought_returned = combined
+                # Keep last 20 chars for boundary detection
+                self.state.chunk_boundary_buffer = combined[-20:]
             return result
 
-        # Look for opening and closing tags
-        open_match = re.search(
-            re.escape(self.state.reasoning_start_tag), content
-        )
-        close_match = re.search(
-            re.escape(self.state.reasoning_end_tag), content, re.DOTALL
-        )
+        # Not currently inside a thought: detect opening tag (handle split tags)
+        open_match = re.search(re.escape(start_tag), combined)
+        close_match = re.search(re.escape(end_tag), combined, re.DOTALL)
 
         if not open_match:
-            # No opening tag - regular token
-            result['token'] = content
+            # No full opening tag in combined content. Check for a trailing partial
+            # of the start tag so we can buffer it instead of leaking to the user.
+            max_prefix = 0
+            for i in range(1, len(start_tag)):
+                if combined.endswith(start_tag[:i]):
+                    max_prefix = i
+            if max_prefix:
+                # Return only the new token portion (excluding buffered prefix)
+                token_part = combined[:-max_prefix]
+                new_token = token_part[offset:]
+                if new_token:
+                    result['token'] = new_token
+                # Buffer the partial tag prefix for next chunk
+                self.state.chunk_boundary_buffer = combined[-max_prefix:]
+            else:
+                # No partial tag - return content as token and keep small boundary
+                result['token'] = content
+                self.state.chunk_boundary_buffer = combined[-20:]
             return result
 
-        # Found opening tag
+        # Found an opening tag in combined
         if close_match and close_match.start() > open_match.start():
-            # Complete tag within this chunk: <think>...content...</think>
-            before_tag = content[: open_match.start()]
-            inside_tag = content[open_match.end() : close_match.start()]
-            after_tag = content[close_match.end() :]
+            # Complete tag within this combined input
+            before_tag = combined[: open_match.start()]
+            inside_tag = combined[open_match.end() : close_match.start()]
+            after_tag = combined[close_match.end() :]
 
-            if before_tag:
-                result['token'] = before_tag
+            # Only return token text that is new (not from previous buffer)
+            token_before_new = before_tag[offset:]
+            if token_before_new:
+                result['token'] = token_before_new
             if inside_tag:
                 result['thought'] = inside_tag
 
-            # Recursively process content after tag
+            # Process remaining content recursively
             if after_tag:
-                after_result = self._process_content_for_tags(after_tag)
-                if after_result['thought']:
-                    result['thought'] = (
-                        result['thought'] or ''
-                    ) + after_result['thought']
-                if after_result['token']:
-                    result['token'] = (result['token'] or '') + after_result[
+                after_res = self._process_content_for_tags(after_tag)
+                if after_res['thought']:
+                    result['thought'] = (result['thought'] or '') + after_res[
+                        'thought'
+                    ]
+                if after_res['token']:
+                    result['token'] = (result['token'] or '') + after_res[
                         'token'
                     ]
-        else:
-            # Opening tag found but no closing tag - start accumulating
-            before_tag = content[: open_match.start()]
-            after_tag = content[open_match.end() :]
 
-            if before_tag:
-                result['token'] = before_tag
+            # Clear boundary buffer as we've consumed it
+            self.state.chunk_boundary_buffer = ''
+            return result
 
-            self.state.in_thought = True
-            self.state.thought_buffer = after_tag
-            self.state.pending_close_tag = self.state.reasoning_end_tag
+        # Opening tag found but no closing tag: start thought and stream what's available
+        before_tag = combined[: open_match.start()]
+        after_tag = combined[open_match.end() :]
+
+        token_before_new = before_tag[offset:]
+        if token_before_new:
+            result['token'] = token_before_new
+
+        # Stream all available inside-tag content immediately
+        if after_tag:
+            result['thought'] = after_tag
+
+        self.state.in_thought = True
+        self.state.thought_buffer = after_tag
+        self.state.thought_returned = after_tag
+        self.state.pending_close_tag = end_tag
+        self.state.chunk_boundary_buffer = after_tag[-20:]
 
         return result
 
