@@ -655,7 +655,7 @@ class StreamParserOutput(BaseModel):
 
     thought: str | None = Field(
         None,
-        description='Reasoning/thinking token or accumulated tag-based thought',
+        description='Incremental reasoning/thinking content for this chunk',
     )
     token: str | None = Field(None, description='User-visible content token')
     tool_calls: list[ChatCompletionMessageToolCall] | None = Field(
