@@ -33,7 +33,7 @@ class StreamParserState:
 
     in_thought: bool = False
     thought_buffer: str = field(default_factory=str)
-    thought_returned: str = field(default_factory=str)
+    thought_returned_len: int = 0
     pending_close_tag: str = field(default_factory=str)
     chunk_boundary_buffer: str = field(default_factory=str)
     reasoning_start_tag: str = '<think>'
@@ -43,7 +43,7 @@ class StreamParserState:
         """Reset parser state for a new conversation."""
         self.in_thought = False
         self.thought_buffer = ''
-        self.thought_returned = ''
+        self.thought_returned_len = 0
         self.pending_close_tag = ''
         self.chunk_boundary_buffer = ''
 
@@ -188,7 +188,7 @@ class StreamParser:
             if close_match:
                 # Closing tag found: stream anything new up to the closing tag
                 thought_end = combined[: close_match.start()]
-                new_thought = thought_end[len(self.state.thought_returned) :]
+                new_thought = thought_end[self.state.thought_returned_len :]
                 if new_thought:
                     result['thought'] = new_thought
 
@@ -197,7 +197,7 @@ class StreamParser:
                 # Reset thought state
                 self.state.in_thought = False
                 self.state.thought_buffer = ''
-                self.state.thought_returned = ''
+                self.state.thought_returned_len = 0
                 self.state.pending_close_tag = ''
                 self.state.chunk_boundary_buffer = ''
 
@@ -211,15 +211,15 @@ class StreamParser:
                         result['token'] = rem['token']
             else:
                 # No closing tag yet: stream new content since last returned
-                new_thought = combined[len(self.state.thought_returned) :]
+                new_thought = combined[self.state.thought_returned_len :]
                 if new_thought:
                     result['thought'] = new_thought
 
                 # Mark everything as returned so we don't duplicate
                 self.state.thought_buffer = combined
-                self.state.thought_returned = combined
-                # Keep last 20 chars for boundary detection
-                self.state.chunk_boundary_buffer = combined[-20:]
+                self.state.thought_returned_len = len(combined)
+                # Keep full buffer untruncated while inside thought block
+                self.state.chunk_boundary_buffer = combined
             return result
 
         # Not currently inside a thought: detect opening tag (handle split tags)
@@ -291,9 +291,10 @@ class StreamParser:
 
         self.state.in_thought = True
         self.state.thought_buffer = after_tag
-        self.state.thought_returned = after_tag
+        self.state.thought_returned_len = len(after_tag)
         self.state.pending_close_tag = end_tag
-        self.state.chunk_boundary_buffer = after_tag[-20:]
+        # Keep full buffer untruncated while inside thought block
+        self.state.chunk_boundary_buffer = after_tag
 
         return result
 
