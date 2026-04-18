@@ -102,17 +102,19 @@ class StreamParser:
         # Initialize output
         output = StreamParserOutput(model=chunk.model)
 
-        # Extract native reasoning if present
-        if delta.reasoning_content:
+        # Extract native reasoning and content independently so providers
+        # that emit both fields in the same delta do not lose user-visible
+        # content. Use explicit None checks so empty-string deltas are still
+        # treated as present.
+        if delta.reasoning_content is not None:
             output.thought = delta.reasoning_content
-        elif delta.content:
+
+        if delta.content is not None:
             # Process content for tag-based reasoning parsing
             processed = self._process_content_for_tags(delta.content)
-            output.thought = processed.get('thought')
+            if processed.get('thought') is not None:
+                output.thought = processed.get('thought')
             output.token = processed.get('token')
-        else:
-            # Empty delta (can happen mid-stream)
-            pass
 
         # Preserve tool calls: convert streaming-tool-call deltas to the
         # message-level `ChatCompletionMessageToolCall` shape expected by
