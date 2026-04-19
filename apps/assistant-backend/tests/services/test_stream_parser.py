@@ -294,6 +294,147 @@ class TestStreamParserTagBased:
         assert output2.thought == 'second thought'
         assert output2.token == 'visible2'
 
+    def test_parse_long_think_block_spanning_many_chunks(self, parser):
+        """It correctly streams incremental thought deltas across 4+ continuation chunks.
+
+        This tests the thought_returned_len tracking mechanism across multiple
+        iterations of the pending_close_tag / boundary-buffer path to ensure
+        long reasoning segments stream correctly without dropping deltas.
+        """
+        # Chunk 1: Opening tag with initial thought content
+        chunk1 = {
+            'id': 'chatcmpl-123',
+            'object': 'chat.completion.chunk',
+            'created': 1234567890,
+            'model': 'test-model',
+            'choices': [
+                {
+                    'index': 0,
+                    'delta': {
+                        'content': '<think>First, I need to consider the problem from multiple angles. '
+                    },
+                    'finish_reason': None,
+                }
+            ],
+        }
+
+        output1 = parser.parse_chunk(chunk1)
+        assert output1.token is None
+        assert (
+            output1.thought
+            == 'First, I need to consider the problem from multiple angles. '
+        )
+
+        # Chunk 2: Continuation chunk 1
+        chunk2 = {
+            'id': 'chatcmpl-123',
+            'object': 'chat.completion.chunk',
+            'created': 1234567890,
+            'model': 'test-model',
+            'choices': [
+                {
+                    'index': 0,
+                    'delta': {
+                        'content': 'The key constraint is that we must maintain backward compatibility '
+                    },
+                    'finish_reason': None,
+                }
+            ],
+        }
+
+        output2 = parser.parse_chunk(chunk2)
+        assert output2.token is None
+        assert (
+            output2.thought
+            == 'The key constraint is that we must maintain backward compatibility '
+        )
+
+        # Chunk 3: Continuation chunk 2
+        chunk3 = {
+            'id': 'chatcmpl-123',
+            'object': 'chat.completion.chunk',
+            'created': 1234567890,
+            'model': 'test-model',
+            'choices': [
+                {
+                    'index': 0,
+                    'delta': {
+                        'content': 'while also introducing the new feature. This requires careful planning '
+                    },
+                    'finish_reason': None,
+                }
+            ],
+        }
+
+        output3 = parser.parse_chunk(chunk3)
+        assert output3.token is None
+        assert (
+            output3.thought
+            == 'while also introducing the new feature. This requires careful planning '
+        )
+
+        # Chunk 4: Continuation chunk 3
+        chunk4 = {
+            'id': 'chatcmpl-123',
+            'object': 'chat.completion.chunk',
+            'created': 1234567890,
+            'model': 'test-model',
+            'choices': [
+                {
+                    'index': 0,
+                    'delta': {
+                        'content': 'and a phased rollout strategy to ensure minimal disruption.'
+                    },
+                    'finish_reason': None,
+                }
+            ],
+        }
+
+        output4 = parser.parse_chunk(chunk4)
+        assert output4.token is None
+        assert (
+            output4.thought
+            == 'and a phased rollout strategy to ensure minimal disruption.'
+        )
+
+        # Chunk 5: Closing tag with content after
+        chunk5 = {
+            'id': 'chatcmpl-123',
+            'object': 'chat.completion.chunk',
+            'created': 1234567890,
+            'model': 'test-model',
+            'choices': [
+                {
+                    'index': 0,
+                    'delta': {'content': '</think>Based on this analysis, '},
+                    'finish_reason': None,
+                }
+            ],
+        }
+
+        output5 = parser.parse_chunk(chunk5)
+        assert output5.thought is None
+        assert output5.token == 'Based on this analysis, '
+
+        # Chunk 6: Continuation of user-visible content
+        chunk6 = {
+            'id': 'chatcmpl-123',
+            'object': 'chat.completion.chunk',
+            'created': 1234567890,
+            'model': 'test-model',
+            'choices': [
+                {
+                    'index': 0,
+                    'delta': {'content': 'I recommend the following approach.'},
+                    'finish_reason': None,
+                }
+            ],
+        }
+
+        output6 = parser.parse_chunk(chunk6)
+        assert output6.thought is None
+        assert output6.token == 'I recommend the following approach.'
+
 
 class TestStreamParserToolCalls:
     """Tests for tool-call delta handling."""
