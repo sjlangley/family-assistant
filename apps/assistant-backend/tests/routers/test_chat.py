@@ -346,3 +346,18 @@ async def test_create_chat_completion_missing_usage_info(
     assert data['prompt_tokens'] == 0
     assert data['completion_tokens'] == 0
     assert data['total_tokens'] == 0
+
+
+async def test_debug_stream_success(authenticated_async_test_client):
+    """Test debug stream endpoint returns event-stream."""
+    response = await authenticated_async_test_client.get('/api/v1/chat/debug-stream')
+    
+    assert response.status_code == 200
+    assert response.headers['content-type'].startswith('text/event-stream')
+    assert response.headers['cache-control'] == 'no-cache'
+    assert response.headers['x-accel-buffering'] == 'no'
+    
+    # We don't necessarily need to consume the whole stream in this basic test,
+    # but let's verify it starts with a thought event.
+    first_chunk = await response.aread()
+    assert b'event: thought' in first_chunk
