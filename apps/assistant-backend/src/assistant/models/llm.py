@@ -544,7 +544,130 @@ class CreateChatCompletionResponse(BaseModel):
     usage: CompletionUsage
 
 
+# Streaming-specific models
+
+
+class ChatCompletionStreamResponseDeltaToolCallFunction(BaseModel):
+    """Function object in a streaming tool call delta.
+
+    In streaming responses, this may be partial:
+    - First chunk: has name and empty arguments
+    - Subsequent chunks: may only have argument deltas, name may be omitted
+    """
+
+    name: str | None = Field(
+        None,
+        description='Function name (typically only in first chunk of tool call)',
+    )
+    arguments: str | None = Field(
+        None, description='Incremental JSON arguments string'
+    )
+
+
+class ChatCompletionStreamResponseDeltaToolCall(BaseModel):
+    """Tool call in a streaming response delta.
+
+    Streaming tool calls are sent incrementally:
+    - First chunk: has id, type, and function with name
+    - Subsequent chunks: have index and function with argument deltas
+    """
+
+    index: int | None = Field(
+        None,
+        description='Index of the tool call (optional; some providers omit it in deltas)',
+    )
+    id: str | None = Field(
+        None, description='Tool call ID (typically only in first chunk)'
+    )
+    type: Literal['function'] | None = Field(
+        None, description="Type is 'function' (typically only in first chunk)"
+    )
+    function: ChatCompletionStreamResponseDeltaToolCallFunction | None = Field(
+        None, description='Function information (progressive updates)'
+    )
+
+
+class ChatCompletionStreamResponseDelta(BaseModel):
+    """Incremental content in a streaming chunk.
+
+    In streaming mode, the 'delta' object contains only the fields that have
+    changed since the previous chunk, allowing for efficient transmission.
+    """
+
+    content: str | None = Field(
+        None, description='Partial content token for user-visible output'
+    )
+    tool_calls: list[ChatCompletionStreamResponseDeltaToolCall] | None = Field(
+        None,
+        description='Tool call deltas (index always present, other fields progressive)',
+    )
+    role: str | None = Field(
+        None, description='Role (typically only in first delta)'
+    )
+    reasoning_content: str | None = Field(
+        None, description='Native reasoning/thinking token (if model emits it)'
+    )
+
+
+class ChatCompletionStreamResponseChoice(BaseModel):
+    """Single choice from a streaming response chunk."""
+
+    index: int = Field(..., description='Choice index')
+    delta: ChatCompletionStreamResponseDelta = Field(
+        ..., description='Incremental content for this chunk'
+    )
+    finish_reason: str | None = Field(
+        None, description='Completion reason if stream has ended (e.g. "stop")'
+    )
+    logprobs: ChatCompletionLogprobs | None = None
+
+
+class ChatCompletionStreamResponse(BaseModel):
+    """OpenAI-compatible streaming response chunk.
+
+    As per OpenAI spec, streaming responses are sent as NDJSON with
+    incremental deltas rather than cumulative content.
+    """
+
+    id: str = Field(..., description='Unique completion ID')
+    object: Literal['chat.completion.chunk'] = Field(
+        ..., description='Object type identifier'
+    )
+    created: int = Field(..., description='Unix timestamp')
+    model: str = Field(..., description='Model identifier')
+    choices: list[ChatCompletionStreamResponseChoice] = Field(
+        ..., description='List of streaming choices (typically one)'
+    )
+    usage: CompletionUsage | None = Field(
+        None, description='Token usage (usually only in final chunk)'
+    )
+
+
 # Shared LLM completion seam types
+
+
+class StreamParserOutput(BaseModel):
+    """Typed output from stream chunk parsing.
+
+    The parser distinguishes between reasoning content (thought) and user-visible
+    content (token), handling both native reasoning fields and tag-based parsing.
+    """
+
+    thought: str | None = Field(
+        None,
+        description='Incremental reasoning/thinking content for this chunk',
+    )
+    token: str | None = Field(None, description='User-visible content token')
+    tool_calls: list[ChatCompletionMessageToolCall] | None = Field(
+        None, description='Tool call metadata if present'
+    )
+    finish_reason: str | None = Field(
+        None, description='Completion signal (e.g. "stop") in final chunk'
+    )
+    usage: CompletionUsage | None = Field(
+        None, description='Token usage in final chunk (if provided)'
+    )
+    model: str | None = Field(None, description='Model identifier from chunk')
 
 
 class LLMCompletionResult(BaseModel):

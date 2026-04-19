@@ -2876,7 +2876,7 @@ async def test_enrich_annotations_nothing_saved_leaves_empty():
 
 
 # Tests for extraction prompt building with correct message slicing
-def test_build_extraction_prompt_slices_relative_to_target_message():
+async def test_build_extraction_prompt_slices_relative_to_target_message():
     """Extraction prompt should slice relative to target message, not conversation tail."""
     service = ConversationService(
         llm_service=AsyncMock(spec=LLMService),
@@ -2964,7 +2964,7 @@ def test_build_extraction_prompt_slices_relative_to_target_message():
     assert 'new answer added later' not in prompt_content
 
 
-def test_build_extraction_prompt_respects_message_bounds():
+async def test_build_extraction_prompt_respects_message_bounds():
     """When target message is near the start, respect array bounds."""
     service = ConversationService(
         llm_service=AsyncMock(spec=LLMService),
@@ -3003,7 +3003,7 @@ def test_build_extraction_prompt_respects_message_bounds():
     assert 'message 2' not in prompt_content
 
 
-def test_build_extraction_prompt_includes_target_and_context():
+async def test_build_extraction_prompt_includes_target_and_context():
     """Prompt should include target message and surrounding context."""
     service = ConversationService(
         llm_service=AsyncMock(spec=LLMService),
@@ -3045,7 +3045,7 @@ def test_build_extraction_prompt_includes_target_and_context():
     assert 'msg5' not in prompt_content
 
 
-def test_build_extraction_prompt_fallback_when_target_not_found():
+async def test_build_extraction_prompt_fallback_when_target_not_found():
     """If target message not found, fallback to last 4 messages."""
     service = ConversationService(
         llm_service=AsyncMock(spec=LLMService),
@@ -3226,7 +3226,7 @@ async def test_background_extraction_continues_if_indexing_fails():
 
 
 # Additional coverage tests for error paths and edge cases
-def test_parse_extraction_result_with_only_summary():
+async def test_parse_extraction_result_with_only_summary():
     """Parse extraction result with summary but no valid facts."""
     service = ConversationService(
         llm_service=AsyncMock(spec=LLMService),
@@ -3243,7 +3243,7 @@ def test_parse_extraction_result_with_only_summary():
     assert facts is None
 
 
-def test_parse_extraction_result_with_only_facts():
+async def test_parse_extraction_result_with_only_facts():
     """Parse extraction result with facts but no summary."""
     service = ConversationService(
         llm_service=AsyncMock(spec=LLMService),
@@ -3264,7 +3264,7 @@ def test_parse_extraction_result_with_only_facts():
     assert facts[0]['subject'] == 'Test'
 
 
-def test_parse_extraction_result_missing_confidence():
+async def test_parse_extraction_result_missing_confidence():
     """Parse extraction result where confidence field is missing."""
     service = ConversationService(
         llm_service=AsyncMock(spec=LLMService),
@@ -3283,7 +3283,7 @@ def test_parse_extraction_result_missing_confidence():
     # Fact should still be present even without confidence
 
 
-def test_parse_extraction_result_with_text_before_json():
+async def test_parse_extraction_result_with_text_before_json():
     """Parse extraction result with text before JSON."""
     service = ConversationService(
         llm_service=AsyncMock(spec=LLMService),
@@ -3300,7 +3300,7 @@ def test_parse_extraction_result_with_text_before_json():
     assert facts is None
 
 
-def test_parse_extraction_result_with_text_after_json():
+async def test_parse_extraction_result_with_text_after_json():
     """Parse extraction result with text after JSON."""
     service = ConversationService(
         llm_service=AsyncMock(spec=LLMService),
@@ -3317,7 +3317,7 @@ def test_parse_extraction_result_with_text_after_json():
     assert facts is None
 
 
-def test_build_extraction_prompt_with_single_message():
+async def test_build_extraction_prompt_with_single_message():
     """Extraction prompt with only one message in conversation."""
     service = ConversationService(
         llm_service=AsyncMock(spec=LLMService),
@@ -3343,7 +3343,7 @@ def test_build_extraction_prompt_with_single_message():
     assert 'Single response' in prompt[1]['content']
 
 
-def test_build_extraction_prompt_with_empty_messages():
+async def test_build_extraction_prompt_with_empty_messages():
     """Extraction prompt with empty message list."""
     service = ConversationService(
         llm_service=AsyncMock(spec=LLMService),
@@ -3369,7 +3369,7 @@ def test_build_extraction_prompt_with_empty_messages():
     assert prompt[0]['role'] == 'system'
 
 
-def test_build_memory_saved_annotations_large_fact_count():
+async def test_build_memory_saved_annotations_large_fact_count():
     """Build memory_saved with large number of facts."""
     service = AssistantAnnotationService()
 
@@ -3381,7 +3381,7 @@ def test_build_memory_saved_annotations_large_fact_count():
     assert '100 memory facts' in annotations[0].label
 
 
-def test_build_memory_saved_annotations_combines_all_saves():
+async def test_build_memory_saved_annotations_combines_all_saves():
     """memory_saved combines summary and facts into single annotation."""
     service = AssistantAnnotationService()
 
@@ -3398,7 +3398,7 @@ def test_build_memory_saved_annotations_combines_all_saves():
     assert ', ' in annotations[0].label
 
 
-def test_parse_extraction_result_invalid_json():
+async def test_parse_extraction_result_invalid_json():
     """Parse extraction result with no valid JSON."""
     service = ConversationService(
         llm_service=AsyncMock(spec=LLMService),
@@ -3415,7 +3415,7 @@ def test_parse_extraction_result_invalid_json():
     assert facts is None
 
 
-def test_parse_extraction_result_malformed_json():
+async def test_parse_extraction_result_malformed_json():
     """Parse extraction result with malformed JSON."""
     service = ConversationService(
         llm_service=AsyncMock(spec=LLMService),
@@ -3432,7 +3432,7 @@ def test_parse_extraction_result_malformed_json():
     assert facts is None
 
 
-def test_parse_extraction_result_facts_missing_subject():
+async def test_parse_extraction_result_facts_missing_subject():
     """Parse extraction result where facts missing subject field."""
     service = ConversationService(
         llm_service=AsyncMock(spec=LLMService),
@@ -3451,7 +3451,7 @@ def test_parse_extraction_result_facts_missing_subject():
     assert facts is None
 
 
-def test_parse_extraction_result_facts_missing_fact():
+async def test_parse_extraction_result_facts_missing_fact():
     """Parse extraction result where facts missing fact field."""
     service = ConversationService(
         llm_service=AsyncMock(spec=LLMService),
@@ -3470,7 +3470,7 @@ def test_parse_extraction_result_facts_missing_fact():
     assert facts is None
 
 
-def test_parse_extraction_result_empty_strings():
+async def test_parse_extraction_result_empty_strings():
     """Parse extraction result with empty strings."""
     service = ConversationService(
         llm_service=AsyncMock(spec=LLMService),
@@ -3487,7 +3487,7 @@ def test_parse_extraction_result_empty_strings():
     assert facts is None
 
 
-def test_build_memory_saved_annotations_no_saves():
+async def test_build_memory_saved_annotations_no_saves():
     """Build memory_saved annotations with no saves."""
     service = AssistantAnnotationService()
 
@@ -3499,7 +3499,7 @@ def test_build_memory_saved_annotations_no_saves():
     assert len(annotations) == 0
 
 
-def test_build_memory_saved_annotations_only_summary():
+async def test_build_memory_saved_annotations_only_summary():
     """Build memory_saved annotations with only summary saved."""
     service = AssistantAnnotationService()
 
@@ -3512,7 +3512,7 @@ def test_build_memory_saved_annotations_only_summary():
     assert 'memory facts' not in annotations[0].label
 
 
-def test_build_memory_saved_annotations_only_facts():
+async def test_build_memory_saved_annotations_only_facts():
     """Build memory_saved annotations with only facts saved."""
     service = AssistantAnnotationService()
 
@@ -3526,7 +3526,6 @@ def test_build_memory_saved_annotations_only_facts():
 
 
 # Integration tests for extract_and_save_background orchestration
-@pytest.mark.asyncio
 async def test_extract_and_save_background_successful_with_summary_and_facts():
     """Extract and save background with both summary and facts extracted."""
     user_id = 'user123'
@@ -3642,7 +3641,6 @@ async def test_extract_and_save_background_successful_with_summary_and_facts():
     service._enrich_assistant_annotations_with_memory_saved.assert_called_once()
 
 
-@pytest.mark.asyncio
 async def test_extract_and_save_background_with_only_summary():
     """Extract and save background with summary but no facts."""
     user_id = 'user123'
@@ -3727,7 +3725,6 @@ async def test_extract_and_save_background_with_only_summary():
     service._enrich_assistant_annotations_with_memory_saved.assert_called_once()
 
 
-@pytest.mark.asyncio
 async def test_extract_and_save_background_with_only_facts():
     """Extract and save background with facts but no summary."""
     user_id = 'user123'
@@ -3813,7 +3810,6 @@ async def test_extract_and_save_background_with_only_facts():
     service._enrich_assistant_annotations_with_memory_saved.assert_called_once()
 
 
-@pytest.mark.asyncio
 async def test_extract_and_save_background_no_extraction():
     """Extract and save background when nothing is extracted."""
     user_id = 'user123'
@@ -3887,7 +3883,6 @@ async def test_extract_and_save_background_no_extraction():
     service._enrich_assistant_annotations_with_memory_saved.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_extract_and_save_background_missing_assistant_message():
     """Extract and save background when assistant message not found."""
     user_id = 'user123'
@@ -3942,7 +3937,6 @@ async def test_extract_and_save_background_missing_assistant_message():
     service.llm_service.complete_messages.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_extract_and_save_background_llm_error():
     """Extract and save background when LLM fails."""
     user_id = 'user123'
@@ -4005,7 +3999,6 @@ async def test_extract_and_save_background_llm_error():
     mock_session.rollback.assert_called()
 
 
-@pytest.mark.asyncio
 async def test_extract_and_save_background_indexing_failure_nonfatal():
     """Extract and save background when Chroma indexing fails (should not propagate)."""
     user_id = 'user123'
