@@ -136,8 +136,9 @@ class TestStreamParserNativeReasoning:
         }
 
         output = parser.parse_chunk(chunk_dict)
-        # Native reasoning takes precedence
+        # Both fields preserved when both present
         assert output.thought == 'Reasoning here'
+        assert output.token == 'Final answer'
 
 
 class TestStreamParserTagBased:
