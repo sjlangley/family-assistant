@@ -11,6 +11,7 @@ Today the shipped system includes:
 - canonical transcript storage in PostgreSQL
 - bounded context assembly from recent turns, one latest conversation summary, and per-user durable facts
 - a shared LLM completion seam used by both direct chat and conversation replies
+- real-time streaming of assistant replies via Server-Sent Events (SSE)
 - a bounded native tool loop with `web_search` and `web_fetch`
 - persisted assistant `annotations` for trust metadata and evidence
 - desktop trust UI with an inline trust row and evidence panel
@@ -82,11 +83,19 @@ The stored payload can include:
 The frontend never regenerates this trust metadata client-side.
 It renders what the backend persisted on the assistant message.
 
+## Streaming Response Lifecycle
+
+The system supports real-time delivery of assistant responses using Server-Sent Events (SSE):
+
+1. **Incremental Parsing:** `LLMService` consumes the raw LLM stream, and `StreamParser` distinguishes between reasoning traces (thoughts) and user-visible content.
+2. **App-Level SSE Protocol:** The backend translates internal chunks into a structured app-level protocol (`thought`, `token`, `tool_call`, `done`, `error`) using `SSEEncoder`.
+3. **Persistence Timing:** User messages are persisted immediately to ensure durable history. Assistant messages are persisted only after the stream reaches a terminal state, capturing the full content and reasoning trace.
+4. **UI Updates:** The frontend hook consumes the SSE stream, updating the UI in real-time while distinguishing between reasoning and final content.
+
 ## Current Boundaries
 
 The shipped architecture intentionally does not include:
 
-- true streaming stage-by-stage assistant updates
 - image, audio, or video generation
 - Google Drive ingestion
 - household shared-memory features
