@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from assistant.constants import SYSTEM_PROMPT
+from assistant.enums import Environment
 from assistant.models.chat import ChatRequest, ChatResponse
 from assistant.models.llm import (
     ChatCompletionRequestSystemMessage,
@@ -57,7 +58,7 @@ async def create_chat_completion(
     )
 
 
-@router.get('/debug-stream')
+@router.get('/debug-stream', include_in_schema=False)
 async def debug_stream(
     _: CurrentUser,
     thought_delay: float = 0.0,
@@ -71,6 +72,11 @@ async def debug_stream(
         thought_delay: Delay after the thought event in seconds.
         token_delay: Delay after each token event in seconds.
     """
+    if settings.environment not in [Environment.LOCAL, Environment.DEVELOPMENT]:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='Endpoint not available in this environment',
+        )
 
     async def event_generator():
         # 1. Thought
