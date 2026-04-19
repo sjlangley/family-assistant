@@ -163,10 +163,10 @@ class StreamParser:
                 output.tool_calls = result_calls
 
         # Terminal metadata
-        if choice.finish_reason:
+        if choice.finish_reason is not None:
             output.finish_reason = choice.finish_reason
 
-        if chunk.usage:
+        if chunk.usage is not None:
             output.usage = chunk.usage
 
         return output
