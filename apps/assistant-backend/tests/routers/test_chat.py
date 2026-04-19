@@ -349,7 +349,7 @@ async def test_create_chat_completion_missing_usage_info(
 
 
 async def test_debug_stream_success(authenticated_async_test_client):
-    """Test debug stream endpoint returns event-stream."""
+    """Test debug stream endpoint returns event-stream and finishes quickly."""
     response = await authenticated_async_test_client.get(
         '/api/v1/chat/debug-stream'
     )
@@ -359,7 +359,24 @@ async def test_debug_stream_success(authenticated_async_test_client):
     assert response.headers['cache-control'] == 'no-cache'
     assert response.headers['x-accel-buffering'] == 'no'
 
-    # We don't necessarily need to consume the whole stream in this basic test,
-    # but let's verify it starts with a thought event.
-    content = response.content
+    # Verify we can read the whole stream and it contains expected events
+    content = b""
+    async for chunk in response.aiter_bytes():
+        content += chunk
+    
     assert b'event: thought' in content
+    assert b'event: token' in content
+    assert b'event: done' in content
+
+
+async def test_debug_stream_custom_delays(authenticated_async_test_client):
+    """Test debug stream with custom delays."""
+    response = await authenticated_async_test_client.get(
+        '/api/v1/chat/debug-stream?thought_delay=0.01&token_delay=0.01'
+    )
+
+    assert response.status_code == 200
+    # Just verify it starts correctly; we don't want to wait for the whole thing
+    async for chunk in response.aiter_bytes():
+        assert b'event: thought' in chunk
+        break

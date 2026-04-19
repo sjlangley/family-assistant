@@ -58,22 +58,32 @@ async def create_chat_completion(
 
 
 @router.get('/debug-stream')
-async def debug_stream(_: CurrentUser) -> StreamingResponse:
+async def debug_stream(
+    _: CurrentUser,
+    thought_delay: float = 0.0,
+    token_delay: float = 0.0,
+) -> StreamingResponse:
     """Debug endpoint to verify the SSE delivery pipeline.
 
     Streams a sequence of dummy events: thought, tokens, and done.
+
+    Args:
+        thought_delay: Delay after the thought event in seconds.
+        token_delay: Delay after each token event in seconds.
     """
 
     async def event_generator():
         # 1. Thought
         yield SSEEncoder.encode('thought', 'Thinking about a debug response...')
-        await asyncio.sleep(0.5)
+        if thought_delay > 0:
+            await asyncio.sleep(thought_delay)
 
         # 2. Tokens
         tokens = ['Hello', '!', ' This', ' is', ' a', ' debug', ' stream', '.']
         for token in tokens:
             yield SSEEncoder.encode('token', token)
-            await asyncio.sleep(0.2)
+            if token_delay > 0:
+                await asyncio.sleep(token_delay)
 
         # 3. Done
         yield SSEEncoder.encode(
