@@ -58,7 +58,7 @@ async def create_chat_completion(
 
 
 @router.get('/debug-stream')
-async def debug_stream(_: CurrentUser):
+async def debug_stream(_: CurrentUser) -> StreamingResponse:
     """Debug endpoint to verify the SSE delivery pipeline.
 
     Streams a sequence of dummy events: thought, tokens, and done.
