@@ -22,5 +22,5 @@ class SSEEncoder:
         Returns:
             A formatted SSE string.
         """
-        json_data = json.dumps(data)
+        json_data = json.dumps(data, ensure_ascii=False)
         return f"event: {event_type}\ndata: {json_data}\n\n"
