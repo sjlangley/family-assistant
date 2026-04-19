@@ -38,6 +38,9 @@ class StreamParserState:
     chunk_boundary_buffer: str = field(default_factory=str)
     reasoning_start_tag: str = '<think>'
     reasoning_end_tag: str = '</think>'
+    tool_calls: dict[int, ChatCompletionMessageToolCall] = field(
+        default_factory=dict
+    )
 
     def reset(self) -> None:
         """Reset parser state for a new conversation."""
@@ -46,6 +49,7 @@ class StreamParserState:
         self.thought_returned_len = 0
         self.pending_close_tag = ''
         self.chunk_boundary_buffer = ''
+        self.tool_calls.clear()
 
 
 class StreamParser:
@@ -116,35 +120,47 @@ class StreamParser:
                 output.thought = processed.get('thought')
             output.token = processed.get('token')
 
-        # Preserve tool calls: convert streaming-tool-call deltas to the
-        # message-level `ChatCompletionMessageToolCall` shape expected by
-        # callers. Streaming deltas may be partial; only convert entries
-        # that include the required fields (id/type/function.name/arguments).
+        # Preserve tool calls: accumulate streaming-tool-call deltas across chunks.
+        # First chunk includes id/type/name with empty arguments, subsequent chunks
+        # only include index and argument deltas. We accumulate and return the
+        # current state of tool calls referenced in this delta.
         if delta.tool_calls:
-            converted: list[ChatCompletionMessageToolCall] = []
+            referenced_indices = []
             for t in delta.tool_calls:
                 try:
-                    if (
-                        t.id is not None
-                        and t.type is not None
-                        and t.function is not None
-                        and t.function.name is not None
-                        and t.function.arguments is not None
-                    ):
-                        func = ChatCompletionMessageToolCallFunction(
-                            name=t.function.name,
-                            arguments=t.function.arguments,
-                        )
-                        converted.append(
-                            ChatCompletionMessageToolCall(
-                                id=t.id, type=t.type, function=func
+                    # Use index to track which tool call this delta belongs to
+                    idx = t.index if t.index is not None else 0
+                    referenced_indices.append(idx)
+
+                    # If this delta has id/type/name, initialize or update the tool call
+                    if t.id is not None and t.type is not None:
+                        if t.function and t.function.name:
+                            func = ChatCompletionMessageToolCallFunction(
+                                name=t.function.name,
+                                arguments=t.function.arguments or '',
                             )
-                        )
+                            self.state.tool_calls[idx] = (
+                                ChatCompletionMessageToolCall(
+                                    id=t.id, type=t.type, function=func
+                                )
+                            )
+                    # If this is just an arguments delta, append to existing tool call
+                    elif t.function and t.function.arguments is not None:
+                        if idx in self.state.tool_calls:
+                            existing = self.state.tool_calls[idx]
+                            existing.function.arguments += t.function.arguments
                 except Exception:
                     # Skip malformed/partial entries rather than raising.
                     continue
 
-            output.tool_calls = converted if converted else None
+            # Return current accumulated state of tool calls referenced in this delta
+            result_calls = [
+                self.state.tool_calls[idx]
+                for idx in referenced_indices
+                if idx in self.state.tool_calls
+            ]
+            if result_calls:
+                output.tool_calls = result_calls
 
         # Terminal metadata
         if choice.finish_reason:
