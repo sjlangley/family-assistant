@@ -359,5 +359,5 @@ async def test_debug_stream_success(authenticated_async_test_client):
     
     # We don't necessarily need to consume the whole stream in this basic test,
     # but let's verify it starts with a thought event.
-    first_chunk = await response.aread()
-    assert b'event: thought' in first_chunk
+    content = response.content
+    assert b'event: thought' in content
