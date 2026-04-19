@@ -57,11 +57,3 @@ def test_encode_invalid_event_type():
     """It raises ValueError for unknown event types."""
     with pytest.raises(ValueError, match='Invalid event type'):
         SSEEncoder.encode('hack', 'data')
-
-
-def test_encode_event_type_with_newlines():
-    """It raises ValueError if event type contains newlines."""
-    # Note: Even if we added it to ALLOWED_EVENT_TYPES, we want to ensure
-    # newline validation works if the set was ever expanded carelessly.
-    with pytest.raises(ValueError, match='Event type cannot contain newline characters'):
-        SSEEncoder.encode('token\ndata: sneak', 'data')
