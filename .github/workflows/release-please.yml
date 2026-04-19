@@ -3,6 +3,12 @@ name: Release Please
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'apps/assistant-backend/CHANGELOG.md'
+      - 'apps/assistant-ui/CHANGELOG.md'
+      - '.github/workflows/release-please.yml'
 
 permissions:
   contents: write
@@ -10,6 +16,7 @@ permissions:
 
 jobs:
   release-please:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Run release-please
@@ -18,3 +25,38 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  format-release-please-changelogs:
+    if: >-
+      github.event_name == 'pull_request' &&
+      startsWith(github.head_ref, 'release-please--')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release PR branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: apps/assistant-ui/package-lock.json
+
+      - name: Install formatter dependencies
+        run: npm ci --prefix apps/assistant-ui
+
+      - name: Format release changelogs
+        run: >-
+          npx --prefix apps/assistant-ui prettier --write
+          apps/assistant-backend/CHANGELOG.md
+          apps/assistant-ui/CHANGELOG.md
+
+      - name: Commit formatted changelogs
+        uses: stefanzweifel/git-auto-commit-action@v6
+        with:
+          commit_message: 'chore: format release-please changelog updates'
+          file_pattern: >-
+            apps/assistant-backend/CHANGELOG.md
+            apps/assistant-ui/CHANGELOG.md
