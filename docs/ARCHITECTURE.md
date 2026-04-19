@@ -11,10 +11,17 @@ Today the shipped system includes:
 - canonical transcript storage in PostgreSQL
 - bounded context assembly from recent turns, one latest conversation summary, and per-user durable facts
 - a shared LLM completion seam used by both direct chat and conversation replies
-- real-time streaming of assistant replies via Server-Sent Events (SSE)
 - a bounded native tool loop with `web_search` and `web_fetch`
 - persisted assistant `annotations` for trust metadata and evidence
 - desktop trust UI with an inline trust row and evidence panel
+
+## Upcoming Scope (Active Development)
+
+We are currently rolling out real-time streaming for assistant replies:
+
+- **SSE Infrastructure:** Application-level SSE protocol and encoder to deliver structured events (`thought`, `token`, `done`, `error`) to the frontend.
+- **Incremental LLM Parsing:** `LLMService` support for consuming raw provider streams and parsing reasoning segments (thoughts) from user content.
+- **Delivery Verification:** A `/api/v1/chat/debug-stream` endpoint for verifying the end-to-end SSE delivery pipeline.
 
 ## High-Level Architecture
 
@@ -83,9 +90,9 @@ The stored payload can include:
 The frontend never regenerates this trust metadata client-side.
 It renders what the backend persisted on the assistant message.
 
-## Streaming Response Lifecycle
+## Target Architecture: Streaming Response Lifecycle
 
-The system supports real-time delivery of assistant responses using Server-Sent Events (SSE):
+Once fully integrated, the system will support real-time delivery of assistant responses using Server-Sent Events (SSE):
 
 1. **Incremental Parsing:** `LLMService` consumes the raw LLM stream, and `StreamParser` distinguishes between reasoning traces (thoughts) and user-visible content.
 2. **App-Level SSE Protocol:** The backend translates internal chunks into a structured app-level protocol (`thought`, `token`, `tool_call`, `done`, `error`) using `SSEEncoder`.
@@ -96,6 +103,7 @@ The system supports real-time delivery of assistant responses using Server-Sent 
 
 The shipped architecture intentionally does not include:
 
+- full end-to-end streaming of conversation replies (currently in progress)
 - image, audio, or video generation
 - Google Drive ingestion
 - household shared-memory features
