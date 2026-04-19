@@ -330,3 +330,152 @@ async def test_complete_messages_invalid_json():
         assert 'unexpected response shape' in exc_info.value.message.lower()
     finally:
         await service.aclose()
+
+
+# Tests for stream_messages (streaming LLM completion seam)
+
+
+async def test_stream_messages_success():
+    """It yields StreamParserOutput objects for each chunk."""
+    messages = [{'role': 'user', 'content': 'Hello'}]
+
+    # Mock SSE stream data
+    chunks = [
+        {
+            'id': '1',
+            'object': 'chat.completion.chunk',
+            'created': 1,
+            'model': 'test',
+            'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}],
+        },
+        {
+            'id': '2',
+            'object': 'chat.completion.chunk',
+            'created': 2,
+            'model': 'test',
+            'choices': [{'index': 0, 'delta': {'content': 'Hi'}, 'finish_reason': None}],
+        },
+        {
+            'id': '3',
+            'object': 'chat.completion.chunk',
+            'created': 3,
+            'model': 'test',
+            'choices': [{'index': 0, 'delta': {'content': ' there'}, 'finish_reason': 'stop'}],
+        },
+    ]
+
+    sse_content = ''.join([f'data: {json.dumps(c)}\n\n' for c in chunks])
+    sse_content += 'data: [DONE]\n\n'
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == '/v1/chat/completions'
+        payload = json.loads(request.content)
+        assert payload['stream'] is True
+        return httpx.Response(
+            200,
+            content=sse_content.encode('utf-8'),
+            headers={'content-type': 'text/event-stream'},
+            request=request,
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(transport=transport, base_url='http://test')
+    service = LLMService(base_url='http://test', timeout_seconds=5, client=client)
+
+    outputs = []
+    try:
+        async for output in service.stream_messages(
+            messages=messages,
+            model='test-model',
+            temperature=0.7,
+            max_tokens=128,
+        ):
+            outputs.append(output)
+    finally:
+        await service.aclose()
+
+    assert len(outputs) == 3
+    assert outputs[0].model == 'test'
+    assert outputs[1].token == 'Hi'
+    assert outputs[2].token == ' there'
+    assert outputs[2].finish_reason == 'stop'
+
+
+async def test_stream_messages_timeout():
+    """It raises LLMCompletionError on stream timeout."""
+    from unittest.mock import MagicMock
+    client = httpx.AsyncClient(base_url='http://test')
+    # Mock stream to return an async context manager that raises on __aenter__
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__ = AsyncMock(side_effect=httpx.TimeoutException('Timeout'))
+    client.stream = MagicMock(return_value=mock_ctx)
+    
+    service = LLMService(base_url='http://test', timeout_seconds=5, client=client)
+
+    try:
+        with pytest.raises(LLMCompletionError) as exc_info:
+            async for _ in service.stream_messages(
+                messages=[],
+                model='test',
+                temperature=0.7,
+                max_tokens=100,
+            ):
+                pass
+
+        assert exc_info.value.kind == LLMCompletionErrorKind.timeout
+        assert exc_info.value.message == 'LLM request timed out'
+    finally:
+        await service.aclose()
+
+
+async def test_stream_messages_unreachable():
+    """It raises LLMCompletionError when backend is unreachable."""
+    from unittest.mock import MagicMock
+    client = httpx.AsyncClient(base_url='http://test')
+    # Mock stream to return an async context manager that raises on __aenter__
+    mock_ctx = MagicMock()
+    mock_ctx.__aenter__ = AsyncMock(side_effect=httpx.ConnectError('Connection failed'))
+    client.stream = MagicMock(return_value=mock_ctx)
+    
+    service = LLMService(base_url='http://test', timeout_seconds=5, client=client)
+
+    try:
+        with pytest.raises(LLMCompletionError) as exc_info:
+            async for _ in service.stream_messages(
+                messages=[],
+                model='test',
+                temperature=0.7,
+                max_tokens=100,
+            ):
+                pass
+
+        assert exc_info.value.kind == LLMCompletionErrorKind.unreachable
+        assert exc_info.value.message == 'Failed to reach LLM backend'
+    finally:
+        await service.aclose()
+
+
+async def test_stream_messages_backend_error():
+    """It raises LLMCompletionError on non-200 response."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, content=b'Internal Server Error', request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(transport=transport, base_url='http://test')
+    service = LLMService(base_url='http://test', timeout_seconds=5, client=client)
+
+    try:
+        with pytest.raises(LLMCompletionError) as exc_info:
+            async for _ in service.stream_messages(
+                messages=[],
+                model='test',
+                temperature=0.7,
+                max_tokens=100,
+            ):
+                pass
+
+        assert exc_info.value.kind == LLMCompletionErrorKind.backend_error
+        assert exc_info.value.backend_status_code == 500
+    finally:
+        await service.aclose()
