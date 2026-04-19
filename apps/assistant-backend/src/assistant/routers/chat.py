@@ -1,6 +1,10 @@
+import asyncio
+
 from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import StreamingResponse
 
 from assistant.constants import SYSTEM_PROMPT
+from assistant.enums import Environment
 from assistant.models.chat import ChatRequest, ChatResponse
 from assistant.models.llm import (
     ChatCompletionRequestSystemMessage,
@@ -10,6 +14,7 @@ from assistant.routers.web_utils import llm_completion_error_to_http_exception
 from assistant.security.session_auth import CurrentUser
 from assistant.services import get_llm_service
 from assistant.settings import settings
+from assistant.utils.sse import SSEEncoder
 
 router = APIRouter()
 
@@ -50,4 +55,57 @@ async def create_chat_completion(
         prompt_tokens=result.prompt_tokens,
         completion_tokens=result.completion_tokens,
         total_tokens=result.total_tokens,
+    )
+
+
+@router.get('/debug-stream', include_in_schema=False)
+async def debug_stream(
+    _: CurrentUser,
+    thought_delay: float = 0.0,
+    token_delay: float = 0.0,
+) -> StreamingResponse:
+    """Debug endpoint to verify the SSE delivery pipeline.
+
+    Streams a sequence of dummy events: thought, tokens, and done.
+
+    Args:
+        thought_delay: Delay after the thought event in seconds.
+        token_delay: Delay after each token event in seconds.
+    """
+    if settings.environment not in [Environment.LOCAL, Environment.DEVELOPMENT]:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='Endpoint not available in this environment',
+        )
+
+    async def event_generator():
+        # 1. Thought
+        yield SSEEncoder.encode('thought', 'Thinking about a debug response...')
+        if thought_delay > 0:
+            await asyncio.sleep(thought_delay)
+
+        # 2. Tokens
+        tokens = ['Hello', '!', ' This', ' is', ' a', ' debug', ' stream', '.']
+        for token in tokens:
+            yield SSEEncoder.encode('token', token)
+            if token_delay > 0:
+                await asyncio.sleep(token_delay)
+
+        # 3. Done
+        yield SSEEncoder.encode(
+            'done',
+            {
+                'message_id': 'debug-123',
+                'content': 'Hello! This is a debug stream.',
+            },
+        )
+
+    return StreamingResponse(
+        event_generator(),
+        media_type='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',  # Disable buffering in Nginx
+        },
     )

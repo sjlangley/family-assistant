@@ -346,3 +346,35 @@ async def test_create_chat_completion_missing_usage_info(
     assert data['prompt_tokens'] == 0
     assert data['completion_tokens'] == 0
     assert data['total_tokens'] == 0
+
+
+async def test_debug_stream_success(authenticated_async_test_client):
+    """Test debug stream endpoint returns event-stream and finishes quickly."""
+    async with authenticated_async_test_client.stream(
+        'GET', '/api/v1/chat/debug-stream'
+    ) as response:
+        assert response.status_code == 200
+        assert response.headers['content-type'].startswith('text/event-stream')
+        assert response.headers['cache-control'] == 'no-cache'
+        assert response.headers['x-accel-buffering'] == 'no'
+
+        # Verify we can read the whole stream and it contains expected events
+        content = b''
+        async for chunk in response.aiter_bytes():
+            content += chunk
+
+        assert b'event: thought' in content
+        assert b'event: token' in content
+        assert b'event: done' in content
+
+
+async def test_debug_stream_custom_delays(authenticated_async_test_client):
+    """Test debug stream with custom delays."""
+    async with authenticated_async_test_client.stream(
+        'GET', '/api/v1/chat/debug-stream?thought_delay=0.01&token_delay=0.01'
+    ) as response:
+        assert response.status_code == 200
+        # Just verify it starts correctly; we don't want to wait for the whole thing
+        async for chunk in response.aiter_bytes():
+            assert b'event: thought' in chunk
+            break
