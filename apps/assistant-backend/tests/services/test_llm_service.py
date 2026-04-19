@@ -346,21 +346,35 @@ async def test_stream_messages_success():
             'object': 'chat.completion.chunk',
             'created': 1,
             'model': 'test',
-            'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}],
+            'choices': [
+                {
+                    'index': 0,
+                    'delta': {'role': 'assistant'},
+                    'finish_reason': None,
+                }
+            ],
         },
         {
             'id': '2',
             'object': 'chat.completion.chunk',
             'created': 2,
             'model': 'test',
-            'choices': [{'index': 0, 'delta': {'content': 'Hi'}, 'finish_reason': None}],
+            'choices': [
+                {'index': 0, 'delta': {'content': 'Hi'}, 'finish_reason': None}
+            ],
         },
         {
             'id': '3',
             'object': 'chat.completion.chunk',
             'created': 3,
             'model': 'test',
-            'choices': [{'index': 0, 'delta': {'content': ' there'}, 'finish_reason': 'stop'}],
+            'choices': [
+                {
+                    'index': 0,
+                    'delta': {'content': ' there'},
+                    'finish_reason': 'stop',
+                }
+            ],
         },
     ]
 
@@ -380,7 +394,9 @@ async def test_stream_messages_success():
 
     transport = httpx.MockTransport(handler)
     client = httpx.AsyncClient(transport=transport, base_url='http://test')
-    service = LLMService(base_url='http://test', timeout_seconds=5, client=client)
+    service = LLMService(
+        base_url='http://test', timeout_seconds=5, client=client
+    )
 
     outputs = []
     try:
@@ -404,13 +420,18 @@ async def test_stream_messages_success():
 async def test_stream_messages_timeout():
     """It raises LLMCompletionError on stream timeout."""
     from unittest.mock import MagicMock
+
     client = httpx.AsyncClient(base_url='http://test')
     # Mock stream to return an async context manager that raises on __aenter__
     mock_ctx = MagicMock()
-    mock_ctx.__aenter__ = AsyncMock(side_effect=httpx.TimeoutException('Timeout'))
+    mock_ctx.__aenter__ = AsyncMock(
+        side_effect=httpx.TimeoutException('Timeout')
+    )
     client.stream = MagicMock(return_value=mock_ctx)
-    
-    service = LLMService(base_url='http://test', timeout_seconds=5, client=client)
+
+    service = LLMService(
+        base_url='http://test', timeout_seconds=5, client=client
+    )
 
     try:
         with pytest.raises(LLMCompletionError) as exc_info:
@@ -431,13 +452,18 @@ async def test_stream_messages_timeout():
 async def test_stream_messages_unreachable():
     """It raises LLMCompletionError when backend is unreachable."""
     from unittest.mock import MagicMock
+
     client = httpx.AsyncClient(base_url='http://test')
     # Mock stream to return an async context manager that raises on __aenter__
     mock_ctx = MagicMock()
-    mock_ctx.__aenter__ = AsyncMock(side_effect=httpx.ConnectError('Connection failed'))
+    mock_ctx.__aenter__ = AsyncMock(
+        side_effect=httpx.ConnectError('Connection failed')
+    )
     client.stream = MagicMock(return_value=mock_ctx)
-    
-    service = LLMService(base_url='http://test', timeout_seconds=5, client=client)
+
+    service = LLMService(
+        base_url='http://test', timeout_seconds=5, client=client
+    )
 
     try:
         with pytest.raises(LLMCompletionError) as exc_info:
@@ -459,11 +485,15 @@ async def test_stream_messages_backend_error():
     """It raises LLMCompletionError on non-200 response."""
 
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, content=b'Internal Server Error', request=request)
+        return httpx.Response(
+            500, content=b'Internal Server Error', request=request
+        )
 
     transport = httpx.MockTransport(handler)
     client = httpx.AsyncClient(transport=transport, base_url='http://test')
-    service = LLMService(base_url='http://test', timeout_seconds=5, client=client)
+    service = LLMService(
+        base_url='http://test', timeout_seconds=5, client=client
+    )
 
     try:
         with pytest.raises(LLMCompletionError) as exc_info:

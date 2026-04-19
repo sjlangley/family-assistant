@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import AsyncGenerator
 
@@ -227,9 +228,7 @@ class LLMService:
                         break
 
                     try:
-                        chunk_dict = pydantic.TypeAdapter(dict).validate_json(
-                            data
-                        )
+                        chunk_dict = json.loads(data)
                         output = parser.parse_chunk(chunk_dict)
                         yield output
                     except Exception as exc:
@@ -252,8 +251,6 @@ class LLMService:
                 message='Failed to reach LLM backend',
             ) from exc
         except httpx.HTTPError as exc:
-            if isinstance(exc, LLMCompletionError):
-                raise
             raise LLMCompletionError(
                 kind=LLMCompletionErrorKind.backend_error,
                 message=f'LLM transport error: {exc}',
