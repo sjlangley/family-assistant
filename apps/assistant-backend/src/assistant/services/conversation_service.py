@@ -1,7 +1,9 @@
+import asyncio
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 import logging
-from typing import cast
+from typing import AsyncGenerator, cast
 import uuid
 
 from fastapi import BackgroundTasks, HTTPException, status
@@ -25,6 +27,7 @@ from assistant.models.llm import (
     ChatCompletionRequestSystemMessage,
     LLMCompletionError,
     LLMCompletionErrorKind,
+    StreamParserOutput,
     ToolChoice,
 )
 from assistant.models.tool import ToolExecutionResult
@@ -39,6 +42,7 @@ from assistant.services.tool_service import ToolService
 from assistant.services.tools.errors import UnsupportedToolError
 from assistant.services.tools.factory import DisabledToolError
 from assistant.settings import settings
+from assistant.utils.sse import SSEEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -364,6 +368,297 @@ class ConversationService:
             assistant_message=self._message_read(assistant_message),
         )
 
+    async def create_conversation_with_message_stream(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: str,
+        payload: CreateConversationWithMessageRequest,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """Stream assistant response while persisting lifecycle in two phases.
+
+        Phase 1 (immediate): persist conversation + user message.
+        Phase 2 (deferred): persist assistant message only on terminal success,
+        or terminal failure if output has already started.
+        """
+        content = payload.content.strip()
+        if not content:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Message content cannot be empty',
+            )
+
+        conversation = Conversation(
+            user_id=user_id,
+            title=conversation_title_from_first_message(content),
+        )
+        session.add(conversation)
+        await session.flush()
+
+        user_message = Message(
+            conversation_id=conversation.id,
+            role='user',
+            content=content,
+            sequence_number=1,
+        )
+        session.add(user_message)
+        await session.commit()
+        await session.refresh(user_message)
+
+        context_result = (
+            await self.context_assembly.assemble_context_new_conversation(
+                session,
+                user_id=user_id,
+                user_message=content,
+            )
+        )
+
+        async for event in self._stream_assistant_lifecycle(
+            session=session,
+            user_id=user_id,
+            conversation=conversation,
+            user_message_id=user_message.id,
+            assistant_sequence_number=2,
+            context_messages=context_result.messages,
+            fact_ids=context_result.fact_ids,
+            temperature=payload.temperature,
+            max_tokens=payload.max_tokens,
+            background_tasks=background_tasks,
+        ):
+            yield event
+
+    async def add_message_to_conversation_stream(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: str,
+        conversation_id: uuid.UUID,
+        payload: CreateMessageRequest,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """Stream assistant response for an existing conversation lifecycle."""
+        content = payload.content.strip()
+        if not content:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Message content cannot be empty',
+            )
+
+        conversation = await self._get_conversation_for_user(
+            session,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
+
+        existing_messages = await self._get_messages_for_conversation(
+            session,
+            conversation_id=conversation_id,
+        )
+        next_seq = (
+            1
+            if not existing_messages
+            else existing_messages[-1].sequence_number + 1
+        )
+
+        user_message = Message(
+            conversation_id=conversation_id,
+            role='user',
+            content=content,
+            sequence_number=next_seq,
+        )
+        session.add(user_message)
+        await session.commit()
+        await session.refresh(user_message)
+
+        context_result = await self.context_assembly.assemble_context(
+            session,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            new_user_message=None,
+        )
+
+        async for event in self._stream_assistant_lifecycle(
+            session=session,
+            user_id=user_id,
+            conversation=conversation,
+            user_message_id=user_message.id,
+            assistant_sequence_number=next_seq + 1,
+            context_messages=context_result.messages,
+            fact_ids=context_result.fact_ids,
+            temperature=payload.temperature,
+            max_tokens=payload.max_tokens,
+            background_tasks=background_tasks,
+        ):
+            yield event
+
+    async def _stream_assistant_lifecycle(
+        self,
+        *,
+        session: AsyncSession,
+        user_id: str,
+        conversation: Conversation,
+        user_message_id: uuid.UUID,
+        assistant_sequence_number: int,
+        context_messages: list[dict],
+        fact_ids: list[uuid.UUID],
+        temperature: float,
+        max_tokens: int | None,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """Run streaming loop and persist assistant row only at terminal states."""
+        content_parts: list[str] = []
+        thought_parts: list[str] = []
+        model_name: str | None = None
+        usage_payload: dict | None = None
+        stream_started = False
+
+        try:
+            async for output in self._call_llm_chat_completion_stream(
+                messages=context_messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ):
+                if output.thought:
+                    thought_parts.append(output.thought)
+                    stream_started = True
+                    yield SSEEncoder.encode('thought', output.thought)
+
+                if output.token:
+                    content_parts.append(output.token)
+                    stream_started = True
+                    yield SSEEncoder.encode('token', output.token)
+
+                if output.tool_calls:
+                    stream_started = True
+                    for tool_call in output.tool_calls:
+                        yield SSEEncoder.encode(
+                            'tool_call', tool_call.model_dump()
+                        )
+
+                if output.model:
+                    model_name = output.model
+                if output.usage:
+                    usage_payload = output.usage.model_dump()
+
+        except LLMCompletionError as error:
+            if stream_started:
+                await self._persist_streaming_assistant_message(
+                    session=session,
+                    conversation=conversation,
+                    sequence_number=assistant_sequence_number,
+                    content=''.join(content_parts)
+                    or 'Unable to generate a response. Please try again.',
+                    thought=''.join(thought_parts) or None,
+                    fact_ids=fact_ids,
+                    error=error,
+                )
+
+            yield SSEEncoder.encode(
+                'error',
+                {
+                    'detail': self.annotation_service.format_error_detail(
+                        error
+                    ),
+                    'kind': error.kind.value,
+                },
+            )
+            return
+
+        except asyncio.CancelledError:
+            if stream_started:
+                cancellation_error = LLMCompletionError(
+                    kind=LLMCompletionErrorKind.backend_error,
+                    message='Streaming response interrupted by client disconnect',
+                )
+                await self._persist_streaming_assistant_message(
+                    session=session,
+                    conversation=conversation,
+                    sequence_number=assistant_sequence_number,
+                    content=''.join(content_parts)
+                    or 'Unable to generate a response. Please try again.',
+                    thought=''.join(thought_parts) or None,
+                    fact_ids=fact_ids,
+                    error=cancellation_error,
+                )
+            raise
+
+        assistant_message = await self._persist_streaming_assistant_message(
+            session=session,
+            conversation=conversation,
+            sequence_number=assistant_sequence_number,
+            content=''.join(content_parts)
+            or 'Unable to generate a response. Please try again.',
+            thought=''.join(thought_parts) or None,
+            fact_ids=fact_ids,
+            error=None,
+        )
+
+        if background_tasks and self.memory_storage:
+            background_tasks.add_task(
+                self.extract_and_save_background,
+                user_id=user_id,
+                conversation_id=conversation.id,
+                assistant_message_id=assistant_message.id,
+                latest_user_message_id=user_message_id,
+            )
+
+        done_payload: dict[str, object] = {
+            'conversation_id': str(conversation.id),
+            'message_id': str(assistant_message.id),
+            'content': assistant_message.content,
+            'annotations': assistant_message.annotations,
+        }
+        if model_name:
+            done_payload['model'] = model_name
+        if usage_payload:
+            done_payload['usage'] = usage_payload
+
+        yield SSEEncoder.encode('done', done_payload)
+
+    async def _persist_streaming_assistant_message(
+        self,
+        *,
+        session: AsyncSession,
+        conversation: Conversation,
+        sequence_number: int,
+        content: str,
+        thought: str | None,
+        fact_ids: list[uuid.UUID],
+        error: LLMCompletionError | None,
+    ) -> Message:
+        """Persist an assistant message row for terminal stream completion."""
+        if error:
+            annotations_obj = self.annotation_service.build_failure_annotations(
+                error=error,
+                executed_tools=[],
+                attempted_tool_execution=False,
+            )
+            error_text = self.annotation_service.format_error_detail(error)
+        else:
+            annotations_obj = self.annotation_service.build_success_annotations(
+                executed_tools=[],
+                fact_ids=fact_ids,
+            )
+            error_text = None
+
+        if thought:
+            annotations_obj.thought = thought
+
+        assistant_message = Message(
+            conversation_id=conversation.id,
+            role='assistant',
+            content=content,
+            sequence_number=sequence_number,
+            error=error_text,
+            annotations=annotations_obj.model_dump(),
+        )
+        session.add(assistant_message)
+        conversation.updated_at = datetime.now(timezone.utc)
+        await session.commit()
+        await session.refresh(assistant_message)
+        return assistant_message
+
     async def _get_conversation_for_user(
         self,
         session: AsyncSession,
@@ -542,6 +837,35 @@ class ConversationService:
             executed_tools=executed_tools,
             error=error,
         )
+
+    async def _call_llm_chat_completion_stream(
+        self,
+        messages: list[dict],
+        temperature: float,
+        max_tokens: int | None,
+    ) -> AsyncGenerator[StreamParserOutput, None]:
+        """Call streaming completion seam and yield parsed incremental outputs."""
+        system_message = ChatCompletionRequestSystemMessage(
+            role='system', content=SYSTEM_PROMPT
+        )
+        llm_messages = [system_message.model_dump()] + messages
+
+        completion_kwargs = {
+            'messages': llm_messages,
+            'model': settings.llm_model,
+            'temperature': temperature,
+            'max_tokens': max_tokens,
+        }
+
+        async for output in self.llm_service.stream_messages(
+            **completion_kwargs
+        ):
+            if output.tool_calls:
+                raise LLMCompletionError(
+                    kind=LLMCompletionErrorKind.invalid_response,
+                    message='Streaming tool calls are not yet supported',
+                )
+            yield output
 
     @staticmethod
     def _conversation_summary(

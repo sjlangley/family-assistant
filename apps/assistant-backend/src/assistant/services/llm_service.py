@@ -219,12 +219,15 @@ class LLMService:
                         backend_status_code=response.status_code,
                     )
 
+                saw_done_marker = False
+
                 async for line in response.aiter_lines():
                     if not line.startswith('data: '):
                         continue
 
                     data = line[6:].strip()
                     if data == '[DONE]':
+                        saw_done_marker = True
                         break
 
                     try:
@@ -239,6 +242,12 @@ class LLMService:
                             exc_info=exc,
                         )
                         continue
+
+                if not saw_done_marker:
+                    raise LLMCompletionError(
+                        kind=LLMCompletionErrorKind.invalid_response,
+                        message='LLM stream did not terminate with [DONE]',
+                    )
 
         except httpx.TimeoutException as exc:
             raise LLMCompletionError(
