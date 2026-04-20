@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type {
   ConversationSummary,
   Message,
-  ConversationWithMessagesResponse,
   AssistantAnnotations,
   FailureAnnotation,
+  StreamDoneData,
 } from "../types/api";
 import {
   listConversations,
@@ -14,22 +14,56 @@ import {
 } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { MarkdownContent } from "./MarkdownContent";
+import { useStreamingConversation } from "../hooks/useStreamingConversation";
 
 interface ConversationsChatProps {
   onLogout: () => void;
 }
 
-// Create a pending assistant placeholder message with a unique ID
-function createPendingAssistantMessage(pendingId: string): Message {
-  return {
-    id: pendingId,
-    role: "assistant",
-    content: "Thinking...",
-    sequence_number: -1, // Placeholder sequence
-    created_at: new Date().toISOString(),
-    error: null,
-    annotations: null,
-  };
+function compareMessages(a: Message, b: Message): number {
+  const aPersisted = a.sequence_number >= 0;
+  const bPersisted = b.sequence_number >= 0;
+
+  if (aPersisted !== bPersisted) {
+    return aPersisted ? -1 : 1;
+  }
+
+  if (aPersisted && bPersisted && a.sequence_number !== b.sequence_number) {
+    return a.sequence_number - b.sequence_number;
+  }
+
+  return a.created_at.localeCompare(b.created_at);
+}
+
+function mergeTranscriptMessages(
+  transcriptMessages: Message[],
+  currentMessages: Message[],
+): Message[] {
+  const merged = [...transcriptMessages];
+  const seenIds = new Set(merged.map((message) => message.id));
+
+  for (const message of currentMessages) {
+    const isTempMessage = message.id.startsWith("temp-");
+    const hasPersistedEquivalent =
+      isTempMessage &&
+      transcriptMessages.some(
+        (transcriptMessage) =>
+          transcriptMessage.role === message.role &&
+          transcriptMessage.content === message.content,
+      );
+
+    if (hasPersistedEquivalent) {
+      continue;
+    }
+
+    if (!seenIds.has(message.id)) {
+      merged.push(message);
+      seenIds.add(message.id);
+    }
+  }
+
+  merged.sort(compareMessages);
+  return merged;
 }
 
 // Check if annotations have displayable content
@@ -410,6 +444,12 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
 
   // Track conversations for which we've just set messages to skip redundant fetches
   const skipFetchForConversation = useRef<string | null>(null);
+  const pendingStreamMetaRef = useRef<{
+    startedWithoutActiveConversation: boolean;
+  } | null>(null);
+  const streamFailedRef = useRef(false);
+  const streamSucceededRef = useRef(false);
+  const reconcileRequestIdRef = useRef(0);
 
   // Get user from authState (it should always be present when component is mounted)
   const user = authState.status === "authenticated" ? authState.user : null;
@@ -465,6 +505,89 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedMessageId, handleCloseDetails]);
+
+  const refreshConversations = useCallback(async () => {
+    try {
+      const response = await listConversations();
+      setConversations(response.items);
+    } catch (err) {
+      if (err instanceof Error && err.message === "UNAUTHORIZED") {
+        onLogout();
+      }
+    }
+  }, [onLogout]);
+
+  const handleStreamDone = useCallback(
+    (doneData: StreamDoneData) => {
+      setMessages((prev) => {
+        const nextSequence =
+          prev.length > 0
+            ? Math.max(...prev.map((msg) => msg.sequence_number)) + 1
+            : 0;
+        return [
+          ...prev,
+          {
+            id: doneData.message_id,
+            role: "assistant",
+            content: doneData.content,
+            sequence_number: nextSequence,
+            created_at: new Date().toISOString(),
+            error: null,
+            annotations: doneData.annotations,
+          },
+        ];
+      });
+
+      const startedWithoutActiveConversation =
+        pendingStreamMetaRef.current?.startedWithoutActiveConversation ?? false;
+
+      if (startedWithoutActiveConversation) {
+        streamSucceededRef.current = true;
+        setInputMessage("");
+        setActiveConversationId(doneData.conversation_id);
+      } else {
+        const reconcileRequestId = ++reconcileRequestIdRef.current;
+        void (async () => {
+          try {
+            const transcript = await getConversationMessages(
+              doneData.conversation_id,
+            );
+            if (reconcileRequestIdRef.current !== reconcileRequestId) {
+              return;
+            }
+
+            streamSucceededRef.current = true;
+            setMessages((prev) =>
+              mergeTranscriptMessages(transcript.items, prev),
+            );
+            setInputMessage("");
+          } catch (err) {
+            if (err instanceof Error && err.message === "UNAUTHORIZED") {
+              onLogout();
+            }
+          }
+        })();
+      }
+      pendingStreamMetaRef.current = null;
+      void refreshConversations();
+    },
+    [onLogout, refreshConversations],
+  );
+
+  const { isStreaming, currentMessage, stream, stop, reset } =
+    useStreamingConversation({
+      onDone: handleStreamDone,
+      onError: (streamError) => {
+        streamFailedRef.current = true;
+        streamSucceededRef.current = false;
+        pendingStreamMetaRef.current = null;
+        if (streamError.message === "UNAUTHORIZED") {
+          onLogout();
+          return;
+        }
+        setError(streamError.message);
+      },
+    });
 
   // Load conversations on mount
   useEffect(() => {
@@ -546,20 +669,35 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
 
   // Handle new chat button
   const handleNewChat = useCallback(() => {
+    stop();
+    reset();
+    reconcileRequestIdRef.current += 1;
+    streamSucceededRef.current = false;
     setActiveConversationId(null);
     setMessages([]);
     setError(null);
-  }, []);
+  }, [reset, stop]);
 
   // Handle conversation selection
-  const handleSelectConversation = useCallback((conversationId: string) => {
-    setActiveConversationId(conversationId);
-    setError(null);
-  }, []);
+  const handleSelectConversation = useCallback(
+    (conversationId: string) => {
+      stop();
+      reset();
+      reconcileRequestIdRef.current += 1;
+      streamSucceededRef.current = false;
+      setActiveConversationId(conversationId);
+      setError(null);
+    },
+    [reset, stop],
+  );
 
   // Update conversations list with new or updated conversation
   const updateConversationsList = useCallback(
-    (conversationResponse: ConversationWithMessagesResponse) => {
+    (conversationResponse: {
+      conversation: ConversationSummary;
+      user_message: Message;
+      assistant_message: Message;
+    }) => {
       const { conversation } = conversationResponse;
       setConversations((prev) => {
         const existing = prev.find((c) => c.id === conversation.id);
@@ -591,105 +729,69 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
     if (!trimmedMessage) return;
 
     // Guard against concurrent sends while request is in flight
-    if (sendingMessage) return;
+    if (sendingMessage || isStreaming) return;
 
     setSendingMessage(true);
     setError(null);
-
-    // Generate unique pending message ID for this send attempt
-    const pendingId = crypto.randomUUID();
+    streamFailedRef.current = false;
+    streamSucceededRef.current = false;
 
     try {
-      let response: ConversationWithMessagesResponse;
-
+      const userMessage: Message = {
+        id: `temp-user-${Date.now()}`,
+        role: "user",
+        content: trimmedMessage,
+        sequence_number: activeConversationId ? -1 : 1,
+        created_at: new Date().toISOString(),
+        error: null,
+        annotations: null,
+      };
       if (activeConversationId) {
-        // Add message to existing conversation
-        // Immediately show user message and pending assistant placeholder
-        const userMessage: Message = {
-          id: `temp-user-${Date.now()}`,
-          role: "user",
-          content: trimmedMessage,
-          sequence_number: -1,
-          created_at: new Date().toISOString(),
-          error: null,
-          annotations: null,
-        };
-        const pendingMessage = createPendingAssistantMessage(pendingId);
-        setMessages((prev) => [...prev, userMessage, pendingMessage]);
+        setMessages((prev) => [...prev, userMessage]);
+      } else {
+        setMessages([userMessage]);
+      }
 
-        try {
-          response = await addMessageToConversation(activeConversationId, {
-            content: trimmedMessage,
-          });
+      pendingStreamMetaRef.current = {
+        startedWithoutActiveConversation: !activeConversationId,
+      };
 
-          // Replace pending placeholder with real assistant message AND replace optimistic user message with persisted version
-          setMessages((prev) =>
-            prev.map((msg) => {
-              if (msg.id === pendingId) {
-                return response.assistant_message;
-              }
-              if (msg.id === userMessage.id && response.user_message) {
-                return response.user_message;
-              }
-              return msg;
-            }),
+      // Primary path: stream incremental assistant output.
+      await stream(activeConversationId, trimmedMessage, {});
+      if (!streamFailedRef.current && streamSucceededRef.current) {
+        setInputMessage("");
+      }
+
+      // Fallback path for environments or flows where streaming fails.
+      if (streamFailedRef.current) {
+        setError(null);
+        if (activeConversationId) {
+          const response = await addMessageToConversation(
+            activeConversationId,
+            {
+              content: trimmedMessage,
+            },
           );
 
-          // Update conversations list
-          updateConversationsList(response);
-
-          // Clear input only on success
-          setInputMessage("");
-        } catch (err) {
-          // Remove both pending message and optimistic user message on error
-          // Keep input text so user can retry
           setMessages((prev) =>
-            prev.filter(
-              (msg) => msg.id !== pendingId && msg.id !== userMessage.id,
+            prev.map((msg) =>
+              msg.id === userMessage.id ? response.user_message : msg,
             ),
           );
-          throw err;
-        }
-      } else {
-        // Create new conversation with message
-        // Immediately show user message and pending placeholder
-        const userMessage: Message = {
-          id: `temp-user-${Date.now()}`,
-          role: "user",
-          content: trimmedMessage,
-          sequence_number: 1,
-          created_at: new Date().toISOString(),
-          error: null,
-          annotations: null,
-        };
-        const pendingMessage = createPendingAssistantMessage(pendingId);
-        setMessages([userMessage, pendingMessage]);
-
-        try {
-          response = await createConversationWithMessage({
+          setMessages((prev) => [...prev, response.assistant_message]);
+          updateConversationsList(response);
+        } else {
+          const response = await createConversationWithMessage({
             content: trimmedMessage,
           });
 
-          // Update conversations list
           updateConversationsList(response);
-
-          // Mark this conversation to skip the initial fetch
           skipFetchForConversation.current = response.conversation.id;
-
-          // Set messages with real user and assistant messages, removing placeholder
           setMessages([response.user_message, response.assistant_message]);
-
-          // Set active conversation to the new one (this will trigger useEffect but it will skip fetch)
           setActiveConversationId(response.conversation.id);
-
-          // Clear input only on success
-          setInputMessage("");
-        } catch (err) {
-          // Remove fake optimistic messages if API call fails
-          // Keep input text so user can retry
-          setMessages([]);
-          throw err;
         }
+
+        setInputMessage("");
       }
     } catch (err) {
       if (err instanceof Error) {
@@ -712,6 +814,9 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
       handleSendMessage();
     }
   };
+
+  const messagesToRender =
+    isStreaming && currentMessage ? [...messages, currentMessage] : messages;
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -797,13 +902,13 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
         <div className="flex-1 flex overflow-hidden">
           {/* Messages area */}
           <div className="flex-1 overflow-y-auto p-4">
-            {activeConversationId ? (
+            {activeConversationId || messagesToRender.length > 0 ? (
               <>
                 {transcriptLoading && messages.length === 0 ? (
                   <div className="text-gray-500">Loading messages...</div>
                 ) : (
                   <div className="space-y-4 max-w-3xl mx-auto">
-                    {messages.map((msg) => (
+                    {messagesToRender.map((msg) => (
                       <div
                         key={msg.id}
                         className={`flex ${
@@ -818,14 +923,25 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
                                 ? "message-user-bubble"
                                 : msg.error
                                   ? "message-error-bubble"
-                                  : msg.role === "assistant" &&
-                                      msg.sequence_number === -1
-                                    ? "message-pending-bubble"
+                                  : msg.id.startsWith("streaming-")
+                                    ? "message-streaming-bubble"
                                     : "message-assistant-bubble"
                             }`}
                           >
                             {msg.role === "assistant" ? (
-                              <MarkdownContent content={msg.content} />
+                              <>
+                                {msg.annotations?.thought && (
+                                  <div className="thought-trace">
+                                    <div className="thought-trace-label">
+                                      Thought trace
+                                    </div>
+                                    <div className="thought-trace-content">
+                                      {msg.annotations.thought}
+                                    </div>
+                                  </div>
+                                )}
+                                <MarkdownContent content={msg.content} />
+                              </>
                             ) : (
                               <div className="whitespace-pre-wrap">
                                 {msg.content}

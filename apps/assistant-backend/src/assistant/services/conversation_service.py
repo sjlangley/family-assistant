@@ -507,11 +507,20 @@ class ConversationService:
         background_tasks: BackgroundTasks | None = None,
     ) -> AsyncGenerator[str, None]:
         """Run streaming loop and persist assistant row only at terminal states."""
+        logger.debug(
+            'stream lifecycle start: conversation_id=%s user_message_id=%s seq=%s',
+            conversation.id,
+            user_message_id,
+            assistant_sequence_number,
+        )
         content_parts: list[str] = []
         thought_parts: list[str] = []
         model_name: str | None = None
         usage_payload: dict | None = None
         stream_started = False
+        emitted_tokens = 0
+        emitted_thoughts = 0
+        emitted_tool_calls = 0
 
         try:
             async for output in self._call_llm_chat_completion_stream(
@@ -522,19 +531,14 @@ class ConversationService:
                 if output.thought:
                     thought_parts.append(output.thought)
                     stream_started = True
+                    emitted_thoughts += 1
                     yield SSEEncoder.encode('thought', output.thought)
 
                 if output.token:
                     content_parts.append(output.token)
                     stream_started = True
+                    emitted_tokens += 1
                     yield SSEEncoder.encode('token', output.token)
-
-                if output.tool_calls:
-                    stream_started = True
-                    for tool_call in output.tool_calls:
-                        yield SSEEncoder.encode(
-                            'tool_call', tool_call.model_dump()
-                        )
 
                 if output.model:
                     model_name = output.model
@@ -542,6 +546,16 @@ class ConversationService:
                     usage_payload = output.usage.model_dump()
 
         except LLMCompletionError as error:
+            logger.debug(
+                'stream lifecycle llm error: conversation_id=%s stream_started=%s token_events=%s thought_events=%s tool_call_events=%s kind=%s detail=%s',
+                conversation.id,
+                stream_started,
+                emitted_tokens,
+                emitted_thoughts,
+                emitted_tool_calls,
+                error.kind.value,
+                error.message,
+            )
             if stream_started:
                 await self._persist_streaming_assistant_message(
                     session=session,
@@ -566,6 +580,14 @@ class ConversationService:
             return
 
         except asyncio.CancelledError:
+            logger.debug(
+                'stream lifecycle cancelled: conversation_id=%s stream_started=%s token_events=%s thought_events=%s tool_call_events=%s',
+                conversation.id,
+                stream_started,
+                emitted_tokens,
+                emitted_thoughts,
+                emitted_tool_calls,
+            )
             if stream_started:
                 cancellation_error = LLMCompletionError(
                     kind=LLMCompletionErrorKind.backend_error,
@@ -592,6 +614,15 @@ class ConversationService:
             thought=''.join(thought_parts) or None,
             fact_ids=fact_ids,
             error=None,
+        )
+        logger.debug(
+            'stream lifecycle done: conversation_id=%s assistant_message_id=%s token_events=%s thought_events=%s tool_call_events=%s content_len=%s',
+            conversation.id,
+            assistant_message.id,
+            emitted_tokens,
+            emitted_thoughts,
+            emitted_tool_calls,
+            len(assistant_message.content or ''),
         )
 
         if background_tasks and self.memory_storage:
@@ -737,6 +768,20 @@ class ConversationService:
                 result = await self.llm_service.complete_messages(
                     **completion_kwargs
                 )
+                logger.debug(
+                    'conversation llm turn complete: finish_reason=%s usage(prompt=%s completion=%s total=%s) tool_calls=%s',
+                    result.finish_reason,
+                    result.prompt_tokens,
+                    result.completion_tokens,
+                    result.total_tokens,
+                    len(result.tool_calls or []),
+                )
+                if result.finish_reason == 'length':
+                    logger.debug(
+                        'conversation llm turn likely truncated: max_tokens=%s total_tokens=%s',
+                        max_tokens,
+                        result.total_tokens,
+                    )
 
                 # No tool calls - return final response
                 if not result.tool_calls:
@@ -756,6 +801,11 @@ class ConversationService:
                 )
 
                 for tool_call in result.tool_calls:
+                    logger.debug(
+                        'llm requested tool execution: name=%s tool_call_id=%s',
+                        tool_call.function.name,
+                        tool_call.id,
+                    )
                     # Parse and validate tool arguments safely
                     try:
                         parsed_arguments = json.loads(
@@ -860,6 +910,17 @@ class ConversationService:
         async for output in self.llm_service.stream_messages(
             **completion_kwargs
         ):
+            if output.finish_reason is not None:
+                logger.debug(
+                    'conversation streaming turn complete: finish_reason=%s usage=%s',
+                    output.finish_reason,
+                    output.usage.model_dump() if output.usage else None,
+                )
+                if output.finish_reason == 'length':
+                    logger.debug(
+                        'conversation streaming turn likely truncated: max_tokens=%s',
+                        max_tokens,
+                    )
             if output.tool_calls:
                 raise LLMCompletionError(
                     kind=LLMCompletionErrorKind.invalid_response,
