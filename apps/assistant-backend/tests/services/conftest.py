@@ -1,7 +1,7 @@
 """Shared fixtures for conversation service tests."""
 
-import uuid
 from unittest.mock import AsyncMock, Mock
+import uuid
 
 import pytest
 import pytest_asyncio

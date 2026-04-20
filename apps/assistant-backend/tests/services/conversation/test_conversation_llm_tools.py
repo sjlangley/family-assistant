@@ -1,7 +1,6 @@
 """Tests for ConversationService LLM and tool calling operations."""
 
 from datetime import datetime, timezone
-from unittest.mock import Mock
 
 import pytest
 from sqlalchemy import select

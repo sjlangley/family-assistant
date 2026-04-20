@@ -1,7 +1,7 @@
 """Tests for ConversationService conversation creation operations."""
 
-import pytest
 from fastapi import HTTPException
+import pytest
 from sqlalchemy import select
 
 from assistant.models.conversation import (

@@ -1,25 +1,15 @@
 """Tests for ConversationService."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import json
 from unittest.mock import AsyncMock, Mock, patch
 import uuid
 
-from fastapi import HTTPException
 import pytest
-import pytest_asyncio
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-from sqlmodel import SQLModel
 
-from assistant.models.annotations import (
-    AssistantAnnotations,
-    FailureAnnotationStage,
-)
 from assistant.models.conversation import (
-    ConversationWithMessagesResponse,
     CreateConversationWithMessageRequest,
     CreateMessageRequest,
 )
@@ -30,12 +20,7 @@ from assistant.models.llm import (
     CompletionUsage,
     LLMCompletionError,
     LLMCompletionErrorKind,
-    LLMCompletionResult,
     StreamParserOutput,
-)
-from assistant.models.tool import (
-    ToolExecutionResult,
-    ToolExecutionStatus,
 )
 from assistant.services.assistant_annotations import AssistantAnnotationService
 from assistant.services.context_assembly import (
@@ -46,12 +31,8 @@ from assistant.services.conversation_service import ConversationService
 from assistant.services.llm_service import LLMService
 from assistant.services.memory_storage import MemoryStorage
 from assistant.services.tool_service import ToolService
-from assistant.services.tools.errors import (
-    UnsupportedToolError,
-)
 
 pytestmark = pytest.mark.asyncio
-
 
 
 # Integration tests for extract_and_save_background orchestration

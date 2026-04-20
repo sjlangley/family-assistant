@@ -2,8 +2,8 @@
 
 import uuid
 
-import pytest
 from fastapi import HTTPException
+import pytest
 
 from assistant.models.conversation_sql import Conversation, Message
 

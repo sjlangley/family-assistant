@@ -1,9 +1,7 @@
 """Tests for conversation annotation building and enrichment."""
 
-import uuid
-
-import pytest
 from fastapi import HTTPException
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel, select
@@ -13,7 +11,6 @@ from assistant.models.annotations import (
     FailureAnnotationStage,
 )
 from assistant.models.conversation import (
-    CreateConversationWithMessageRequest,
     CreateMessageRequest,
 )
 from assistant.models.conversation_sql import Conversation, Message
@@ -352,10 +349,11 @@ async def test_enrich_annotations_with_summary_saved():
         await session.refresh(assistant_msg)
 
         # Create service and enrich annotations
-        from assistant.services.conversation_service import ConversationService
         from unittest.mock import AsyncMock, Mock
-        from assistant.services.llm_service import LLMService
+
         from assistant.services.context_assembly import ContextAssemblyService
+        from assistant.services.conversation_service import ConversationService
+        from assistant.services.llm_service import LLMService
         from assistant.services.tool_service import ToolService
 
         service = ConversationService(
@@ -420,10 +418,11 @@ async def test_enrich_annotations_with_facts_saved():
         await session.refresh(assistant_msg)
 
         # Enrich with facts
-        from assistant.services.conversation_service import ConversationService
         from unittest.mock import AsyncMock, Mock
-        from assistant.services.llm_service import LLMService
+
         from assistant.services.context_assembly import ContextAssemblyService
+        from assistant.services.conversation_service import ConversationService
+        from assistant.services.llm_service import LLMService
         from assistant.services.tool_service import ToolService
 
         service = ConversationService(
@@ -496,10 +495,11 @@ async def test_enrich_annotations_preserves_existing_data():
         await session.refresh(assistant_msg)
 
         # Enrich
-        from assistant.services.conversation_service import ConversationService
         from unittest.mock import AsyncMock, Mock
-        from assistant.services.llm_service import LLMService
+
         from assistant.services.context_assembly import ContextAssemblyService
+        from assistant.services.conversation_service import ConversationService
+        from assistant.services.llm_service import LLMService
         from assistant.services.tool_service import ToolService
 
         service = ConversationService(
@@ -563,10 +563,11 @@ async def test_enrich_annotations_nothing_saved_leaves_empty():
         await session.refresh(assistant_msg)
 
         # Enrich with no saves
-        from assistant.services.conversation_service import ConversationService
         from unittest.mock import AsyncMock, Mock
-        from assistant.services.llm_service import LLMService
+
         from assistant.services.context_assembly import ContextAssemblyService
+        from assistant.services.conversation_service import ConversationService
+        from assistant.services.llm_service import LLMService
         from assistant.services.tool_service import ToolService
 
         service = ConversationService(

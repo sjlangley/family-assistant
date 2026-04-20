@@ -1,11 +1,10 @@
 """Tests for conversation background extraction and memory indexing."""
 
-import uuid
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
+import uuid
 
-import pytest
 from fastapi import HTTPException
+import pytest
 
 from assistant.models.conversation import (
     CreateConversationWithMessageRequest,
@@ -388,7 +387,7 @@ async def test_build_extraction_prompt_slices_relative_to_target_message():
     conv_id = uuid.uuid4()
     messages = [
         Message(
-           id=uuid.uuid4(),
+            id=uuid.uuid4(),
             conversation_id=conv_id,
             role='user',
             content='old question',
