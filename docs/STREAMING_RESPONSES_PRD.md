@@ -154,6 +154,39 @@ Update `Chat.tsx` and `ConversationsChat.tsx` to:
 - **PR 6:** Integrate the streaming hook into the main Chat UI and add styling for
   thought traces.
 
+### Phase 7: Streaming Tool Loop (Backend + Frontend)
+- **PR 7:** Implement true tool execution during streaming turns (not just `tool_call`
+  event emission), including:
+  - Execute tool calls emitted by the streaming LLM response.
+  - Feed tool results back into the LLM and continue streaming assistant output.
+  - Persist executed tool metadata in annotations for the final assistant message.
+  - Emit reliable `tool_call` lifecycle events (`requested`, `running`, `completed`,
+    `failed`) so the UI can show truthful state.
+  - Keep persistence guarantees: user message immediate, assistant message deferred to
+    terminal state.
+
+## Current Status & Remaining Gaps
+
+The current implementation supports token/thought streaming and persistence lifecycle,
+but it is not yet complete relative to the product goals. Remaining work:
+
+- **Streaming tool execution is incomplete:** tool calls detected during streaming are
+  not yet executed in-stream.
+- **Fallback behavior masks failures:** UI fallback from stream to non-stream can hide
+  stream-path bugs and produce confusing duplicate failures.
+- **Token-limit handling needs operator controls:** truncation (`finish_reason=length`)
+  is observable, but default limits and user-facing behavior for truncation recovery
+  need to be finalized.
+- **End-to-end test coverage gaps:** add backend router/service tests and frontend
+  integration tests for:
+  - streaming with tool calls
+  - interrupted streams with partial assistant output
+  - terminal error handling without silent fallback
+  - `done` payload integrity (message id, annotations, usage when available)
+- **Operational guidance:** document model/endpoint requirements (OpenAI-compatible
+  `/v1/chat/completions`) and expected behavior when backend/model does not support the
+  configured path.
+
 ## Testing Strategy
 
 - **Backend:** Mock LLM streams and verify SSE event sequence.

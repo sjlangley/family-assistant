@@ -83,7 +83,7 @@ class WebFetchTool(BaseTool):
 
         url = arguments['url']
 
-        logger.debug('Starting web fetch for url: %s', url)
+        logger.debug('web_fetch start: url=%s', url)
 
         result = await self._perform_fetch(url)
 
@@ -98,8 +98,7 @@ class WebFetchTool(BaseTool):
         finished_at = datetime.now(UTC)
 
         logger.debug(
-            'Web fetch completed for url=%s title=%r content_length=%d '
-            'excerpt_length=%d',
+            'web_fetch done: url=%s title=%r content_length=%d excerpt_length=%d',
             payload.url,
             payload.title,
             len(payload.content),

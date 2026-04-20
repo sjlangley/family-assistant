@@ -119,6 +119,23 @@ class LLMService:
                 message='Failed to reach LLM backend',
             ) from exc
         except httpx.HTTPStatusError as exc:
+            error_body = exc.response.text[:1000] if exc.response else None
+            logger.error(
+                'LLM backend HTTP error: status=%s body=%s',
+                exc.response.status_code if exc.response else None,
+                error_body,
+            )
+            if error_body:
+                lowered = error_body.lower()
+                if (
+                    'context length' in lowered
+                    or 'maximum context length' in lowered
+                    or 'prompt is too long' in lowered
+                    or 'too many tokens' in lowered
+                ):
+                    logger.debug(
+                        'LLM likely hit context/token limits in non-stream request'
+                    )
             raise LLMCompletionError(
                 kind=LLMCompletionErrorKind.backend_error,
                 message='LLM backend returned an error',
@@ -153,6 +170,21 @@ class LLMService:
             )
 
         choice = response_obj.choices[0]
+        logger.debug(
+            'LLM completion finished: model=%s finish_reason=%s usage(prompt=%s completion=%s total=%s)',
+            response_obj.model,
+            choice.finish_reason,
+            response_obj.usage.prompt_tokens,
+            response_obj.usage.completion_tokens,
+            response_obj.usage.total_tokens,
+        )
+        if choice.finish_reason == 'length':
+            logger.debug(
+                'LLM completion truncated by token limit: model=%s max_tokens=%s usage_total=%s',
+                response_obj.model,
+                max_tokens,
+                response_obj.usage.total_tokens,
+            )
         return LLMCompletionResult(
             content=choice.message.content or '',
             model=response_obj.model,
@@ -212,7 +244,23 @@ class LLMService:
             ) as response:
                 if response.status_code != 200:
                     # Drain response to get error message if possible
-                    await response.aread()
+                    raw_body = await response.aread()
+                    body_text = raw_body.decode(errors='replace')[:1000]
+                    logger.error(
+                        'LLM streaming backend error: status=%s body=%s',
+                        response.status_code,
+                        body_text,
+                    )
+                    lowered = body_text.lower()
+                    if (
+                        'context length' in lowered
+                        or 'maximum context length' in lowered
+                        or 'prompt is too long' in lowered
+                        or 'too many tokens' in lowered
+                    ):
+                        logger.debug(
+                            'LLM likely hit context/token limits in stream request'
+                        )
                     raise LLMCompletionError(
                         kind=LLMCompletionErrorKind.backend_error,
                         message='LLM backend returned an error',
@@ -233,6 +281,21 @@ class LLMService:
                     try:
                         chunk_dict = json.loads(data)
                         output = parser.parse_chunk(chunk_dict)
+                        if output.finish_reason is not None:
+                            logger.debug(
+                                'LLM stream finished: model=%s finish_reason=%s usage=%s',
+                                output.model,
+                                output.finish_reason,
+                                output.usage.model_dump()
+                                if output.usage
+                                else None,
+                            )
+                            if output.finish_reason == 'length':
+                                logger.debug(
+                                    'LLM stream truncated by token limit: model=%s max_tokens=%s',
+                                    output.model,
+                                    max_tokens,
+                                )
                         yield output
                     except Exception as exc:
                         # Skip malformed chunks in the stream

@@ -28,12 +28,14 @@ class CreateConversationWithMessageRequest(BaseModel):
     content: str
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=512, ge=1, le=4096)
+    stream: bool = False
 
 
 class CreateMessageRequest(BaseModel):
     content: str
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=512, ge=1, le=4096)
+    stream: bool = False
 
 
 class ConversationWithMessagesResponse(BaseModel):

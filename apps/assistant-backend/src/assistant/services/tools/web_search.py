@@ -62,7 +62,7 @@ class WebSearchTool(BaseTool):
         num_results = arguments.get('num_results', DEFAULT_NUMBER_OF_RESULTS)
 
         logger.debug(
-            'Starting web_search, query_length=%d, num_results=%s',
+            'web_search start: query_length=%d num_results=%s',
             len(query),
             num_results,
         )
@@ -79,7 +79,7 @@ class WebSearchTool(BaseTool):
         finished_at = datetime.now(UTC)
 
         logger.debug(
-            'web_search completed with %s results in %s ms',
+            'web_search done: results=%s duration_ms=%s',
             len(results),
             int((finished_at - started_at).total_seconds() * 1000),
         )

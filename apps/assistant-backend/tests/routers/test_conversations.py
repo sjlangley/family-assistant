@@ -1,6 +1,6 @@
 """Tests for conversations router endpoints."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -275,6 +275,38 @@ async def test_create_conversation_with_message_success(
     ]
 
 
+async def test_create_conversation_with_message_stream_success(
+    authenticated_async_test_client,
+):
+    """Test streaming response for conversation creation when stream=true."""
+
+    async def fake_stream():
+        yield 'event: token\ndata: "Hello"\n\n'
+        yield 'event: done\ndata: {"message_id":"m1","content":"Hello"}\n\n'
+
+    mock_service = Mock()
+    mock_service.create_conversation_with_message_stream = Mock(
+        return_value=fake_stream()
+    )
+    mock_service.create_conversation_with_message = AsyncMock()
+
+    with patch(
+        'assistant.routers.conversations.get_conversation_service',
+        return_value=mock_service,
+    ):
+        response = await authenticated_async_test_client.post(
+            '/api/v1/conversations/with-message',
+            json={'content': 'Hello', 'stream': True},
+        )
+
+    assert response.status_code == 201
+    assert response.headers['content-type'].startswith('text/event-stream')
+    assert 'event: token' in response.text
+    assert 'event: done' in response.text
+    mock_service.create_conversation_with_message_stream.assert_called_once()
+    mock_service.create_conversation_with_message.assert_not_called()
+
+
 async def test_create_conversation_with_message_default_params(
     authenticated_async_test_client,
 ):
@@ -483,6 +515,41 @@ async def test_add_message_to_conversation_success(
         data['assistant_message']['annotations']['memory_hits'][0]['label']
         == 'Saved family detail'
     )
+
+
+async def test_add_message_to_conversation_stream_success(
+    authenticated_async_test_client,
+):
+    """Test streaming response for add-message when stream=true."""
+    conv_id = str(uuid4())
+
+    async def fake_stream():
+        yield 'event: token\ndata: "Follow-up"\n\n'
+        yield (
+            'event: done\ndata: {"message_id":"m2","content":"Follow-up"}\n\n'
+        )
+
+    mock_service = Mock()
+    mock_service.add_message_to_conversation_stream = Mock(
+        return_value=fake_stream()
+    )
+    mock_service.add_message_to_conversation = AsyncMock()
+
+    with patch(
+        'assistant.routers.conversations.get_conversation_service',
+        return_value=mock_service,
+    ):
+        response = await authenticated_async_test_client.post(
+            f'/api/v1/conversations/{conv_id}/messages',
+            json={'content': 'Follow-up', 'stream': True},
+        )
+
+    assert response.status_code == 201
+    assert response.headers['content-type'].startswith('text/event-stream')
+    assert 'event: token' in response.text
+    assert 'event: done' in response.text
+    mock_service.add_message_to_conversation_stream.assert_called_once()
+    mock_service.add_message_to_conversation.assert_not_called()
 
 
 async def test_add_message_to_conversation_default_params(

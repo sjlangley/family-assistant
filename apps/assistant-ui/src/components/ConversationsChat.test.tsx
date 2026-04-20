@@ -12,6 +12,7 @@ vi.mock("../lib/api", () => ({
   getConversationMessages: vi.fn(),
   createConversationWithMessage: vi.fn(),
   addMessageToConversation: vi.fn(),
+  streamConversation: vi.fn(),
 }));
 
 const mockListConversations = vi.mocked(api.listConversations);
@@ -20,6 +21,7 @@ const mockCreateConversationWithMessage = vi.mocked(
   api.createConversationWithMessage,
 );
 const mockAddMessageToConversation = vi.mocked(api.addMessageToConversation);
+const mockStreamConversation = vi.mocked(api.streamConversation);
 
 // Helper to render component with auth context
 function renderWithAuth(
@@ -123,6 +125,65 @@ describe("ConversationsChat", () => {
   });
 
   describe("New chat flow", () => {
+    it("streams the first assistant response and renders thought traces", async () => {
+      const user = userEvent.setup({ delay: null });
+      mockListConversations.mockResolvedValueOnce({ items: [] });
+
+      async function* streamEvents() {
+        yield { event: "thought" as const, data: "Gathering context..." };
+        yield { event: "token" as const, data: "Hello" };
+        yield {
+          event: "done" as const,
+          data: {
+            conversation_id: "new-conv",
+            message_id: "assistant-1",
+            content: "Hello there",
+            annotations: {
+              thought: "Gathering context...",
+              sources: [],
+              tools: [],
+              memory_hits: [],
+              memory_saved: [],
+              failure: null,
+            },
+          },
+        };
+      }
+
+      mockStreamConversation.mockReturnValueOnce(streamEvents());
+
+      renderWithAuth();
+
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(
+            /type a message to start a new conversation/i,
+          ),
+        ).toBeInTheDocument();
+      });
+
+      const input = screen.getByPlaceholderText(
+        /type a message to start a new conversation/i,
+      );
+      await user.type(input, "Hello");
+      await user.click(screen.getByRole("button", { name: /send/i }));
+
+      await waitFor(() => {
+        expect(mockStreamConversation).toHaveBeenCalledWith(
+          null,
+          "Hello",
+          expect.objectContaining({
+            signal: expect.any(AbortSignal),
+          }),
+        );
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("Hello there")).toBeInTheDocument();
+        expect(screen.getByText("Gathering context...")).toBeInTheDocument();
+      });
+    });
+
     it("shows welcome message when no conversation is selected", async () => {
       mockListConversations.mockResolvedValueOnce({ items: [] });
 

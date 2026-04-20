@@ -1,8 +1,10 @@
 """REST API handler for user conversations."""
 
+import logging
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Request, status
+from fastapi.responses import StreamingResponse
 
 from assistant.models.conversation import (
     ConversationWithMessagesResponse,
@@ -16,6 +18,7 @@ from assistant.services import get_conversation_service
 from assistant.utils.database import DBSession
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get(
@@ -67,9 +70,32 @@ async def create_conversation_with_message(
     user: CurrentUser,
     session: DBSession,
     background_tasks: BackgroundTasks,
-) -> ConversationWithMessagesResponse:
+) -> ConversationWithMessagesResponse | StreamingResponse:
     """Create a new conversation with an initial user message."""
     conversation_service = get_conversation_service()
+    logger.debug(
+        'create_conversation_with_message called: stream=%s content_len=%s',
+        payload.stream,
+        len(payload.content or ''),
+    )
+    if payload.stream:
+        logger.debug('Dispatching create_conversation_with_message_stream')
+        return StreamingResponse(
+            conversation_service.create_conversation_with_message_stream(
+                session=session,
+                user_id=user.userid,
+                payload=payload,
+                background_tasks=background_tasks,
+            ),
+            status_code=status.HTTP_201_CREATED,
+            media_type='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no',
+            },
+        )
+
     return await conversation_service.create_conversation_with_message(
         session=session,
         user_id=user.userid,
@@ -90,8 +116,36 @@ async def add_message_to_conversation(
     user: CurrentUser,
     session: DBSession,
     background_tasks: BackgroundTasks,
-) -> ConversationWithMessagesResponse:
+) -> ConversationWithMessagesResponse | StreamingResponse:
     conversation_service = get_conversation_service()
+    logger.debug(
+        'add_message_to_conversation called: conversation_id=%s stream=%s content_len=%s',
+        conversation_id,
+        payload.stream,
+        len(payload.content or ''),
+    )
+    if payload.stream:
+        logger.debug(
+            'Dispatching add_message_to_conversation_stream for conversation_id=%s',
+            conversation_id,
+        )
+        return StreamingResponse(
+            conversation_service.add_message_to_conversation_stream(
+                session=session,
+                user_id=user.userid,
+                conversation_id=conversation_id,
+                payload=payload,
+                background_tasks=background_tasks,
+            ),
+            status_code=status.HTTP_201_CREATED,
+            media_type='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no',
+            },
+        )
+
     return await conversation_service.add_message_to_conversation(
         session=session,
         user_id=user.userid,

@@ -1,6 +1,5 @@
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
 import json
 import logging
 from typing import AsyncGenerator, cast
@@ -284,6 +283,7 @@ class ConversationService:
             sequence_number=next_seq,
         )
         session.add(user_message)
+        conversation_id = conversation.id
         await session.commit()
         await session.refresh(user_message)
 
@@ -403,6 +403,7 @@ class ConversationService:
             sequence_number=1,
         )
         session.add(user_message)
+        conversation_id = conversation.id
         await session.commit()
         await session.refresh(user_message)
 
@@ -417,7 +418,7 @@ class ConversationService:
         async for event in self._stream_assistant_lifecycle(
             session=session,
             user_id=user_id,
-            conversation=conversation,
+            conversation_id=conversation_id,
             user_message_id=user_message.id,
             assistant_sequence_number=2,
             context_messages=context_result.messages,
@@ -481,7 +482,7 @@ class ConversationService:
         async for event in self._stream_assistant_lifecycle(
             session=session,
             user_id=user_id,
-            conversation=conversation,
+            conversation_id=conversation_id,
             user_message_id=user_message.id,
             assistant_sequence_number=next_seq + 1,
             context_messages=context_result.messages,
@@ -497,7 +498,7 @@ class ConversationService:
         *,
         session: AsyncSession,
         user_id: str,
-        conversation: Conversation,
+        conversation_id: uuid.UUID,
         user_message_id: uuid.UUID,
         assistant_sequence_number: int,
         context_messages: list[dict],
@@ -507,11 +508,20 @@ class ConversationService:
         background_tasks: BackgroundTasks | None = None,
     ) -> AsyncGenerator[str, None]:
         """Run streaming loop and persist assistant row only at terminal states."""
+        logger.debug(
+            'stream lifecycle start: conversation_id=%s user_message_id=%s seq=%s',
+            conversation_id,
+            user_message_id,
+            assistant_sequence_number,
+        )
         content_parts: list[str] = []
         thought_parts: list[str] = []
         model_name: str | None = None
         usage_payload: dict | None = None
         stream_started = False
+        emitted_tokens = 0
+        emitted_thoughts = 0
+        emitted_tool_calls = 0
 
         try:
             async for output in self._call_llm_chat_completion_stream(
@@ -522,16 +532,25 @@ class ConversationService:
                 if output.thought:
                     thought_parts.append(output.thought)
                     stream_started = True
+                    emitted_thoughts += 1
                     yield SSEEncoder.encode('thought', output.thought)
 
                 if output.token:
                     content_parts.append(output.token)
                     stream_started = True
+                    emitted_tokens += 1
                     yield SSEEncoder.encode('token', output.token)
 
                 if output.tool_calls:
                     stream_started = True
                     for tool_call in output.tool_calls:
+                        emitted_tool_calls += 1
+                        logger.debug(
+                            'stream tool_call event: conversation_id=%s tool_name=%s tool_call_id=%s (event only; execution currently handled in non-stream tool loop)',
+                            conversation_id,
+                            tool_call.function.name,
+                            tool_call.id,
+                        )
                         yield SSEEncoder.encode(
                             'tool_call', tool_call.model_dump()
                         )
@@ -542,10 +561,20 @@ class ConversationService:
                     usage_payload = output.usage.model_dump()
 
         except LLMCompletionError as error:
+            logger.debug(
+                'stream lifecycle llm error: conversation_id=%s stream_started=%s token_events=%s thought_events=%s tool_call_events=%s kind=%s detail=%s',
+                conversation_id,
+                stream_started,
+                emitted_tokens,
+                emitted_thoughts,
+                emitted_tool_calls,
+                error.kind.value,
+                error.message,
+            )
             if stream_started:
                 await self._persist_streaming_assistant_message(
                     session=session,
-                    conversation=conversation,
+                    conversation_id=conversation_id,
                     sequence_number=assistant_sequence_number,
                     content=''.join(content_parts)
                     or 'Unable to generate a response. Please try again.',
@@ -566,6 +595,14 @@ class ConversationService:
             return
 
         except asyncio.CancelledError:
+            logger.debug(
+                'stream lifecycle cancelled: conversation_id=%s stream_started=%s token_events=%s thought_events=%s tool_call_events=%s',
+                conversation_id,
+                stream_started,
+                emitted_tokens,
+                emitted_thoughts,
+                emitted_tool_calls,
+            )
             if stream_started:
                 cancellation_error = LLMCompletionError(
                     kind=LLMCompletionErrorKind.backend_error,
@@ -573,7 +610,7 @@ class ConversationService:
                 )
                 await self._persist_streaming_assistant_message(
                     session=session,
-                    conversation=conversation,
+                    conversation_id=conversation_id,
                     sequence_number=assistant_sequence_number,
                     content=''.join(content_parts)
                     or 'Unable to generate a response. Please try again.',
@@ -585,7 +622,7 @@ class ConversationService:
 
         assistant_message = await self._persist_streaming_assistant_message(
             session=session,
-            conversation=conversation,
+            conversation_id=conversation_id,
             sequence_number=assistant_sequence_number,
             content=''.join(content_parts)
             or 'Unable to generate a response. Please try again.',
@@ -593,18 +630,27 @@ class ConversationService:
             fact_ids=fact_ids,
             error=None,
         )
+        logger.debug(
+            'stream lifecycle done: conversation_id=%s assistant_message_id=%s token_events=%s thought_events=%s tool_call_events=%s content_len=%s',
+            conversation_id,
+            assistant_message.id,
+            emitted_tokens,
+            emitted_thoughts,
+            emitted_tool_calls,
+            len(assistant_message.content or ''),
+        )
 
         if background_tasks and self.memory_storage:
             background_tasks.add_task(
                 self.extract_and_save_background,
                 user_id=user_id,
-                conversation_id=conversation.id,
+                conversation_id=conversation_id,
                 assistant_message_id=assistant_message.id,
                 latest_user_message_id=user_message_id,
             )
 
         done_payload: dict[str, object] = {
-            'conversation_id': str(conversation.id),
+            'conversation_id': str(conversation_id),
             'message_id': str(assistant_message.id),
             'content': assistant_message.content,
             'annotations': assistant_message.annotations,
@@ -620,7 +666,7 @@ class ConversationService:
         self,
         *,
         session: AsyncSession,
-        conversation: Conversation,
+        conversation_id: uuid.UUID,
         sequence_number: int,
         content: str,
         thought: str | None,
@@ -646,7 +692,7 @@ class ConversationService:
             annotations_obj.thought = thought
 
         assistant_message = Message(
-            conversation_id=conversation.id,
+            conversation_id=conversation_id,
             role='assistant',
             content=content,
             sequence_number=sequence_number,
@@ -654,7 +700,12 @@ class ConversationService:
             annotations=annotations_obj.model_dump(),
         )
         session.add(assistant_message)
-        conversation.updated_at = datetime.now(timezone.utc)
+        await session.execute(
+            update(Conversation)
+            # pyrefly: ignore [bad-argument-type]
+            .where(Conversation.id == conversation_id)
+            .values(updated_at=func.now())
+        )
         await session.commit()
         await session.refresh(assistant_message)
         return assistant_message
@@ -737,6 +788,20 @@ class ConversationService:
                 result = await self.llm_service.complete_messages(
                     **completion_kwargs
                 )
+                logger.debug(
+                    'conversation llm turn complete: finish_reason=%s usage(prompt=%s completion=%s total=%s) tool_calls=%s',
+                    result.finish_reason,
+                    result.prompt_tokens,
+                    result.completion_tokens,
+                    result.total_tokens,
+                    len(result.tool_calls or []),
+                )
+                if result.finish_reason == 'length':
+                    logger.debug(
+                        'conversation llm turn likely truncated: max_tokens=%s total_tokens=%s',
+                        max_tokens,
+                        result.total_tokens,
+                    )
 
                 # No tool calls - return final response
                 if not result.tool_calls:
@@ -756,6 +821,11 @@ class ConversationService:
                 )
 
                 for tool_call in result.tool_calls:
+                    logger.debug(
+                        'llm requested tool execution: name=%s tool_call_id=%s',
+                        tool_call.function.name,
+                        tool_call.id,
+                    )
                     # Parse and validate tool arguments safely
                     try:
                         parsed_arguments = json.loads(
@@ -860,6 +930,17 @@ class ConversationService:
         async for output in self.llm_service.stream_messages(
             **completion_kwargs
         ):
+            if output.finish_reason is not None:
+                logger.debug(
+                    'conversation streaming turn complete: finish_reason=%s usage=%s',
+                    output.finish_reason,
+                    output.usage.model_dump() if output.usage else None,
+                )
+                if output.finish_reason == 'length':
+                    logger.debug(
+                        'conversation streaming turn likely truncated: max_tokens=%s',
+                        max_tokens,
+                    )
             if output.tool_calls:
                 raise LLMCompletionError(
                     kind=LLMCompletionErrorKind.invalid_response,
