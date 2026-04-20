@@ -1,6 +1,7 @@
 """Tests for ConversationService."""
 
 from datetime import datetime, timedelta, timezone
+import json
 from unittest.mock import AsyncMock, Mock, patch
 import uuid
 
@@ -25,9 +26,11 @@ from assistant.models.conversation_sql import Conversation, Message
 from assistant.models.llm import (
     ChatCompletionMessageToolCall,
     ChatCompletionMessageToolCallFunction,
+    CompletionUsage,
     LLMCompletionError,
     LLMCompletionErrorKind,
     LLMCompletionResult,
+    StreamParserOutput,
 )
 from assistant.models.tool import (
     ToolExecutionResult,
@@ -4099,3 +4102,393 @@ async def test_extract_and_save_background_indexing_failure_nonfatal():
     mock_memory_storage.upsert_conversation_summary.assert_called_once()
     # Verify enrichment still happened
     service._enrich_assistant_annotations_with_memory_saved.assert_called_once()
+
+
+async def test_add_message_to_conversation_stream_persists_lifecycle_success(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    async_session,
+    test_user_id,
+):
+    """Streaming path persists user immediately and assistant on terminal completion."""
+    conversation = Conversation(user_id=test_user_id, title='Streaming Test')
+    async_session.add(conversation)
+    await async_session.commit()
+    await async_session.refresh(conversation)
+
+    mock_context_assembly.assemble_context.return_value = ContextAssemblyResult(
+        messages=[{'role': 'user', 'content': 'Hello stream'}],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+
+    async def stream_outputs():
+        yield StreamParserOutput(thought='thinking...')
+        yield StreamParserOutput(token='Hello')
+        yield StreamParserOutput(
+            token=' world',
+            finish_reason='stop',
+            usage=CompletionUsage(
+                prompt_tokens=4,
+                completion_tokens=2,
+                total_tokens=6,
+            ),
+            model='test-model',
+        )
+
+    mock_llm_service.stream_messages = Mock(return_value=stream_outputs())
+
+    payload = CreateMessageRequest(content='Hello stream')
+
+    stream = conversation_service.add_message_to_conversation_stream(
+        session=async_session,
+        user_id=test_user_id,
+        conversation_id=conversation.id,
+        payload=payload,
+    )
+
+    first_event = await anext(stream)
+
+    # User message should already be durable before stream completion.
+    result = await async_session.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation.id)
+        .order_by(Message.sequence_number.asc())
+    )
+    in_flight_messages = list(result.scalars().all())
+    assert len(in_flight_messages) == 1
+    assert in_flight_messages[0].role == 'user'
+    assert in_flight_messages[0].content == 'Hello stream'
+
+    remaining_events = []
+    async for event in stream:
+        remaining_events.append(event)
+
+    all_events = [first_event] + remaining_events
+    assert any(event.startswith('event: thought') for event in all_events)
+    assert any(event.startswith('event: token') for event in all_events)
+    done_event = next(
+        event for event in all_events if event.startswith('event: done')
+    )
+    done_payload = json.loads(done_event.split('data: ', 1)[1].strip())
+    assert done_payload['content'] == 'Hello world'
+    assert done_payload['model'] == 'test-model'
+    assert done_payload['usage']['total_tokens'] == 6
+
+    result = await async_session.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation.id)
+        .order_by(Message.sequence_number.asc())
+    )
+    persisted_messages = list(result.scalars().all())
+    assert len(persisted_messages) == 2
+    assert persisted_messages[1].role == 'assistant'
+    assert persisted_messages[1].content == 'Hello world'
+    assert persisted_messages[1].error is None
+    assert persisted_messages[1].annotations['thought'] == 'thinking...'
+
+
+async def test_add_message_to_conversation_stream_persists_error_with_partial_assistant(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    async_session,
+    test_user_id,
+):
+    """Interrupted streams persist partial assistant output in terminal error state."""
+    conversation = Conversation(user_id=test_user_id, title='Streaming Error')
+    async_session.add(conversation)
+    await async_session.commit()
+    await async_session.refresh(conversation)
+
+    mock_context_assembly.assemble_context.return_value = ContextAssemblyResult(
+        messages=[{'role': 'user', 'content': 'Trigger stream error'}],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+
+    async def stream_outputs():
+        yield StreamParserOutput(token='partial output')
+        raise LLMCompletionError(
+            kind=LLMCompletionErrorKind.timeout,
+            message='LLM request timed out',
+        )
+
+    mock_llm_service.stream_messages = Mock(return_value=stream_outputs())
+
+    payload = CreateMessageRequest(content='Trigger stream error')
+
+    emitted_events = []
+    async for event in conversation_service.add_message_to_conversation_stream(
+        session=async_session,
+        user_id=test_user_id,
+        conversation_id=conversation.id,
+        payload=payload,
+    ):
+        emitted_events.append(event)
+
+    assert any(event.startswith('event: token') for event in emitted_events)
+    error_event = next(
+        event for event in emitted_events if event.startswith('event: error')
+    )
+    error_payload = json.loads(error_event.split('data: ', 1)[1].strip())
+    assert 'timed out' in error_payload['detail'].lower()
+
+    result = await async_session.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation.id)
+        .order_by(Message.sequence_number.asc())
+    )
+    persisted_messages = list(result.scalars().all())
+    assert len(persisted_messages) == 2
+    assert persisted_messages[1].role == 'assistant'
+    assert persisted_messages[1].content == 'partial output'
+    assert 'timed out' in (persisted_messages[1].error or '').lower()
+    assert persisted_messages[1].annotations['failure']['stage'] == 'llm'
+
+
+async def test_add_message_to_conversation_stream_skips_assistant_persistence_without_output(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    async_session,
+    test_user_id,
+):
+    """If stream fails before output starts, only the user message is persisted."""
+    conversation = Conversation(
+        user_id=test_user_id, title='Streaming Early Failure'
+    )
+    async_session.add(conversation)
+    await async_session.commit()
+    await async_session.refresh(conversation)
+
+    mock_context_assembly.assemble_context.return_value = ContextAssemblyResult(
+        messages=[{'role': 'user', 'content': 'Fail immediately'}],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+
+    async def stream_outputs():
+        raise LLMCompletionError(
+            kind=LLMCompletionErrorKind.unreachable,
+            message='Failed to reach LLM backend',
+        )
+        yield  # pragma: no cover
+
+    mock_llm_service.stream_messages = Mock(return_value=stream_outputs())
+
+    payload = CreateMessageRequest(content='Fail immediately')
+
+    emitted_events = []
+    async for event in conversation_service.add_message_to_conversation_stream(
+        session=async_session,
+        user_id=test_user_id,
+        conversation_id=conversation.id,
+        payload=payload,
+    ):
+        emitted_events.append(event)
+
+    assert len(emitted_events) == 1
+    assert emitted_events[0].startswith('event: error')
+
+    result = await async_session.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation.id)
+        .order_by(Message.sequence_number.asc())
+    )
+    persisted_messages = list(result.scalars().all())
+    assert len(persisted_messages) == 1
+    assert persisted_messages[0].role == 'user'
+
+
+async def test_create_conversation_with_message_stream_persists_lifecycle_success(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    async_session,
+    test_user_id,
+):
+    """New conversation stream persists user immediately and assistant on completion."""
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        ContextAssemblyResult(
+            messages=[{'role': 'user', 'content': 'Start stream'}],
+            used_summary=False,
+            summary_id=None,
+            fact_ids=[],
+        )
+    )
+
+    async def stream_outputs():
+        yield StreamParserOutput(thought='thinking...')
+        yield StreamParserOutput(token='Hello')
+        yield StreamParserOutput(
+            token=' world',
+            finish_reason='stop',
+            usage=CompletionUsage(
+                prompt_tokens=4,
+                completion_tokens=2,
+                total_tokens=6,
+            ),
+            model='test-model',
+        )
+
+    mock_llm_service.stream_messages = Mock(return_value=stream_outputs())
+
+    payload = CreateConversationWithMessageRequest(content='Start stream')
+    stream = conversation_service.create_conversation_with_message_stream(
+        session=async_session,
+        user_id=test_user_id,
+        payload=payload,
+    )
+    first_event = await anext(stream)
+
+    result = await async_session.execute(select(Conversation))
+    conversations = list(result.scalars().all())
+    assert len(conversations) == 1
+
+    result = await async_session.execute(
+        select(Message)
+        .where(Message.conversation_id == conversations[0].id)
+        .order_by(Message.sequence_number.asc())
+    )
+    in_flight_messages = list(result.scalars().all())
+    assert len(in_flight_messages) == 1
+    assert in_flight_messages[0].role == 'user'
+    assert in_flight_messages[0].content == 'Start stream'
+
+    remaining_events = []
+    async for event in stream:
+        remaining_events.append(event)
+
+    all_events = [first_event] + remaining_events
+    done_event = next(
+        event for event in all_events if event.startswith('event: done')
+    )
+    done_payload = json.loads(done_event.split('data: ', 1)[1].strip())
+    assert done_payload['content'] == 'Hello world'
+    assert done_payload['model'] == 'test-model'
+
+    result = await async_session.execute(
+        select(Message)
+        .where(Message.conversation_id == conversations[0].id)
+        .order_by(Message.sequence_number.asc())
+    )
+    persisted_messages = list(result.scalars().all())
+    assert len(persisted_messages) == 2
+    assert persisted_messages[1].role == 'assistant'
+    assert persisted_messages[1].content == 'Hello world'
+    assert persisted_messages[1].annotations['thought'] == 'thinking...'
+
+
+async def test_create_conversation_with_message_stream_persists_error_with_partial_assistant(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    async_session,
+    test_user_id,
+):
+    """Interrupted new-conversation stream persists partial assistant in error state."""
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        ContextAssemblyResult(
+            messages=[{'role': 'user', 'content': 'Start stream'}],
+            used_summary=False,
+            summary_id=None,
+            fact_ids=[],
+        )
+    )
+
+    async def stream_outputs():
+        yield StreamParserOutput(token='partial output')
+        raise LLMCompletionError(
+            kind=LLMCompletionErrorKind.timeout,
+            message='LLM request timed out',
+        )
+
+    mock_llm_service.stream_messages = Mock(return_value=stream_outputs())
+
+    payload = CreateConversationWithMessageRequest(content='Start stream')
+    emitted_events = []
+    async for (
+        event
+    ) in conversation_service.create_conversation_with_message_stream(
+        session=async_session,
+        user_id=test_user_id,
+        payload=payload,
+    ):
+        emitted_events.append(event)
+
+    assert any(event.startswith('event: token') for event in emitted_events)
+    assert any(event.startswith('event: error') for event in emitted_events)
+
+    result = await async_session.execute(select(Conversation))
+    conversations = list(result.scalars().all())
+    assert len(conversations) == 1
+
+    result = await async_session.execute(
+        select(Message)
+        .where(Message.conversation_id == conversations[0].id)
+        .order_by(Message.sequence_number.asc())
+    )
+    persisted_messages = list(result.scalars().all())
+    assert len(persisted_messages) == 2
+    assert persisted_messages[1].role == 'assistant'
+    assert persisted_messages[1].content == 'partial output'
+    assert persisted_messages[1].annotations['failure']['stage'] == 'llm'
+
+
+async def test_create_conversation_with_message_stream_skips_assistant_persistence_without_output(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    async_session,
+    test_user_id,
+):
+    """If new-conversation stream fails before output, only user message is persisted."""
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        ContextAssemblyResult(
+            messages=[{'role': 'user', 'content': 'Start stream'}],
+            used_summary=False,
+            summary_id=None,
+            fact_ids=[],
+        )
+    )
+
+    async def stream_outputs():
+        raise LLMCompletionError(
+            kind=LLMCompletionErrorKind.unreachable,
+            message='Failed to reach LLM backend',
+        )
+        yield  # pragma: no cover
+
+    mock_llm_service.stream_messages = Mock(return_value=stream_outputs())
+
+    payload = CreateConversationWithMessageRequest(content='Start stream')
+    emitted_events = []
+    async for (
+        event
+    ) in conversation_service.create_conversation_with_message_stream(
+        session=async_session,
+        user_id=test_user_id,
+        payload=payload,
+    ):
+        emitted_events.append(event)
+
+    assert len(emitted_events) == 1
+    assert emitted_events[0].startswith('event: error')
+
+    result = await async_session.execute(select(Conversation))
+    conversations = list(result.scalars().all())
+    assert len(conversations) == 1
+
+    result = await async_session.execute(
+        select(Message)
+        .where(Message.conversation_id == conversations[0].id)
+        .order_by(Message.sequence_number.asc())
+    )
+    persisted_messages = list(result.scalars().all())
+    assert len(persisted_messages) == 1
+    assert persisted_messages[0].role == 'user'

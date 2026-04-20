@@ -509,3 +509,51 @@ async def test_stream_messages_backend_error():
         assert exc_info.value.backend_status_code == 500
     finally:
         await service.aclose()
+
+
+async def test_stream_messages_raises_on_missing_done_marker():
+    """It raises invalid_response when stream ends without [DONE]."""
+    messages = [{'role': 'user', 'content': 'Hello'}]
+
+    chunks = [
+        {
+            'id': '1',
+            'object': 'chat.completion.chunk',
+            'created': 1,
+            'model': 'test',
+            'choices': [
+                {'index': 0, 'delta': {'content': 'Hi'}, 'finish_reason': None}
+            ],
+        }
+    ]
+    sse_content = ''.join([f'data: {json.dumps(c)}\n\n' for c in chunks])
+    # Intentionally no "data: [DONE]"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=sse_content.encode('utf-8'),
+            headers={'content-type': 'text/event-stream'},
+            request=request,
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(transport=transport, base_url='http://test')
+    service = LLMService(
+        base_url='http://test', timeout_seconds=5, client=client
+    )
+
+    try:
+        with pytest.raises(LLMCompletionError) as exc_info:
+            async for _ in service.stream_messages(
+                messages=messages,
+                model='test-model',
+                temperature=0.7,
+                max_tokens=128,
+            ):
+                pass
+
+        assert exc_info.value.kind == LLMCompletionErrorKind.invalid_response
+        assert 'did not terminate' in exc_info.value.message.lower()
+    finally:
+        await service.aclose()
