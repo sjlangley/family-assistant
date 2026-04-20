@@ -5,6 +5,7 @@ import { ConversationsChat } from "./ConversationsChat";
 import * as api from "../lib/api";
 import { AuthContext } from "../lib/auth";
 import type { AuthState } from "../lib/auth";
+import type { AssistantAnnotations, Message, SSEEvent } from "../types/api";
 
 // Mock API functions
 vi.mock("../lib/api", () => ({
@@ -22,6 +23,46 @@ const mockCreateConversationWithMessage = vi.mocked(
 );
 const mockAddMessageToConversation = vi.mocked(api.addMessageToConversation);
 const mockStreamConversation = vi.mocked(api.streamConversation);
+
+function emptyAnnotations(): AssistantAnnotations {
+  return {
+    thought: null,
+    sources: [],
+    tools: [],
+    memory_hits: [],
+    memory_saved: [],
+    failure: null,
+  };
+}
+
+type ConversationMutationResponse = {
+  conversation: {
+    id: string;
+    title: string;
+    created_at: string;
+    updated_at: string;
+  };
+  user_message: Message;
+  assistant_message: Message;
+};
+
+async function* streamDoneFromResponse(
+  response: ConversationMutationResponse,
+): AsyncGenerator<SSEEvent, void, unknown> {
+  if (response.assistant_message.error) {
+    throw new Error(response.assistant_message.error);
+  }
+
+  yield {
+    event: "done",
+    data: {
+      conversation_id: response.conversation.id,
+      message_id: response.assistant_message.id,
+      content: response.assistant_message.content,
+      annotations: response.assistant_message.annotations ?? emptyAnnotations(),
+    },
+  };
+}
 
 // Helper to render component with auth context
 function renderWithAuth(
@@ -47,6 +88,21 @@ function renderWithAuth(
 describe("ConversationsChat", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockStreamConversation.mockImplementation((conversationId, content) => {
+      if (conversationId) {
+        return (async function* () {
+          const response = await mockAddMessageToConversation(conversationId, {
+            content,
+          });
+          yield* streamDoneFromResponse(response);
+        })();
+      }
+
+      return (async function* () {
+        const response = await mockCreateConversationWithMessage({ content });
+        yield* streamDoneFromResponse(response);
+      })();
+    });
   });
 
   afterEach(() => {
@@ -394,12 +450,9 @@ describe("ConversationsChat", () => {
       });
     });
 
-    it("keeps input text when stream and fallback both fail", async () => {
+    it("keeps input text and surfaces the stream failure for a new chat", async () => {
       const user = userEvent.setup({ delay: null });
       mockListConversations.mockResolvedValueOnce({ items: [] });
-      mockCreateConversationWithMessage.mockRejectedValueOnce(
-        new Error("Fallback failed"),
-      );
 
       async function* brokenStream() {
         yield* [];
@@ -425,9 +478,10 @@ describe("ConversationsChat", () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText(/error:.*fallback failed/i),
+          screen.getByText(/error:.*stream closed unexpectedly/i),
         ).toBeInTheDocument();
       });
+      expect(mockCreateConversationWithMessage).not.toHaveBeenCalled();
       expect(input.value).toBe("Hello");
     });
 
@@ -743,10 +797,6 @@ describe("ConversationsChat", () => {
       mockStreamConversation
         .mockReturnValueOnce(firstStream())
         .mockReturnValueOnce(brokenStream());
-      mockAddMessageToConversation.mockRejectedValueOnce(
-        new Error("Fallback failed"),
-      );
-
       renderWithAuth();
 
       await waitFor(() => {
@@ -774,9 +824,10 @@ describe("ConversationsChat", () => {
 
       await waitFor(() => {
         expect(
-          screen.getByText(/error:.*fallback failed/i),
+          screen.getByText(/error:.*stream closed unexpectedly/i),
         ).toBeInTheDocument();
       });
+      expect(mockAddMessageToConversation).not.toHaveBeenCalled();
 
       resolveReconciledTranscript?.(reconciledTranscript);
 
@@ -1128,7 +1179,7 @@ describe("ConversationsChat", () => {
       });
     });
 
-    it("displays message with error indicator when LLM fails", async () => {
+    it("displays a failed assistant bubble when the stream errors", async () => {
       const user = userEvent.setup();
       mockListConversations.mockResolvedValueOnce({ items: [] });
 
@@ -1161,12 +1212,6 @@ describe("ConversationsChat", () => {
 
       mockCreateConversationWithMessage.mockResolvedValueOnce(mockResponse);
 
-      // Mock getConversationMessages to return the messages
-      mockGetConversationMessages.mockResolvedValueOnce({
-        conversation: mockResponse.conversation,
-        items: [mockResponse.user_message, mockResponse.assistant_message],
-      });
-
       renderWithAuth();
 
       await waitFor(() => {
@@ -1183,14 +1228,12 @@ describe("ConversationsChat", () => {
       await user.type(input, "Hello");
       await user.click(screen.getByRole("button", { name: /send/i }));
 
-      // Wait for API call to complete
       await waitFor(() => {
         expect(mockCreateConversationWithMessage).toHaveBeenCalledWith({
           content: "Hello",
         });
       });
 
-      // Should display messages
       await waitFor(() => {
         expect(screen.getByText("Hello")).toBeInTheDocument();
       });
