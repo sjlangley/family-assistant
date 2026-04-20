@@ -544,6 +544,30 @@ describe("API client", () => {
       });
     });
 
+    it("processes trailing buffer without trailing newlines", async () => {
+      const mockStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode('event: token\ndata: "Final event"'),
+          );
+          controller.close();
+        },
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: mockStream,
+      });
+
+      const events = [];
+      for await (const event of api.streamConversation("conv-1", "Hi")) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toEqual({ event: "token", data: "Final event" });
+    });
+
     it("throws error when response is not ok", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,

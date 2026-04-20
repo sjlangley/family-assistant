@@ -67,6 +67,35 @@ export async function* streamConversation(
   const decoder = new TextDecoder();
   let buffer = "";
 
+  const processSegments = function* (
+    segments: string[],
+  ): Generator<SSEEvent, void, unknown> {
+    for (const segment of segments) {
+      if (!segment.trim()) continue;
+
+      const lines = segment.split("\n");
+      let event: SSEEventType | undefined;
+      let dataBuffer = "";
+
+      for (const line of lines) {
+        if (line.startsWith("event: ")) {
+          event = line.substring(7).trim() as SSEEventType;
+        } else if (line.startsWith("data: ")) {
+          dataBuffer += (dataBuffer ? "\n" : "") + line.substring(6);
+        }
+      }
+
+      if (event && dataBuffer) {
+        try {
+          const data = JSON.parse(dataBuffer);
+          yield { event, data };
+        } catch (e) {
+          console.error("Failed to parse SSE data", e, dataBuffer);
+        }
+      }
+    }
+  };
+
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -76,31 +105,13 @@ export async function* streamConversation(
       const segments = buffer.split("\n\n");
       // Keep the last segment in the buffer if it's incomplete
       buffer = segments.pop() || "";
+      yield* processSegments(segments);
+    }
 
-      for (const segment of segments) {
-        if (!segment.trim()) continue;
-
-        const lines = segment.split("\n");
-        let event: SSEEventType | undefined;
-        let dataBuffer = "";
-
-        for (const line of lines) {
-          if (line.startsWith("event: ")) {
-            event = line.substring(7).trim() as SSEEventType;
-          } else if (line.startsWith("data: ")) {
-            dataBuffer += (dataBuffer ? "\n" : "") + line.substring(6);
-          }
-        }
-
-        if (event && dataBuffer) {
-          try {
-            const data = JSON.parse(dataBuffer);
-            yield { event, data };
-          } catch (e) {
-            console.error("Failed to parse SSE data", e, dataBuffer);
-          }
-        }
-      }
+    // Flush decoder and process any remaining buffer content
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      yield* processSegments(buffer.split("\n\n"));
     }
   } finally {
     reader.releaseLock();
