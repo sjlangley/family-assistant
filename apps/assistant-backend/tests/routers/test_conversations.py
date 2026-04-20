@@ -271,7 +271,7 @@ async def test_create_conversation_with_message_success(
     )
     assert data['assistant_message']['annotations'] is not None
     assert data['assistant_message']['annotations']['tools'] == [
-        {'name': 'web_fetch', 'status': 'completed'}
+        {'id': None, 'name': 'web_fetch', 'status': 'completed'}
     ]
 
 
