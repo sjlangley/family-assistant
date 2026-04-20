@@ -464,7 +464,7 @@ describe("API client", () => {
           );
           controller.enqueue(
             new TextEncoder().encode(
-              'event: done\ndata: {"message_id": "123", "content": "Hello"}\n\n',
+              'event: done\ndata: {"conversation_id": "conv-1", "message_id": "123", "content": "Hello", "annotations": {"thought": null, "sources": [], "tools": [], "memory_hits": [], "memory_saved": [], "failure": null}}\n\n',
             ),
           );
           controller.close();
@@ -474,6 +474,7 @@ describe("API client", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         body: mockStream,
+        headers: new Headers({ "Content-Type": "text/event-stream" }),
       });
 
       const events = [];
@@ -503,6 +504,7 @@ describe("API client", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         body: mockStream,
+        headers: new Headers({ "Content-Type": "text/event-stream" }),
       });
 
       const events = [];
@@ -529,6 +531,7 @@ describe("API client", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         body: mockStream,
+        headers: new Headers({ "Content-Type": "text/event-stream" }),
       });
 
       const events = [];
@@ -557,6 +560,7 @@ describe("API client", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         body: mockStream,
+        headers: new Headers({ "Content-Type": "text/event-stream" }),
       });
 
       const events = [];

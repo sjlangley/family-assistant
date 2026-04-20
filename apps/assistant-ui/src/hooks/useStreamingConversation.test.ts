@@ -146,33 +146,84 @@ describe("useStreamingConversation hook", () => {
     );
   });
 
-  it("can stop an active stream", async () => {
-    const abortSpy = vi.spyOn(AbortController.prototype, "abort");
-
+  it("throws error on unexpected end-of-stream (no 'done' event)", async () => {
     async function* mockGenerator(): AsyncGenerator<SSEEvent, void, unknown> {
-      yield { event: "token" as const, data: "Never finished" };
-      // Simulate long delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      yield { event: "token" as const, data: "Partial content" };
+      // End without 'done'
     }
 
-    vi.mocked(api.streamConversation).mockImplementation(() => {
-      return mockGenerator();
-    });
+    vi.mocked(api.streamConversation).mockReturnValue(mockGenerator());
 
     const { result } = renderHook(() => useStreamingConversation());
 
-    act(() => {
-      // Don't await because it will take 1s
-      result.current.stream("conv-1", "Hi");
-    });
-
-    expect(result.current.isStreaming).toBe(true);
-
-    act(() => {
-      result.current.stop();
+    await act(async () => {
+      await result.current.stream("conv-1", "Hi");
     });
 
     expect(result.current.isStreaming).toBe(false);
-    expect(abortSpy).toHaveBeenCalled();
+    expect(result.current.error?.message).toBe("Stream closed unexpectedly");
+    expect(result.current.currentMessage?.error).toBe(
+      "Stream closed unexpectedly",
+    );
+  });
+
+  it("can stop an active stream", async () => {
+    const abortSpy = vi.spyOn(AbortController.prototype, "abort");
+
+    try {
+      async function* mockGenerator(
+        signal?: AbortSignal,
+      ): AsyncGenerator<SSEEvent, void, unknown> {
+        yield { event: "token" as const, data: "Never finished" };
+
+        if (signal?.aborted) {
+          return;
+        }
+
+        await new Promise<void>((resolve) => {
+          if (!signal) {
+            resolve();
+            return;
+          }
+
+          signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+      }
+
+      vi.mocked(api.streamConversation).mockImplementation((...args) => {
+        const options = args[2] as
+          | {
+              temperature?: number;
+              max_tokens?: number;
+              signal?: AbortSignal;
+            }
+          | undefined;
+        return mockGenerator(options?.signal);
+      });
+
+      const { result } = renderHook(() => useStreamingConversation());
+
+      let streamPromise!: Promise<void>;
+
+      await act(async () => {
+        streamPromise = result.current.stream("conv-1", "Hi");
+        await Promise.resolve();
+      });
+
+      expect(result.current.isStreaming).toBe(true);
+
+      act(() => {
+        result.current.stop();
+      });
+
+      await act(async () => {
+        await streamPromise;
+      });
+
+      expect(result.current.isStreaming).toBe(false);
+      expect(abortSpy).toHaveBeenCalled();
+    } finally {
+      abortSpy.mockRestore();
+    }
   });
 });

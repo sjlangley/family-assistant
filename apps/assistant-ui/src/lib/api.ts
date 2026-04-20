@@ -40,6 +40,7 @@ export async function* streamConversation(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Accept: "text/event-stream",
     },
     credentials: "include",
     body: JSON.stringify({
@@ -57,6 +58,11 @@ export async function* streamConversation(
     }
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.detail || "Streaming request failed");
+  }
+
+  const contentType = response.headers.get("Content-Type");
+  if (!contentType?.includes("text/event-stream")) {
+    throw new Error(`Expected text/event-stream but got ${contentType}`);
   }
 
   const reader = response.body?.getReader();

@@ -103,6 +103,7 @@ export function useStreamingConversation(
           signal: controller.signal,
         });
 
+        let receivedDone = false;
         for await (const event of eventGenerator) {
           switch (event.event) {
             case "thought":
@@ -154,6 +155,7 @@ export function useStreamingConversation(
               break;
 
             case "done": {
+              receivedDone = true;
               const doneData = event.data as StreamDoneData;
               const finalMessage: Message = {
                 id: doneData.message_id,
@@ -178,6 +180,10 @@ export function useStreamingConversation(
             default:
               console.warn(`Unknown SSE event type: ${event.event}`);
           }
+        }
+
+        if (!receivedDone) {
+          throw new Error("Stream closed unexpectedly");
         }
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") {
