@@ -23,6 +23,7 @@ class SourceAnnotation(BaseModel):
 
 
 class ToolAnnotation(BaseModel):
+    id: str | None = None
     name: str
     status: ToolAnnotationStatus
 

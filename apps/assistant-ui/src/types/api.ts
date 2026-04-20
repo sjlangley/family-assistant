@@ -47,6 +47,7 @@ export interface SourceAnnotation {
 }
 
 export interface ToolAnnotation {
+  id?: string;
   name: string;
   status: "completed" | "failed";
 }
@@ -68,11 +69,29 @@ export interface FailureAnnotation {
 }
 
 export interface AssistantAnnotations {
+  thought: string | null;
   sources: SourceAnnotation[];
   tools: ToolAnnotation[];
   memory_hits: MemoryHitAnnotation[];
   memory_saved: MemorySavedAnnotation[];
   failure: FailureAnnotation | null;
+}
+
+/**
+ * SSE Event types for streaming responses
+ */
+export type SSEEventType = "thought" | "token" | "tool_call" | "done" | "error";
+
+export interface SSEEvent {
+  event: SSEEventType;
+  data: unknown;
+}
+
+export interface StreamDoneData {
+  conversation_id: string;
+  message_id: string;
+  content: string;
+  annotations: AssistantAnnotations;
 }
 
 /**

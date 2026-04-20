@@ -4,4 +4,4 @@
 
 ### Miscellaneous Chores
 
-* bootstrap release automation
+- bootstrap release automation

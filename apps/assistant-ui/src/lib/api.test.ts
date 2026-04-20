@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as api from "./api";
+import { StreamDoneData } from "../types/api";
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -448,6 +449,138 @@ describe("API client", () => {
       await expect(
         api.addMessageToConversation("conv-1", { content: "Hello" }),
       ).rejects.toThrow("Failed to add message");
+    });
+  });
+
+  describe("streamConversation", () => {
+    it("yields SSE events from a stream", async () => {
+      const mockStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode('event: thought\ndata: "Thinking..."\n\n'),
+          );
+          controller.enqueue(
+            new TextEncoder().encode('event: token\ndata: "Hello"\n\n'),
+          );
+          controller.enqueue(
+            new TextEncoder().encode(
+              'event: done\ndata: {"conversation_id": "conv-1", "message_id": "123", "content": "Hello", "annotations": {"thought": null, "sources": [], "tools": [], "memory_hits": [], "memory_saved": [], "failure": null}}\n\n',
+            ),
+          );
+          controller.close();
+        },
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: mockStream,
+        headers: new Headers({ "Content-Type": "text/event-stream" }),
+      });
+
+      const events = [];
+      const generator = api.streamConversation("conv-1", "Hi");
+      for await (const event of generator) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(3);
+      expect(events[0]).toEqual({ event: "thought", data: "Thinking..." });
+      expect(events[1]).toEqual({ event: "token", data: "Hello" });
+      expect(events[2].event).toBe("done");
+      expect((events[2].data as StreamDoneData).message_id).toBe("123");
+    });
+
+    it("handles fragmented SSE data", async () => {
+      const mockStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("event: thought\n"));
+          controller.enqueue(
+            new TextEncoder().encode('data: "Thinking..."\n\n'),
+          );
+          controller.close();
+        },
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: mockStream,
+        headers: new Headers({ "Content-Type": "text/event-stream" }),
+      });
+
+      const events = [];
+      for await (const event of api.streamConversation("conv-1", "Hi")) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toEqual({ event: "thought", data: "Thinking..." });
+    });
+
+    it("handles multi-line SSE data fields", async () => {
+      const mockStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode(
+              'event: token\ndata: {"content":\ndata: " multiline"}\n\n',
+            ),
+          );
+          controller.close();
+        },
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: mockStream,
+        headers: new Headers({ "Content-Type": "text/event-stream" }),
+      });
+
+      const events = [];
+      for await (const event of api.streamConversation("conv-1", "Hi")) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toEqual({
+        event: "token",
+        // The spec requires a newline between data lines
+        data: { content: " multiline" },
+      });
+    });
+
+    it("processes trailing buffer without trailing newlines", async () => {
+      const mockStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode('event: token\ndata: "Final event"'),
+          );
+          controller.close();
+        },
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: mockStream,
+        headers: new Headers({ "Content-Type": "text/event-stream" }),
+      });
+
+      const events = [];
+      for await (const event of api.streamConversation("conv-1", "Hi")) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toEqual({ event: "token", data: "Final event" });
+    });
+
+    it("throws error when response is not ok", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ detail: "Something went wrong" }),
+      });
+
+      const generator = api.streamConversation("conv-1", "Hi");
+      await expect(generator.next()).rejects.toThrow("Something went wrong");
     });
   });
 });
