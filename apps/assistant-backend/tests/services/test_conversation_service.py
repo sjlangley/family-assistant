@@ -22,6 +22,7 @@ from assistant.models.llm import (
     LLMCompletionErrorKind,
     StreamParserOutput,
 )
+from assistant.models.tool import ToolExecutionResult, ToolExecutionStatus
 from assistant.services.assistant_annotations import AssistantAnnotationService
 from assistant.services.context_assembly import (
     ContextAssemblyResult,
@@ -818,10 +819,11 @@ async def test_add_message_to_conversation_stream_errors_on_tool_calls(
     conversation_service,
     mock_llm_service,
     mock_context_assembly,
+    mock_tool_service,
     async_session,
     test_user_id,
 ):
-    """Streaming path emits terminal error when model returns tool calls."""
+    """Streaming path executes tool calls and completes the assistant turn."""
     conversation = Conversation(user_id=test_user_id, title='Streaming Tool')
     async_session.add(conversation)
     await async_session.commit()
@@ -835,6 +837,7 @@ async def test_add_message_to_conversation_stream_errors_on_tool_calls(
     )
 
     async def stream_outputs():
+        yield StreamParserOutput(token='Checking ')
         yield StreamParserOutput(
             tool_calls=[
                 ChatCompletionMessageToolCall(
@@ -847,7 +850,33 @@ async def test_add_message_to_conversation_stream_errors_on_tool_calls(
             ]
         )
 
-    mock_llm_service.stream_messages = Mock(return_value=stream_outputs())
+    async def final_outputs():
+        yield StreamParserOutput(
+            token='the current time.',
+            finish_reason='stop',
+            usage=CompletionUsage(
+                prompt_tokens=8,
+                completion_tokens=5,
+                total_tokens=13,
+            ),
+            model='test-model',
+        )
+
+    mock_llm_service.stream_messages = Mock(
+        side_effect=[stream_outputs(), final_outputs()]
+    )
+    mock_tool_service.execute_tool.return_value = ToolExecutionResult(
+        tool_name='current_time',
+        status=ToolExecutionStatus.SUCCESS,
+        tool_call={
+            'name': 'current_time',
+            'arguments': {},
+            'started_at': datetime.now(timezone.utc),
+            'finished_at': datetime.now(timezone.utc),
+            'status': ToolExecutionStatus.SUCCESS,
+        },
+        llm_context='The current time is 10:00.',
+    )
 
     payload = CreateMessageRequest(content='Trigger tool call')
     emitted_events = []
@@ -859,10 +888,25 @@ async def test_add_message_to_conversation_stream_errors_on_tool_calls(
     ):
         emitted_events.append(event)
 
-    assert len(emitted_events) == 1
-    assert emitted_events[0].startswith('event: error')
-    error_payload = json.loads(emitted_events[0].split('data: ', 1)[1].strip())
-    assert 'not yet supported' in error_payload['detail'].lower()
+    assert any(event.startswith('event: token') for event in emitted_events)
+    tool_events = [
+        json.loads(event.split('data: ', 1)[1].strip())
+        for event in emitted_events
+        if event.startswith('event: tool_call')
+    ]
+    assert [tool_event['status'] for tool_event in tool_events] == [
+        'requested',
+        'running',
+        'completed',
+    ]
+    done_event = next(
+        event for event in emitted_events if event.startswith('event: done')
+    )
+    done_payload = json.loads(done_event.split('data: ', 1)[1].strip())
+    assert done_payload['content'] == 'Checking the current time.'
+    assert done_payload['annotations']['tools'] == [
+        {'id': None, 'name': 'current_time', 'status': 'completed'}
+    ]
 
     result = await async_session.execute(
         select(Message)
@@ -870,8 +914,12 @@ async def test_add_message_to_conversation_stream_errors_on_tool_calls(
         .order_by(Message.sequence_number.asc())
     )
     persisted_messages = list(result.scalars().all())
-    assert len(persisted_messages) == 1
-    assert persisted_messages[0].role == 'user'
+    assert len(persisted_messages) == 2
+    assert persisted_messages[1].role == 'assistant'
+    assert persisted_messages[1].content == 'Checking the current time.'
+    assert persisted_messages[1].annotations['tools'] == [
+        {'id': None, 'name': 'current_time', 'status': 'completed'}
+    ]
 
 
 async def test_add_message_to_conversation_stream_persists_partial_on_cancellation(

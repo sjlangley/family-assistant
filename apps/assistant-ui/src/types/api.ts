@@ -49,7 +49,7 @@ export interface SourceAnnotation {
 export interface ToolAnnotation {
   id?: string;
   name: string;
-  status: "completed" | "failed";
+  status: "requested" | "running" | "completed" | "failed";
 }
 
 export interface MemoryHitAnnotation {

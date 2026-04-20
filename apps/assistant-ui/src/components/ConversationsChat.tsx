@@ -202,12 +202,24 @@ function SourceDetail({ title, url, snippet, rationale }: SourceDetailProps) {
 // ToolDetail: Renders tool usage information
 interface ToolDetailProps {
   name: string;
-  status: "completed" | "failed";
+  status: "requested" | "running" | "completed" | "failed";
 }
 
 function ToolDetail({ name, status }: ToolDetailProps) {
-  const statusColor = status === "completed" ? "#2f6b53" : "#a54034";
-  const statusLabel = status === "completed" ? "Completed" : "Failed";
+  const statusColor =
+    status === "completed"
+      ? "#2f6b53"
+      : status === "failed"
+        ? "#a54034"
+        : "#315c85";
+  const statusLabel =
+    status === "completed"
+      ? "Completed"
+      : status === "failed"
+        ? "Failed"
+        : status === "running"
+          ? "Running"
+          : "Requested";
 
   return (
     <div className="evidence-tool-item">
@@ -222,6 +234,33 @@ function ToolDetail({ name, status }: ToolDetailProps) {
         </span>
       </div>
       <p className="type-meta text-[#6e675d] mt-1">{statusLabel}</p>
+    </div>
+  );
+}
+
+function StreamingToolStatusRow({
+  tools,
+}: {
+  tools: AssistantAnnotations["tools"];
+}) {
+  if (tools.length === 0) return null;
+
+  const statusCopy = (tool: AssistantAnnotations["tools"][number]) => {
+    if (tool.status === "failed") return `${tool.name} failed`;
+    if (tool.status === "completed") return `Used ${tool.name}`;
+    return `Using ${tool.name}`;
+  };
+
+  return (
+    <div className="streaming-tool-status-row" aria-live="polite">
+      {tools.map((tool) => (
+        <div
+          key={tool.id || `${tool.name}-${tool.status}`}
+          className={`streaming-tool-status streaming-tool-status-${tool.status}`}
+        >
+          {statusCopy(tool)}
+        </div>
+      ))}
     </div>
   );
 }
@@ -940,6 +979,13 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
                                     </div>
                                   </div>
                                 )}
+                                {msg.annotations &&
+                                  msg.annotations.tools.length > 0 &&
+                                  msg.id.startsWith("streaming-") && (
+                                    <StreamingToolStatusRow
+                                      tools={msg.annotations.tools}
+                                    />
+                                  )}
                                 <MarkdownContent content={msg.content} />
                               </>
                             ) : (

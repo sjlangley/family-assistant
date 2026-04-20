@@ -27,7 +27,6 @@ from assistant.models.llm import (
     ChatCompletionRequestSystemMessage,
     LLMCompletionError,
     LLMCompletionErrorKind,
-    StreamParserOutput,
     ToolChoice,
 )
 from assistant.models.tool import ToolExecutionResult
@@ -515,6 +514,8 @@ class ConversationService:
         )
         content_parts: list[str] = []
         thought_parts: list[str] = []
+        executed_tools: list[ToolExecutionResult] = []
+        attempted_tool_execution = False
         model_name: str | None = None
         usage_payload: dict | None = None
         stream_started = False
@@ -523,27 +524,48 @@ class ConversationService:
         emitted_tool_calls = 0
 
         try:
-            async for output in self._call_llm_chat_completion_stream(
+            async for event in self._call_llm_chat_completion_stream(
                 messages=context_messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
             ):
-                if output.thought:
-                    thought_parts.append(output.thought)
+                event_type = event['type']
+                if event_type == 'thought':
+                    thought = cast(str, event['data'])
+                    thought_parts.append(thought)
                     stream_started = True
                     emitted_thoughts += 1
-                    yield SSEEncoder.encode('thought', output.thought)
+                    yield SSEEncoder.encode('thought', thought)
+                    continue
 
-                if output.token:
-                    content_parts.append(output.token)
+                if event_type == 'token':
+                    token = cast(str, event['data'])
+                    content_parts.append(token)
                     stream_started = True
                     emitted_tokens += 1
-                    yield SSEEncoder.encode('token', output.token)
+                    yield SSEEncoder.encode('token', token)
+                    continue
 
-                if output.model:
-                    model_name = output.model
-                if output.usage:
-                    usage_payload = output.usage.model_dump()
+                if event_type == 'tool_call':
+                    stream_started = True
+                    attempted_tool_execution = True
+                    emitted_tool_calls += 1
+                    yield SSEEncoder.encode('tool_call', event['data'])
+                    continue
+
+                if event_type == 'meta':
+                    if event['data'].get('model') is not None:
+                        model_name = cast(str, event['data']['model'])
+                    usage = event['data'].get('usage')
+                    if usage is not None:
+                        usage_payload = cast(dict, usage)
+                    executed_tools = cast(
+                        list[ToolExecutionResult],
+                        event['data']['executed_tools'],
+                    )
+                    attempted_tool_execution = cast(
+                        bool, event['data']['attempted_tool_execution']
+                    )
 
         except LLMCompletionError as error:
             logger.debug(
@@ -565,6 +587,8 @@ class ConversationService:
                     or 'Unable to generate a response. Please try again.',
                     thought=''.join(thought_parts) or None,
                     fact_ids=fact_ids,
+                    executed_tools=executed_tools,
+                    attempted_tool_execution=attempted_tool_execution,
                     error=error,
                 )
 
@@ -601,6 +625,8 @@ class ConversationService:
                     or 'Unable to generate a response. Please try again.',
                     thought=''.join(thought_parts) or None,
                     fact_ids=fact_ids,
+                    executed_tools=executed_tools,
+                    attempted_tool_execution=attempted_tool_execution,
                     error=cancellation_error,
                 )
             raise
@@ -613,6 +639,8 @@ class ConversationService:
             or 'Unable to generate a response. Please try again.',
             thought=''.join(thought_parts) or None,
             fact_ids=fact_ids,
+            executed_tools=executed_tools,
+            attempted_tool_execution=attempted_tool_execution,
             error=None,
         )
         logger.debug(
@@ -656,19 +684,21 @@ class ConversationService:
         content: str,
         thought: str | None,
         fact_ids: list[uuid.UUID],
+        executed_tools: list[ToolExecutionResult],
+        attempted_tool_execution: bool,
         error: LLMCompletionError | None,
     ) -> Message:
         """Persist an assistant message row for terminal stream completion."""
         if error:
             annotations_obj = self.annotation_service.build_failure_annotations(
                 error=error,
-                executed_tools=[],
-                attempted_tool_execution=False,
+                executed_tools=executed_tools,
+                attempted_tool_execution=attempted_tool_execution,
             )
             error_text = self.annotation_service.format_error_detail(error)
         else:
             annotations_obj = self.annotation_service.build_success_annotations(
-                executed_tools=[],
+                executed_tools=executed_tools,
                 fact_ids=fact_ids,
             )
             error_text = None
@@ -893,40 +923,184 @@ class ConversationService:
         messages: list[dict],
         temperature: float,
         max_tokens: int | None,
-    ) -> AsyncGenerator[StreamParserOutput, None]:
-        """Call streaming completion seam and yield parsed incremental outputs."""
+    ) -> AsyncGenerator[dict, None]:
+        """Call streaming completion seam, executing tools between stream rounds."""
         system_message = ChatCompletionRequestSystemMessage(
             role='system', content=SYSTEM_PROMPT
         )
         llm_messages = [system_message.model_dump()] + messages
+        available_tools = self.tool_service.get_available_tools()
+        tools = available_tools if available_tools else None
+        executed_tools: list[ToolExecutionResult] = []
+        attempted_tool_execution = False
 
-        completion_kwargs = {
-            'messages': llm_messages,
-            'model': settings.llm_model,
-            'temperature': temperature,
-            'max_tokens': max_tokens,
-        }
+        for _ in range(MAXIMUM_TOOL_ROUNDS):
+            round_tool_calls: list = []
+            round_content_parts: list[str] = []
 
-        async for output in self.llm_service.stream_messages(
-            **completion_kwargs
-        ):
-            if output.finish_reason is not None:
-                logger.debug(
-                    'conversation streaming turn complete: finish_reason=%s usage=%s',
-                    output.finish_reason,
-                    output.usage.model_dump() if output.usage else None,
-                )
-                if output.finish_reason == 'length':
+            completion_kwargs = {
+                'messages': llm_messages,
+                'model': settings.llm_model,
+                'temperature': temperature,
+                'max_tokens': max_tokens,
+            }
+            if tools:
+                completion_kwargs['tools'] = [
+                    tool.model_dump() for tool in tools
+                ]
+                completion_kwargs['tool_choice'] = ToolChoice.auto
+
+            async for output in self.llm_service.stream_messages(
+                **completion_kwargs
+            ):
+                if output.finish_reason is not None:
                     logger.debug(
-                        'conversation streaming turn likely truncated: max_tokens=%s',
-                        max_tokens,
+                        'conversation streaming turn complete: finish_reason=%s usage=%s',
+                        output.finish_reason,
+                        output.usage.model_dump() if output.usage else None,
                     )
-            if output.tool_calls:
-                raise LLMCompletionError(
-                    kind=LLMCompletionErrorKind.invalid_response,
-                    message='Streaming tool calls are not yet supported',
+                    if output.finish_reason == 'length':
+                        logger.debug(
+                            'conversation streaming turn likely truncated: max_tokens=%s',
+                            max_tokens,
+                        )
+
+                if output.thought:
+                    yield {'type': 'thought', 'data': output.thought}
+
+                if output.token:
+                    round_content_parts.append(output.token)
+                    yield {'type': 'token', 'data': output.token}
+
+                if output.model or output.usage:
+                    yield {
+                        'type': 'meta',
+                        'data': {
+                            'model': output.model,
+                            'usage': output.usage.model_dump()
+                            if output.usage
+                            else None,
+                            'executed_tools': executed_tools,
+                            'attempted_tool_execution': attempted_tool_execution,
+                        },
+                    }
+
+                if output.tool_calls:
+                    round_tool_calls = output.tool_calls
+
+            if not round_tool_calls:
+                yield {
+                    'type': 'meta',
+                    'data': {
+                        'executed_tools': executed_tools,
+                        'attempted_tool_execution': attempted_tool_execution,
+                    },
+                }
+                return
+
+            attempted_tool_execution = True
+            llm_messages.append(
+                {
+                    'role': 'assistant',
+                    'content': ''.join(round_content_parts) or None,
+                    'tool_calls': round_tool_calls,
+                }
+            )
+
+            for tool_call in round_tool_calls:
+                yield {
+                    'type': 'tool_call',
+                    'data': {
+                        'id': tool_call.id,
+                        'name': tool_call.function.name,
+                        'status': 'requested',
+                    },
+                }
+                parsed_arguments = self._parse_tool_arguments(tool_call)
+                yield {
+                    'type': 'tool_call',
+                    'data': {
+                        'id': tool_call.id,
+                        'name': tool_call.function.name,
+                        'status': 'running',
+                    },
+                }
+                try:
+                    tool_result = await self.tool_service.execute_tool(
+                        name=tool_call.function.name,
+                        arguments=parsed_arguments,
+                    )
+                except (UnsupportedToolError, DisabledToolError) as exc:
+                    yield {
+                        'type': 'tool_call',
+                        'data': {
+                            'id': tool_call.id,
+                            'name': tool_call.function.name,
+                            'status': 'failed',
+                            'detail': str(exc),
+                        },
+                    }
+                    raise LLMCompletionError(
+                        kind=LLMCompletionErrorKind.invalid_response,
+                        message=f'Tool error: {str(exc)}',
+                    ) from exc
+                except Exception as exc:
+                    yield {
+                        'type': 'tool_call',
+                        'data': {
+                            'id': tool_call.id,
+                            'name': tool_call.function.name,
+                            'status': 'failed',
+                            'detail': str(exc),
+                        },
+                    }
+                    raise LLMCompletionError(
+                        kind=LLMCompletionErrorKind.backend_error,
+                        message=f'Error executing tool {tool_call.function.name}: {str(exc)}',
+                    ) from exc
+
+                executed_tools.append(tool_result)
+                yield {
+                    'type': 'tool_call',
+                    'data': {
+                        'id': tool_call.id,
+                        'name': tool_call.function.name,
+                        'status': 'completed'
+                        if tool_result.status.value == 'success'
+                        else 'failed',
+                    },
+                }
+
+                llm_messages.append(
+                    {
+                        'role': 'tool',
+                        'tool_call_id': tool_call.id,
+                        'content': tool_result.llm_context or '',
+                    }
                 )
-            yield output
+
+        raise LLMCompletionError(
+            kind=LLMCompletionErrorKind.backend_error,
+            message=f'Assistant exceeded maximum tool rounds ({MAXIMUM_TOOL_ROUNDS})',
+        )
+
+    @staticmethod
+    def _parse_tool_arguments(
+        tool_call,
+    ) -> dict:
+        """Parse tool arguments from an OpenAI-compatible tool call delta."""
+        try:
+            parsed_arguments = json.loads(tool_call.function.arguments)
+            if not isinstance(parsed_arguments, dict):
+                raise ValueError(
+                    f'Tool arguments must be a JSON object, got {type(parsed_arguments).__name__}'
+                )
+            return parsed_arguments
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise LLMCompletionError(
+                kind=LLMCompletionErrorKind.invalid_response,
+                message=f'Unable to parse tool arguments for {tool_call.function.name}: {str(exc)}',
+            ) from exc
 
     @staticmethod
     def _conversation_summary(

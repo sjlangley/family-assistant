@@ -184,6 +184,80 @@ describe("ConversationsChat", () => {
       });
     });
 
+    it("renders streaming tool lifecycle updates inline", async () => {
+      const user = userEvent.setup({ delay: null });
+      mockListConversations.mockResolvedValueOnce({ items: [] });
+      let releaseStream!: () => void;
+      const streamPaused = new Promise<void>((resolve) => {
+        releaseStream = resolve;
+      });
+
+      async function* streamEvents() {
+        yield {
+          event: "tool_call" as const,
+          data: {
+            id: "call-1",
+            name: "web_search",
+            status: "requested" as const,
+          },
+        };
+        yield {
+          event: "tool_call" as const,
+          data: {
+            id: "call-1",
+            name: "web_search",
+            status: "running" as const,
+          },
+        };
+        await streamPaused;
+        yield { event: "token" as const, data: "Done" };
+        yield {
+          event: "done" as const,
+          data: {
+            conversation_id: "new-conv",
+            message_id: "assistant-1",
+            content: "Done",
+            annotations: {
+              thought: null,
+              sources: [],
+              tools: [{ name: "web_search", status: "completed" as const }],
+              memory_hits: [],
+              memory_saved: [],
+              failure: null,
+            },
+          },
+        };
+      }
+
+      mockStreamConversation.mockReturnValueOnce(streamEvents());
+
+      renderWithAuth();
+
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(
+            /type a message to start a new conversation/i,
+          ),
+        ).toBeInTheDocument();
+      });
+
+      const input = screen.getByPlaceholderText(
+        /type a message to start a new conversation/i,
+      );
+      await user.type(input, "Search");
+      await user.click(screen.getByRole("button", { name: /send/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText("Using web_search")).toBeInTheDocument();
+      });
+
+      releaseStream();
+
+      await waitFor(() => {
+        expect(screen.getByText("Done")).toBeInTheDocument();
+      });
+    });
+
     it("shows welcome message when no conversation is selected", async () => {
       mockListConversations.mockResolvedValueOnce({ items: [] });
 

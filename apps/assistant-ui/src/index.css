@@ -214,6 +214,30 @@
     color: var(--color-text-muted);
   }
 
+  .streaming-tool-status-row {
+    @apply mb-2 flex flex-wrap gap-2;
+  }
+
+  .streaming-tool-status {
+    @apply inline-flex items-center rounded-full border px-3 py-1;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .streaming-tool-status-requested,
+  .streaming-tool-status-running {
+    @apply border-[#c9bfae] bg-[#f6f2ea] text-[#315c85];
+  }
+
+  .streaming-tool-status-completed {
+    @apply border-[#c9bfae] bg-[#f6f2ea] text-[#2f6b53];
+  }
+
+  .streaming-tool-status-failed {
+    @apply border-[#e0b5ad] bg-[#f8e9e6] text-[#a54034];
+  }
+
   /* Trust metadata row */
   .trust-row {
     @apply flex flex-wrap gap-3 mt-2 pt-2 border-t border-[#ded6c7];

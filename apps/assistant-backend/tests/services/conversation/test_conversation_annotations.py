@@ -18,7 +18,7 @@ from assistant.models.conversation import (
 from assistant.models.conversation_sql import Conversation, Message
 from assistant.models.llm import (
     LLMCompletionError,
-     LLMCompletionErrorKind,
+    LLMCompletionErrorKind,
     LLMCompletionResult,
 )
 from assistant.services.assistant_annotations import AssistantAnnotationService
