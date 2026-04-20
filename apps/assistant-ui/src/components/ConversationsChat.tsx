@@ -253,9 +253,9 @@ function StreamingToolStatusRow({
 
   return (
     <div className="streaming-tool-status-row" aria-live="polite">
-      {tools.map((tool) => (
+      {tools.map((tool, idx) => (
         <div
-          key={tool.id || `${tool.name}-${tool.status}`}
+          key={tool.id || tool.name + "-" + idx}
           className={`streaming-tool-status streaming-tool-status-${tool.status}`}
         >
           {statusCopy(tool)}
