@@ -450,4 +450,76 @@ describe("API client", () => {
       ).rejects.toThrow("Failed to add message");
     });
   });
+
+  describe("streamConversation", () => {
+    it("yields SSE events from a stream", async () => {
+      const mockStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode('event: thought\ndata: "Thinking..."\n\n'),
+          );
+          controller.enqueue(
+            new TextEncoder().encode('event: token\ndata: "Hello"\n\n'),
+          );
+          controller.enqueue(
+            new TextEncoder().encode(
+              'event: done\ndata: {"message_id": "123", "content": "Hello"}\n\n',
+            ),
+          );
+          controller.close();
+        },
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: mockStream,
+      });
+
+      const events = [];
+      const generator = api.streamConversation("conv-1", "Hi");
+      for await (const event of generator) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(3);
+      expect(events[0]).toEqual({ event: "thought", data: "Thinking..." });
+      expect(events[1]).toEqual({ event: "token", data: "Hello" });
+      expect(events[2].event).toBe("done");
+      expect(events[2].data.message_id).toBe("123");
+    });
+
+    it("handles fragmented SSE data", async () => {
+      const mockStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("event: thought\n"));
+          controller.enqueue(new TextEncoder().encode('data: "Thinking..."\n\n'));
+          controller.close();
+        },
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: mockStream,
+      });
+
+      const events = [];
+      for await (const event of api.streamConversation("conv-1", "Hi")) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toEqual({ event: "thought", data: "Thinking..." });
+    });
+
+    it("throws error when response is not ok", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ detail: "Something went wrong" }),
+      });
+
+      const generator = api.streamConversation("conv-1", "Hi");
+      await expect(generator.next()).rejects.toThrow("Something went wrong");
+    });
+  });
 });

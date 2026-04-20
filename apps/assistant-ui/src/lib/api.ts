@@ -12,10 +12,98 @@ import type {
   ConversationWithMessagesResponse,
   CreateConversationRequest,
   CreateMessageRequest,
+  SSEEvent,
+  SSEEventType,
 } from "../types/api";
 
 function getApiBaseUrl(): string {
   return import.meta.env.VITE_API_BASE_URL || "";
+}
+
+/**
+ * Stream a conversation with SSE
+ */
+export async function* streamConversation(
+  conversationId: string | null,
+  content: string,
+  options?: {
+    temperature?: number;
+    max_tokens?: number;
+    signal?: AbortSignal;
+  },
+): AsyncGenerator<SSEEvent, void, unknown> {
+  const url = conversationId
+    ? `${getApiBaseUrl()}/api/v1/conversations/${conversationId}/messages`
+    : `${getApiBaseUrl()}/api/v1/conversations/with-message`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    credentials: "include",
+    body: JSON.stringify({
+      content,
+      temperature: options?.temperature,
+      max_tokens: options?.max_tokens,
+      stream: true,
+    }),
+    signal: options?.signal,
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error("UNAUTHORIZED");
+    }
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || "Streaming request failed");
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("Response body is not readable");
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const segments = buffer.split("\n\n");
+      // Keep the last segment in the buffer if it's incomplete
+      buffer = segments.pop() || "";
+
+      for (const segment of segments) {
+        if (!segment.trim()) continue;
+
+        const lines = segment.split("\n");
+        let event: SSEEventType | undefined;
+        let data: any;
+
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            event = line.substring(7) as SSEEventType;
+          } else if (line.startsWith("data: ")) {
+            try {
+              data = JSON.parse(line.substring(6));
+            } catch (e) {
+              console.error("Failed to parse SSE data", e, line);
+            }
+          }
+        }
+
+        if (event && data !== undefined) {
+          yield { event, data };
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 /**
