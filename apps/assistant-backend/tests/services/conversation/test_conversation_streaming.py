@@ -1,6 +1,7 @@
 """Tests for ConversationService streaming operations."""
 
 import asyncio
+from datetime import datetime, timezone
 import json
 from unittest.mock import Mock
 
@@ -20,6 +21,7 @@ from assistant.models.llm import (
     LLMCompletionErrorKind,
     StreamParserOutput,
 )
+from assistant.models.tool import ToolExecutionResult, ToolExecutionStatus
 from assistant.services.context_assembly import ContextAssemblyResult
 
 
@@ -230,14 +232,15 @@ async def test_add_message_to_conversation_stream_skips_assistant_persistence_wi
 
 
 @pytest.mark.asyncio
-async def test_add_message_to_conversation_stream_errors_on_tool_calls(
+async def test_add_message_to_conversation_stream_executes_tool_calls(
     conversation_service,
     mock_llm_service,
     mock_context_assembly,
+    mock_tool_service,
     async_session,
     test_user_id,
 ):
-    """Streaming path emits terminal error when model returns tool calls."""
+    """Streaming path executes tool calls and continues the assistant turn."""
     conversation = Conversation(user_id=test_user_id, title='Streaming Tool')
     async_session.add(conversation)
     await async_session.commit()
@@ -250,7 +253,8 @@ async def test_add_message_to_conversation_stream_errors_on_tool_calls(
         fact_ids=[],
     )
 
-    async def stream_outputs():
+    async def first_round():
+        yield StreamParserOutput(token='Checking ')
         yield StreamParserOutput(
             tool_calls=[
                 ChatCompletionMessageToolCall(
@@ -263,7 +267,33 @@ async def test_add_message_to_conversation_stream_errors_on_tool_calls(
             ]
         )
 
-    mock_llm_service.stream_messages = Mock(return_value=stream_outputs())
+    async def second_round():
+        yield StreamParserOutput(
+            token='the current time.',
+            finish_reason='stop',
+            usage=CompletionUsage(
+                prompt_tokens=8,
+                completion_tokens=5,
+                total_tokens=13,
+            ),
+            model='test-model',
+        )
+
+    mock_llm_service.stream_messages = Mock(
+        side_effect=[first_round(), second_round()]
+    )
+    mock_tool_service.execute_tool.return_value = ToolExecutionResult(
+        tool_name='current_time',
+        status=ToolExecutionStatus.SUCCESS,
+        tool_call={
+            'name': 'current_time',
+            'arguments': {},
+            'started_at': datetime.now(timezone.utc),
+            'finished_at': datetime.now(timezone.utc),
+            'status': ToolExecutionStatus.SUCCESS,
+        },
+        llm_context='The current time is 10:00.',
+    )
 
     payload = CreateMessageRequest(content='Trigger tool call')
     emitted_events = []
@@ -275,10 +305,26 @@ async def test_add_message_to_conversation_stream_errors_on_tool_calls(
     ):
         emitted_events.append(event)
 
-    assert len(emitted_events) == 1
-    assert emitted_events[0].startswith('event: error')
-    error_payload = json.loads(emitted_events[0].split('data: ', 1)[1].strip())
-    assert 'not yet supported' in error_payload['detail'].lower()
+    assert any(event.startswith('event: token') for event in emitted_events)
+    tool_events = [
+        json.loads(event.split('data: ', 1)[1].strip())
+        for event in emitted_events
+        if event.startswith('event: tool_call')
+    ]
+    assert [tool_event['status'] for tool_event in tool_events] == [
+        'requested',
+        'running',
+        'completed',
+    ]
+    assert tool_events[-1]['name'] == 'current_time'
+    done_event = next(
+        event for event in emitted_events if event.startswith('event: done')
+    )
+    done_payload = json.loads(done_event.split('data: ', 1)[1].strip())
+    assert done_payload['content'] == 'Checking the current time.'
+    assert done_payload['annotations']['tools'] == [
+        {'id': None, 'name': 'current_time', 'status': 'completed'}
+    ]
 
     result = await async_session.execute(
         select(Message)
@@ -286,8 +332,267 @@ async def test_add_message_to_conversation_stream_errors_on_tool_calls(
         .order_by(Message.sequence_number.asc())
     )
     persisted_messages = list(result.scalars().all())
-    assert len(persisted_messages) == 1
-    assert persisted_messages[0].role == 'user'
+    assert len(persisted_messages) == 2
+    assert persisted_messages[1].role == 'assistant'
+    assert persisted_messages[1].content == 'Checking the current time.'
+    assert persisted_messages[1].annotations['tools'] == [
+        {'id': None, 'name': 'current_time', 'status': 'completed'}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_add_message_to_conversation_stream_executes_tool_calls_across_deltas(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    mock_tool_service,
+    async_session,
+    test_user_id,
+):
+    """Streaming path accumulates tool calls across multiple deltas in one round."""
+    conversation = Conversation(
+        user_id=test_user_id, title='Streaming Multi Tool'
+    )
+    async_session.add(conversation)
+    await async_session.commit()
+    await async_session.refresh(conversation)
+
+    mock_context_assembly.assemble_context.return_value = ContextAssemblyResult(
+        messages=[{'role': 'user', 'content': 'Trigger multiple tool calls'}],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+
+    async def first_round():
+        yield StreamParserOutput(
+            tool_calls=[
+                ChatCompletionMessageToolCall(
+                    id='call_1',
+                    type='function',
+                    function=ChatCompletionMessageToolCallFunction(
+                        name='current_time', arguments='{}'
+                    ),
+                )
+            ]
+        )
+        yield StreamParserOutput(
+            tool_calls=[
+                ChatCompletionMessageToolCall(
+                    id='call_2',
+                    type='function',
+                    function=ChatCompletionMessageToolCallFunction(
+                        name='current_time', arguments='{}'
+                    ),
+                )
+            ]
+        )
+
+    async def second_round():
+        yield StreamParserOutput(token='Done', finish_reason='stop')
+
+    mock_llm_service.stream_messages = Mock(
+        side_effect=[first_round(), second_round()]
+    )
+    mock_tool_service.execute_tool.side_effect = [
+        ToolExecutionResult(
+            tool_name='current_time',
+            status=ToolExecutionStatus.SUCCESS,
+            tool_call={
+                'name': 'current_time',
+                'arguments': {},
+                'started_at': datetime.now(timezone.utc),
+                'finished_at': datetime.now(timezone.utc),
+                'status': ToolExecutionStatus.SUCCESS,
+            },
+            llm_context='First result',
+        ),
+        ToolExecutionResult(
+            tool_name='current_time',
+            status=ToolExecutionStatus.SUCCESS,
+            tool_call={
+                'name': 'current_time',
+                'arguments': {},
+                'started_at': datetime.now(timezone.utc),
+                'finished_at': datetime.now(timezone.utc),
+                'status': ToolExecutionStatus.SUCCESS,
+            },
+            llm_context='Second result',
+        ),
+    ]
+
+    payload = CreateMessageRequest(content='Trigger multiple tool calls')
+
+    emitted_events = []
+    async for event in conversation_service.add_message_to_conversation_stream(
+        session=async_session,
+        user_id=test_user_id,
+        conversation_id=conversation.id,
+        payload=payload,
+    ):
+        emitted_events.append(event)
+
+    assert mock_tool_service.execute_tool.call_count == 2
+    tool_events = [
+        json.loads(event.split('data: ', 1)[1].strip())
+        for event in emitted_events
+        if event.startswith('event: tool_call')
+    ]
+    assert [tool_event['status'] for tool_event in tool_events] == [
+        'requested',
+        'running',
+        'completed',
+        'requested',
+        'running',
+        'completed',
+    ]
+
+
+@pytest.mark.asyncio
+async def test_add_message_to_conversation_stream_emits_failed_tool_lifecycle(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    mock_tool_service,
+    async_session,
+    test_user_id,
+):
+    """Streaming path persists a terminal tool error with tool lifecycle metadata."""
+    conversation = Conversation(
+        user_id=test_user_id, title='Streaming Tool Failure'
+    )
+    async_session.add(conversation)
+    await async_session.commit()
+    await async_session.refresh(conversation)
+
+    mock_context_assembly.assemble_context.return_value = ContextAssemblyResult(
+        messages=[{'role': 'user', 'content': 'Trigger tool failure'}],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+
+    async def stream_outputs():
+        yield StreamParserOutput(token='Trying ')
+        yield StreamParserOutput(
+            tool_calls=[
+                ChatCompletionMessageToolCall(
+                    id='call_fail',
+                    type='function',
+                    function=ChatCompletionMessageToolCallFunction(
+                        name='current_time', arguments='{}'
+                    ),
+                )
+            ]
+        )
+
+    mock_llm_service.stream_messages = Mock(return_value=stream_outputs())
+    mock_tool_service.execute_tool.side_effect = RuntimeError('tool exploded')
+
+    payload = CreateMessageRequest(content='Trigger tool failure')
+    emitted_events = []
+    async for event in conversation_service.add_message_to_conversation_stream(
+        session=async_session,
+        user_id=test_user_id,
+        conversation_id=conversation.id,
+        payload=payload,
+    ):
+        emitted_events.append(event)
+
+    tool_events = [
+        json.loads(event.split('data: ', 1)[1].strip())
+        for event in emitted_events
+        if event.startswith('event: tool_call')
+    ]
+    assert [tool_event['status'] for tool_event in tool_events] == [
+        'requested',
+        'running',
+        'failed',
+    ]
+    assert tool_events[-1]['detail'] == 'tool exploded'
+
+    error_event = next(
+        event for event in emitted_events if event.startswith('event: error')
+    )
+    error_payload = json.loads(error_event.split('data: ', 1)[1].strip())
+    assert 'tool exploded' in error_payload['detail'].lower()
+
+    result = await async_session.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation.id)
+        .order_by(Message.sequence_number.asc())
+    )
+    persisted_messages = list(result.scalars().all())
+    assert len(persisted_messages) == 2
+    assert persisted_messages[1].role == 'assistant'
+    assert persisted_messages[1].content == 'Trying '
+    assert persisted_messages[1].annotations['failure']['stage'] == 'tool'
+
+
+@pytest.mark.asyncio
+async def test_add_message_to_conversation_stream_emits_failed_tool_lifecycle_for_invalid_arguments(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    async_session,
+    test_user_id,
+):
+    """Invalid tool arguments emit a failed lifecycle event before terminal error."""
+    conversation = Conversation(
+        user_id=test_user_id, title='Streaming Tool Parse Failure'
+    )
+    async_session.add(conversation)
+    await async_session.commit()
+    await async_session.refresh(conversation)
+
+    mock_context_assembly.assemble_context.return_value = ContextAssemblyResult(
+        messages=[{'role': 'user', 'content': 'Trigger parse failure'}],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+
+    async def stream_outputs():
+        yield StreamParserOutput(
+            tool_calls=[
+                ChatCompletionMessageToolCall(
+                    id='call_bad_args',
+                    type='function',
+                    function=ChatCompletionMessageToolCallFunction(
+                        name='current_time', arguments='[]'
+                    ),
+                )
+            ]
+        )
+
+    mock_llm_service.stream_messages = Mock(return_value=stream_outputs())
+
+    payload = CreateMessageRequest(content='Trigger parse failure')
+    emitted_events = []
+    async for event in conversation_service.add_message_to_conversation_stream(
+        session=async_session,
+        user_id=test_user_id,
+        conversation_id=conversation.id,
+        payload=payload,
+    ):
+        emitted_events.append(event)
+
+    tool_events = [
+        json.loads(event.split('data: ', 1)[1].strip())
+        for event in emitted_events
+        if event.startswith('event: tool_call')
+    ]
+    assert [tool_event['status'] for tool_event in tool_events] == [
+        'requested',
+        'failed',
+    ]
+    assert 'json object' in tool_events[-1]['detail'].lower()
+
+    error_event = next(
+        event for event in emitted_events if event.startswith('event: error')
+    )
+    error_payload = json.loads(error_event.split('data: ', 1)[1].strip())
+    assert 'parse tool arguments' in error_payload['detail'].lower()
 
 
 @pytest.mark.asyncio
@@ -340,6 +645,92 @@ async def test_add_message_to_conversation_stream_persists_partial_on_cancellati
     assert persisted_messages[1].role == 'assistant'
     assert persisted_messages[1].content == 'partial output'
     assert 'interrupted' in (persisted_messages[1].error or '').lower()
+
+
+@pytest.mark.asyncio
+async def test_add_message_to_conversation_stream_persists_executed_tools_on_cancellation(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    mock_tool_service,
+    async_session,
+    test_user_id,
+):
+    """Cancellation after a successful tool run still persists tool metadata."""
+    conversation = Conversation(
+        user_id=test_user_id, title='Streaming Cancellation With Tool'
+    )
+    async_session.add(conversation)
+    await async_session.commit()
+    await async_session.refresh(conversation)
+
+    mock_context_assembly.assemble_context.return_value = ContextAssemblyResult(
+        messages=[
+            {'role': 'user', 'content': 'Trigger cancellation after tool'}
+        ],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+
+    async def first_round():
+        yield StreamParserOutput(token='Checking ')
+        yield StreamParserOutput(
+            tool_calls=[
+                ChatCompletionMessageToolCall(
+                    id='call_cancel',
+                    type='function',
+                    function=ChatCompletionMessageToolCallFunction(
+                        name='current_time', arguments='{}'
+                    ),
+                )
+            ]
+        )
+
+    async def second_round():
+        raise asyncio.CancelledError()
+        yield  # pragma: no cover
+
+    mock_llm_service.stream_messages = Mock(
+        side_effect=[first_round(), second_round()]
+    )
+    mock_tool_service.execute_tool.return_value = ToolExecutionResult(
+        tool_name='current_time',
+        status=ToolExecutionStatus.SUCCESS,
+        tool_call={
+            'name': 'current_time',
+            'arguments': {},
+            'started_at': datetime.now(timezone.utc),
+            'finished_at': datetime.now(timezone.utc),
+            'status': ToolExecutionStatus.SUCCESS,
+        },
+        llm_context='The current time is 10:00.',
+    )
+
+    payload = CreateMessageRequest(content='Trigger cancellation after tool')
+
+    with pytest.raises(asyncio.CancelledError):
+        async for _ in conversation_service.add_message_to_conversation_stream(
+            session=async_session,
+            user_id=test_user_id,
+            conversation_id=conversation.id,
+            payload=payload,
+        ):
+            pass
+
+    result = await async_session.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation.id)
+        .order_by(Message.sequence_number.asc())
+    )
+    persisted_messages = list(result.scalars().all())
+    assert len(persisted_messages) == 2
+    assert persisted_messages[1].role == 'assistant'
+    assert persisted_messages[1].content == 'Checking '
+    assert persisted_messages[1].annotations['tools'] == [
+        {'id': None, 'name': 'current_time', 'status': 'completed'}
+    ]
+    assert persisted_messages[1].annotations['failure']['stage'] == 'tool'
 
 
 @pytest.mark.asyncio

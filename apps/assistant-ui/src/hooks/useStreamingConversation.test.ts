@@ -146,6 +146,69 @@ describe("useStreamingConversation hook", () => {
     );
   });
 
+  it("updates tool lifecycle status as the stream progresses", async () => {
+    const mockEvents: SSEEvent[] = [
+      {
+        event: "tool_call" as const,
+        data: {
+          id: "call-1",
+          name: "web_search",
+          status: "requested" as const,
+        },
+      },
+      {
+        event: "tool_call" as const,
+        data: {
+          id: "call-1",
+          name: "web_search",
+          status: "running" as const,
+        },
+      },
+      {
+        event: "tool_call" as const,
+        data: {
+          id: "call-1",
+          name: "web_search",
+          status: "completed" as const,
+        },
+      },
+      {
+        event: "done" as const,
+        data: {
+          conversation_id: "conv-1",
+          message_id: "msg-123",
+          content: "Done",
+          annotations: {
+            thought: null,
+            sources: [],
+            tools: [{ name: "web_search", status: "completed" as const }],
+            memory_hits: [],
+            memory_saved: [],
+            failure: null,
+          },
+        } as StreamDoneData,
+      },
+    ];
+
+    async function* mockGenerator(): AsyncGenerator<SSEEvent, void, unknown> {
+      for (const event of mockEvents) {
+        yield event;
+      }
+    }
+
+    vi.mocked(api.streamConversation).mockReturnValue(mockGenerator());
+
+    const { result } = renderHook(() => useStreamingConversation());
+
+    await act(async () => {
+      await result.current.stream("conv-1", "Hi");
+    });
+
+    expect(result.current.currentMessage?.annotations?.tools).toEqual([
+      { name: "web_search", status: "completed" },
+    ]);
+  });
+
   it("throws error on unexpected end-of-stream (no 'done' event)", async () => {
     async function* mockGenerator(): AsyncGenerator<SSEEvent, void, unknown> {
       yield { event: "token" as const, data: "Partial content" };
