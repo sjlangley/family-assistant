@@ -1,5 +1,7 @@
 """Tests for conversation annotation building and enrichment."""
 
+from unittest.mock import AsyncMock, Mock
+
 from fastapi import HTTPException
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -16,10 +18,14 @@ from assistant.models.conversation import (
 from assistant.models.conversation_sql import Conversation, Message
 from assistant.models.llm import (
     LLMCompletionError,
-    LLMCompletionErrorKind,
+     LLMCompletionErrorKind,
     LLMCompletionResult,
 )
 from assistant.services.assistant_annotations import AssistantAnnotationService
+from assistant.services.context_assembly import ContextAssemblyService
+from assistant.services.conversation_service import ConversationService
+from assistant.services.llm_service import LLMService
+from assistant.services.tool_service import ToolService
 
 
 @pytest.mark.asyncio
@@ -349,13 +355,6 @@ async def test_enrich_annotations_with_summary_saved():
         await session.refresh(assistant_msg)
 
         # Create service and enrich annotations
-        from unittest.mock import AsyncMock, Mock
-
-        from assistant.services.context_assembly import ContextAssemblyService
-        from assistant.services.conversation_service import ConversationService
-        from assistant.services.llm_service import LLMService
-        from assistant.services.tool_service import ToolService
-
         service = ConversationService(
             llm_service=AsyncMock(spec=LLMService),
             context_assembly=AsyncMock(spec=ContextAssemblyService),
@@ -418,13 +417,6 @@ async def test_enrich_annotations_with_facts_saved():
         await session.refresh(assistant_msg)
 
         # Enrich with facts
-        from unittest.mock import AsyncMock, Mock
-
-        from assistant.services.context_assembly import ContextAssemblyService
-        from assistant.services.conversation_service import ConversationService
-        from assistant.services.llm_service import LLMService
-        from assistant.services.tool_service import ToolService
-
         service = ConversationService(
             llm_service=AsyncMock(spec=LLMService),
             context_assembly=AsyncMock(spec=ContextAssemblyService),
@@ -495,13 +487,6 @@ async def test_enrich_annotations_preserves_existing_data():
         await session.refresh(assistant_msg)
 
         # Enrich
-        from unittest.mock import AsyncMock, Mock
-
-        from assistant.services.context_assembly import ContextAssemblyService
-        from assistant.services.conversation_service import ConversationService
-        from assistant.services.llm_service import LLMService
-        from assistant.services.tool_service import ToolService
-
         service = ConversationService(
             llm_service=AsyncMock(spec=LLMService),
             context_assembly=AsyncMock(spec=ContextAssemblyService),
@@ -563,13 +548,6 @@ async def test_enrich_annotations_nothing_saved_leaves_empty():
         await session.refresh(assistant_msg)
 
         # Enrich with no saves
-        from unittest.mock import AsyncMock, Mock
-
-        from assistant.services.context_assembly import ContextAssemblyService
-        from assistant.services.conversation_service import ConversationService
-        from assistant.services.llm_service import LLMService
-        from assistant.services.tool_service import ToolService
-
         service = ConversationService(
             llm_service=AsyncMock(spec=LLMService),
             context_assembly=AsyncMock(spec=ContextAssemblyService),

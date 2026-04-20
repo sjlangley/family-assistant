@@ -519,7 +519,7 @@ async def test_build_extraction_prompt_includes_target_and_context():
             )
         )
 
-    # Target is message 4 (an assistant message)
+    # Target is message 4 (a user message, since i=4 is even)
     target_msg = messages[4]
 
     prompt = service._build_extraction_prompt(
