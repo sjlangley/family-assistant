@@ -24,6 +24,7 @@ from assistant.models.conversation import (
 )
 from assistant.models.conversation_sql import Conversation, Message
 from assistant.models.llm import (
+    ChatCompletionMessageToolCall,
     ChatCompletionRequestSystemMessage,
     LLMCompletionError,
     LLMCompletionErrorKind,
@@ -935,7 +936,7 @@ class ConversationService:
         attempted_tool_execution = False
 
         for _ in range(MAXIMUM_TOOL_ROUNDS):
-            round_tool_calls: dict[str, object] = {}
+            round_tool_calls: dict[str, ChatCompletionMessageToolCall] = {}
             round_content_parts: list[str] = []
 
             completion_kwargs = {
