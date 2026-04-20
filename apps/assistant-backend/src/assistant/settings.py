@@ -4,34 +4,10 @@ It uses Pydantic's BaseSettings to load environment variables from a `.env`
 file.
 """
 
-import json
-import os
-from typing import Any
-
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from assistant.enums import Environment
-
-
-def parse_list_env_var(value: str | list[str]) -> list[str]:
-    """Parse comma-separated string into list."""
-    if isinstance(value, list):
-        return value
-    if not value or not value.strip():
-        return []
-    return [item.strip() for item in value.split(',') if item.strip()]
-
-
-# Pre-process environment variables that should be lists
-if 'CLIENT_ORIGINS' in os.environ:
-    os.environ['CLIENT_ORIGINS'] = json.dumps(
-        parse_list_env_var(os.environ['CLIENT_ORIGINS'])
-    )
-if 'ALLOWED_HOSTED_DOMAINS' in os.environ:
-    os.environ['ALLOWED_HOSTED_DOMAINS'] = json.dumps(
-        parse_list_env_var(os.environ['ALLOWED_HOSTED_DOMAINS'])
-    )
 
 
 class Settings(BaseSettings):
@@ -46,8 +22,7 @@ class Settings(BaseSettings):
     # FastAPI’s CORS middleware does NOT support wildcard subdomains.
     # Ensure to include all specific subdomains for the web application.
     client_origins: list[str] = Field(
-        default=["http://localhost:3000","http://localhost:5173","https://gpt.langleyclan.com"],
-        alias='CLIENT_ORIGINS'
+        default_factory=list, alias='CLIENT_ORIGINS'
     )
 
     # For authentication
@@ -129,17 +104,6 @@ class Settings(BaseSettings):
         description='The Chroma collection name for storing assistant memory.',
         alias='CHROMA_COLLECTION_NAME',
     )
-
-    @field_validator('client_origins', 'allowed_hosted_domains', mode='before')
-    @classmethod
-    def parse_comma_separated_list(cls, v: Any) -> list[str] | Any:
-        """Parse comma-separated strings into lists."""
-        print(f"Parsing value for list field: {v} (type: {type(v)})")
-        if isinstance(v, str):
-            if not v.strip():
-                return []
-            return [item.strip() for item in v.split(',') if item.strip()]
-        return v
 
 
 settings = Settings()  # pyrefly: ignore[missing-argument]

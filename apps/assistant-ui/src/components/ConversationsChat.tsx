@@ -490,13 +490,29 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
         ];
       });
 
-      if (pendingStreamMetaRef.current?.startedWithoutActiveConversation) {
+      const startedWithoutActiveConversation =
+        pendingStreamMetaRef.current?.startedWithoutActiveConversation ?? false;
+
+      if (startedWithoutActiveConversation) {
         setActiveConversationId(doneData.conversation_id);
+      } else {
+        void (async () => {
+          try {
+            const transcript = await getConversationMessages(
+              doneData.conversation_id,
+            );
+            setMessages(transcript.items);
+          } catch (err) {
+            if (err instanceof Error && err.message === "UNAUTHORIZED") {
+              onLogout();
+            }
+          }
+        })();
       }
       pendingStreamMetaRef.current = null;
       void refreshConversations();
     },
-    [refreshConversations],
+    [onLogout, refreshConversations],
   );
 
   const { isStreaming, currentMessage, stream, stop, reset } =
@@ -681,13 +697,6 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
 
       // Fallback path for environments or flows where streaming fails.
       if (streamFailedRef.current) {
-        console.debug(
-          "[streaming] stream failed; falling back to non-stream endpoint",
-          {
-            activeConversationId,
-            messageLength: trimmedMessage.length,
-          },
-        );
         setError(null);
         if (activeConversationId) {
           const response = await addMessageToConversation(

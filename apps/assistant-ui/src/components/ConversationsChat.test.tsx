@@ -407,6 +407,128 @@ describe("ConversationsChat", () => {
   });
 
   describe("Existing conversation flow", () => {
+    it("reconciles persisted messages after a streamed response", async () => {
+      const user = userEvent.setup({ delay: null });
+
+      const mockConversations = {
+        items: [
+          {
+            id: "conv-1",
+            title: "Existing Conversation",
+            created_at: "2024-01-01T00:00:00Z",
+            updated_at: "2024-01-01T00:00:00Z",
+          },
+        ],
+      };
+
+      const initialTranscript = {
+        conversation: mockConversations.items[0],
+        items: [
+          {
+            id: "msg-1",
+            role: "user" as const,
+            content: "Previous question",
+            sequence_number: 1,
+            created_at: "2024-01-01T00:00:00Z",
+            error: null,
+            annotations: null,
+          },
+          {
+            id: "msg-2",
+            role: "assistant" as const,
+            content: "Previous answer",
+            sequence_number: 2,
+            created_at: "2024-01-01T00:00:00Z",
+            error: null,
+            annotations: null,
+          },
+        ],
+      };
+
+      const reconciledTranscript = {
+        conversation: mockConversations.items[0],
+        items: [
+          ...initialTranscript.items,
+          {
+            id: "persisted-user-3",
+            role: "user" as const,
+            content: "Follow-up question",
+            sequence_number: 3,
+            created_at: "2024-01-01T00:01:00Z",
+            error: null,
+            annotations: null,
+          },
+          {
+            id: "persisted-assistant-4",
+            role: "assistant" as const,
+            content: "Streamed answer",
+            sequence_number: 4,
+            created_at: "2024-01-01T00:01:02Z",
+            error: null,
+            annotations: null,
+          },
+        ],
+      };
+
+      async function* streamEvents() {
+        yield { event: "token" as const, data: "Streamed answer" };
+        yield {
+          event: "done" as const,
+          data: {
+            conversation_id: "conv-1",
+            message_id: "persisted-assistant-4",
+            content: "Streamed answer",
+            annotations: {
+              thought: null,
+              sources: [],
+              tools: [],
+              memory_hits: [],
+              memory_saved: [],
+              failure: null,
+            },
+          },
+        };
+      }
+
+      mockListConversations.mockResolvedValue(mockConversations);
+      mockGetConversationMessages
+        .mockResolvedValueOnce(initialTranscript)
+        .mockResolvedValueOnce(reconciledTranscript);
+      mockStreamConversation.mockReturnValueOnce(streamEvents());
+
+      renderWithAuth();
+
+      await waitFor(() => {
+        expect(screen.getByText("Existing Conversation")).toBeInTheDocument();
+      });
+      await user.click(screen.getByText("Existing Conversation"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Previous question")).toBeInTheDocument();
+      });
+
+      const input = screen.getByPlaceholderText(/type your message/i);
+      await user.type(input, "Follow-up question");
+      await user.click(screen.getByRole("button", { name: /send/i }));
+
+      await waitFor(() => {
+        expect(mockStreamConversation).toHaveBeenCalledWith(
+          "conv-1",
+          "Follow-up question",
+          expect.objectContaining({
+            signal: expect.any(AbortSignal),
+          }),
+        );
+      });
+
+      await waitFor(() => {
+        expect(mockGetConversationMessages).toHaveBeenCalledTimes(2);
+      });
+      expect(mockGetConversationMessages).toHaveBeenNthCalledWith(2, "conv-1");
+      expect(screen.getByText("Streamed answer")).toBeInTheDocument();
+      expect(screen.getByText("Follow-up question")).toBeInTheDocument();
+    });
+
     it("loads and displays messages when conversation is selected", async () => {
       const user = userEvent.setup();
 

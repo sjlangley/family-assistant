@@ -283,7 +283,6 @@ class ConversationService:
             sequence_number=next_seq,
         )
         session.add(user_message)
-        conversation_id = conversation.id
         await session.commit()
         await session.refresh(user_message)
 
@@ -446,7 +445,7 @@ class ConversationService:
                 detail='Message content cannot be empty',
             )
 
-        conversation = await self._get_conversation_for_user(
+        await self._get_conversation_for_user(
             session,
             user_id=user_id,
             conversation_id=conversation_id,
