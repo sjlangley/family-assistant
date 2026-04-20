@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as api from "./api";
+import { StreamDoneData } from "../types/api";
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -485,14 +486,16 @@ describe("API client", () => {
       expect(events[0]).toEqual({ event: "thought", data: "Thinking..." });
       expect(events[1]).toEqual({ event: "token", data: "Hello" });
       expect(events[2].event).toBe("done");
-      expect(events[2].data.message_id).toBe("123");
+      expect((events[2].data as StreamDoneData).message_id).toBe("123");
     });
 
     it("handles fragmented SSE data", async () => {
       const mockStream = new ReadableStream({
         start(controller) {
           controller.enqueue(new TextEncoder().encode("event: thought\n"));
-          controller.enqueue(new TextEncoder().encode('data: "Thinking..."\n\n'));
+          controller.enqueue(
+            new TextEncoder().encode('data: "Thinking..."\n\n'),
+          );
           controller.close();
         },
       });

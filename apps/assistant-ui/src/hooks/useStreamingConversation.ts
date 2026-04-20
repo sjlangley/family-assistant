@@ -112,7 +112,9 @@ export function useStreamingConversation(
                 thought: accumulatedThought,
               };
               setCurrentMessage((prev) =>
-                prev ? { ...prev, annotations: { ...currentAnnotations } } : null,
+                prev
+                  ? { ...prev, annotations: { ...currentAnnotations } }
+                  : null,
               );
               break;
 
@@ -126,7 +128,9 @@ export function useStreamingConversation(
             case "tool_call":
               // Transient tool call updates. data might be a single ToolAnnotation or an array.
               if (event.data) {
-                const incomingTools: ToolAnnotation[] = Array.isArray(event.data)
+                const incomingTools: ToolAnnotation[] = Array.isArray(
+                  event.data,
+                )
                   ? (event.data as ToolAnnotation[])
                   : [event.data as ToolAnnotation];
 
@@ -180,8 +184,7 @@ export function useStreamingConversation(
           return;
         }
 
-        const streamError =
-          err instanceof Error ? err : new Error(String(err));
+        const streamError = err instanceof Error ? err : new Error(String(err));
         setError(streamError);
 
         setCurrentMessage((prev) =>

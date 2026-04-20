@@ -2,6 +2,7 @@ import { renderHook, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useStreamingConversation } from "./useStreamingConversation";
 import * as api from "../lib/api";
+import { SSEEvent, StreamDoneData } from "../types/api";
 
 // Mock api
 vi.mock("../lib/api", async (importOriginal) => {
@@ -18,13 +19,14 @@ describe("useStreamingConversation hook", () => {
   });
 
   it("handles a complete streaming sequence", async () => {
-    const mockEvents = [
+    const mockEvents: SSEEvent[] = [
       { event: "thought" as const, data: "Thinking..." },
       { event: "token" as const, data: "Hello" },
       { event: "token" as const, data: " world" },
       {
         event: "done" as const,
         data: {
+          conversation_id: "conv-1",
           message_id: "msg-123",
           content: "Hello world",
           annotations: {
@@ -35,11 +37,11 @@ describe("useStreamingConversation hook", () => {
             memory_saved: [],
             failure: null,
           },
-        },
+        } as StreamDoneData,
       },
     ];
 
-    async function* mockGenerator(): AsyncGenerator<api.SSEEvent, void, unknown> {
+    async function* mockGenerator(): AsyncGenerator<SSEEvent, void, unknown> {
       for (const event of mockEvents) {
         yield event;
       }
@@ -71,7 +73,7 @@ describe("useStreamingConversation hook", () => {
   });
 
   it("handles errors during streaming", async () => {
-    async function* mockGenerator(): AsyncGenerator<api.SSEEvent, void, unknown> {
+    async function* mockGenerator(): AsyncGenerator<SSEEvent, void, unknown> {
       yield { event: "token" as const, data: "Partial" };
       throw new Error("Stream failed");
     }
@@ -94,14 +96,22 @@ describe("useStreamingConversation hook", () => {
   });
 
   it("de-duplicates tool call updates by id (falling back to name)", async () => {
-    const mockEvents = [
+    const mockEvents: SSEEvent[] = [
       {
         event: "tool_call" as const,
-        data: { id: "call-1", name: "web_search", status: "completed" as const },
+        data: {
+          id: "call-1",
+          name: "web_search",
+          status: "completed" as const,
+        },
       },
       {
         event: "tool_call" as const,
-        data: { id: "call-1", name: "web_search", status: "completed" as const }, // Duplicate ID
+        data: {
+          id: "call-1",
+          name: "web_search",
+          status: "completed" as const,
+        }, // Duplicate ID
       },
       {
         event: "tool_call" as const,
@@ -113,7 +123,7 @@ describe("useStreamingConversation hook", () => {
       },
     ];
 
-    async function* mockGenerator(): AsyncGenerator<api.SSEEvent, void, unknown> {
+    async function* mockGenerator(): AsyncGenerator<SSEEvent, void, unknown> {
       for (const event of mockEvents) {
         yield event;
       }
@@ -139,7 +149,7 @@ describe("useStreamingConversation hook", () => {
   it("can stop an active stream", async () => {
     const abortSpy = vi.spyOn(AbortController.prototype, "abort");
 
-    async function* mockGenerator(): AsyncGenerator<api.SSEEvent, void, unknown> {
+    async function* mockGenerator(): AsyncGenerator<SSEEvent, void, unknown> {
       yield { event: "token" as const, data: "Never finished" };
       // Simulate long delay
       await new Promise((resolve) => setTimeout(resolve, 1000));
