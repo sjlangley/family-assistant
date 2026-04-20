@@ -935,7 +935,7 @@ class ConversationService:
         attempted_tool_execution = False
 
         for _ in range(MAXIMUM_TOOL_ROUNDS):
-            round_tool_calls: list = []
+            round_tool_calls: dict[str, object] = {}
             round_content_parts: list[str] = []
 
             completion_kwargs = {
@@ -986,7 +986,8 @@ class ConversationService:
                     }
 
                 if output.tool_calls:
-                    round_tool_calls = output.tool_calls
+                    for tool_call in output.tool_calls:
+                        round_tool_calls[tool_call.id] = tool_call
 
             if not round_tool_calls:
                 yield {
@@ -1003,11 +1004,11 @@ class ConversationService:
                 {
                     'role': 'assistant',
                     'content': ''.join(round_content_parts) or None,
-                    'tool_calls': round_tool_calls,
+                    'tool_calls': list(round_tool_calls.values()),
                 }
             )
 
-            for tool_call in round_tool_calls:
+            for tool_call in round_tool_calls.values():
                 yield {
                     'type': 'tool_call',
                     'data': {
@@ -1016,7 +1017,19 @@ class ConversationService:
                         'status': 'requested',
                     },
                 }
-                parsed_arguments = self._parse_tool_arguments(tool_call)
+                try:
+                    parsed_arguments = self._parse_tool_arguments(tool_call)
+                except LLMCompletionError as exc:
+                    yield {
+                        'type': 'tool_call',
+                        'data': {
+                            'id': tool_call.id,
+                            'name': tool_call.function.name,
+                            'status': 'failed',
+                            'detail': str(exc),
+                        },
+                    }
+                    raise
                 yield {
                     'type': 'tool_call',
                     'data': {

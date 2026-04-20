@@ -815,7 +815,7 @@ async def test_add_message_to_conversation_stream_skips_assistant_persistence_wi
     assert persisted_messages[0].role == 'user'
 
 
-async def test_add_message_to_conversation_stream_errors_on_tool_calls(
+async def test_add_message_to_conversation_stream_executes_tool_calls(
     conversation_service,
     mock_llm_service,
     mock_context_assembly,

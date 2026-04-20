@@ -232,7 +232,7 @@ async def test_add_message_to_conversation_stream_skips_assistant_persistence_wi
 
 
 @pytest.mark.asyncio
-async def test_add_message_to_conversation_stream_errors_on_tool_calls(
+async def test_add_message_to_conversation_stream_executes_tool_calls(
     conversation_service,
     mock_llm_service,
     mock_context_assembly,
@@ -341,6 +341,114 @@ async def test_add_message_to_conversation_stream_errors_on_tool_calls(
 
 
 @pytest.mark.asyncio
+async def test_add_message_to_conversation_stream_executes_tool_calls_across_deltas(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    mock_tool_service,
+    async_session,
+    test_user_id,
+):
+    """Streaming path accumulates tool calls across multiple deltas in one round."""
+    conversation = Conversation(
+        user_id=test_user_id, title='Streaming Multi Tool'
+    )
+    async_session.add(conversation)
+    await async_session.commit()
+    await async_session.refresh(conversation)
+
+    mock_context_assembly.assemble_context.return_value = ContextAssemblyResult(
+        messages=[{'role': 'user', 'content': 'Trigger multiple tool calls'}],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+
+    async def first_round():
+        yield StreamParserOutput(
+            tool_calls=[
+                ChatCompletionMessageToolCall(
+                    id='call_1',
+                    type='function',
+                    function=ChatCompletionMessageToolCallFunction(
+                        name='current_time', arguments='{}'
+                    ),
+                )
+            ]
+        )
+        yield StreamParserOutput(
+            tool_calls=[
+                ChatCompletionMessageToolCall(
+                    id='call_2',
+                    type='function',
+                    function=ChatCompletionMessageToolCallFunction(
+                        name='current_time', arguments='{}'
+                    ),
+                )
+            ]
+        )
+
+    async def second_round():
+        yield StreamParserOutput(token='Done', finish_reason='stop')
+
+    mock_llm_service.stream_messages = Mock(
+        side_effect=[first_round(), second_round()]
+    )
+    mock_tool_service.execute_tool.side_effect = [
+        ToolExecutionResult(
+            tool_name='current_time',
+            status=ToolExecutionStatus.SUCCESS,
+            tool_call={
+                'name': 'current_time',
+                'arguments': {},
+                'started_at': datetime.now(timezone.utc),
+                'finished_at': datetime.now(timezone.utc),
+                'status': ToolExecutionStatus.SUCCESS,
+            },
+            llm_context='First result',
+        ),
+        ToolExecutionResult(
+            tool_name='current_time',
+            status=ToolExecutionStatus.SUCCESS,
+            tool_call={
+                'name': 'current_time',
+                'arguments': {},
+                'started_at': datetime.now(timezone.utc),
+                'finished_at': datetime.now(timezone.utc),
+                'status': ToolExecutionStatus.SUCCESS,
+            },
+            llm_context='Second result',
+        ),
+    ]
+
+    payload = CreateMessageRequest(content='Trigger multiple tool calls')
+
+    emitted_events = []
+    async for event in conversation_service.add_message_to_conversation_stream(
+        session=async_session,
+        user_id=test_user_id,
+        conversation_id=conversation.id,
+        payload=payload,
+    ):
+        emitted_events.append(event)
+
+    assert mock_tool_service.execute_tool.call_count == 2
+    tool_events = [
+        json.loads(event.split('data: ', 1)[1].strip())
+        for event in emitted_events
+        if event.startswith('event: tool_call')
+    ]
+    assert [tool_event['status'] for tool_event in tool_events] == [
+        'requested',
+        'running',
+        'completed',
+        'requested',
+        'running',
+        'completed',
+    ]
+
+
+@pytest.mark.asyncio
 async def test_add_message_to_conversation_stream_emits_failed_tool_lifecycle(
     conversation_service,
     mock_llm_service,
@@ -419,6 +527,72 @@ async def test_add_message_to_conversation_stream_emits_failed_tool_lifecycle(
     assert persisted_messages[1].role == 'assistant'
     assert persisted_messages[1].content == 'Trying '
     assert persisted_messages[1].annotations['failure']['stage'] == 'tool'
+
+
+@pytest.mark.asyncio
+async def test_add_message_to_conversation_stream_emits_failed_tool_lifecycle_for_invalid_arguments(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    async_session,
+    test_user_id,
+):
+    """Invalid tool arguments emit a failed lifecycle event before terminal error."""
+    conversation = Conversation(
+        user_id=test_user_id, title='Streaming Tool Parse Failure'
+    )
+    async_session.add(conversation)
+    await async_session.commit()
+    await async_session.refresh(conversation)
+
+    mock_context_assembly.assemble_context.return_value = ContextAssemblyResult(
+        messages=[{'role': 'user', 'content': 'Trigger parse failure'}],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+
+    async def stream_outputs():
+        yield StreamParserOutput(
+            tool_calls=[
+                ChatCompletionMessageToolCall(
+                    id='call_bad_args',
+                    type='function',
+                    function=ChatCompletionMessageToolCallFunction(
+                        name='current_time', arguments='[]'
+                    ),
+                )
+            ]
+        )
+
+    mock_llm_service.stream_messages = Mock(return_value=stream_outputs())
+
+    payload = CreateMessageRequest(content='Trigger parse failure')
+    emitted_events = []
+    async for event in conversation_service.add_message_to_conversation_stream(
+        session=async_session,
+        user_id=test_user_id,
+        conversation_id=conversation.id,
+        payload=payload,
+    ):
+        emitted_events.append(event)
+
+    tool_events = [
+        json.loads(event.split('data: ', 1)[1].strip())
+        for event in emitted_events
+        if event.startswith('event: tool_call')
+    ]
+    assert [tool_event['status'] for tool_event in tool_events] == [
+        'requested',
+        'failed',
+    ]
+    assert 'json object' in tool_events[-1]['detail'].lower()
+
+    error_event = next(
+        event for event in emitted_events if event.startswith('event: error')
+    )
+    error_payload = json.loads(error_event.split('data: ', 1)[1].strip())
+    assert 'parse tool arguments' in error_payload['detail'].lower()
 
 
 @pytest.mark.asyncio

@@ -47,7 +47,7 @@ export interface SourceAnnotation {
 }
 
 export interface ToolAnnotation {
-  id?: string;
+  id?: string | null;
   name: string;
   status: "requested" | "running" | "completed" | "failed";
 }
