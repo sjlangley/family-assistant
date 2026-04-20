@@ -39,13 +39,13 @@ describe("useStreamingConversation hook", () => {
       },
     ];
 
-    async function* mockGenerator() {
+    async function* mockGenerator(): AsyncGenerator<api.SSEEvent, void, unknown> {
       for (const event of mockEvents) {
         yield event;
       }
     }
 
-    vi.mocked(api.streamConversation).mockReturnValue(mockGenerator() as any);
+    vi.mocked(api.streamConversation).mockReturnValue(mockGenerator());
 
     const onDone = vi.fn();
     const { result } = renderHook(() => useStreamingConversation({ onDone }));
@@ -71,13 +71,12 @@ describe("useStreamingConversation hook", () => {
   });
 
   it("handles errors during streaming", async () => {
-    // eslint-disable-next-line require-yield
-    async function* mockGenerator() {
+    async function* mockGenerator(): AsyncGenerator<api.SSEEvent, void, unknown> {
       yield { event: "token" as const, data: "Partial" };
       throw new Error("Stream failed");
     }
 
-    vi.mocked(api.streamConversation).mockReturnValue(mockGenerator() as any);
+    vi.mocked(api.streamConversation).mockReturnValue(mockGenerator());
 
     const onError = vi.fn();
     const { result } = renderHook(() => useStreamingConversation({ onError }));
@@ -85,7 +84,7 @@ describe("useStreamingConversation hook", () => {
     await act(async () => {
       try {
         await result.current.stream("conv-1", "Hi");
-      } catch (e) {
+      } catch {
         // expected
       }
     });
@@ -114,13 +113,13 @@ describe("useStreamingConversation hook", () => {
       },
     ];
 
-    async function* mockGenerator() {
+    async function* mockGenerator(): AsyncGenerator<api.SSEEvent, void, unknown> {
       for (const event of mockEvents) {
         yield event;
       }
     }
 
-    vi.mocked(api.streamConversation).mockReturnValue(mockGenerator() as any);
+    vi.mocked(api.streamConversation).mockReturnValue(mockGenerator());
 
     const { result } = renderHook(() => useStreamingConversation());
 
@@ -140,18 +139,15 @@ describe("useStreamingConversation hook", () => {
   it("can stop an active stream", async () => {
     const abortSpy = vi.spyOn(AbortController.prototype, "abort");
 
-    // eslint-disable-next-line require-yield
-    async function* mockGenerator() {
+    async function* mockGenerator(): AsyncGenerator<api.SSEEvent, void, unknown> {
       yield { event: "token" as const, data: "Never finished" };
       // Simulate long delay
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
-    vi.mocked(api.streamConversation).mockImplementation(
-      (_cid, _c, _options) => {
-        return mockGenerator() as any;
-      },
-    );
+    vi.mocked(api.streamConversation).mockImplementation(() => {
+      return mockGenerator();
+    });
 
     const { result } = renderHook(() => useStreamingConversation());
 

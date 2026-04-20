@@ -84,7 +84,7 @@ export type SSEEventType = "thought" | "token" | "tool_call" | "done" | "error";
 
 export interface SSEEvent {
   event: SSEEventType;
-  data: any;
+  data: unknown;
 }
 
 export interface StreamDoneData {

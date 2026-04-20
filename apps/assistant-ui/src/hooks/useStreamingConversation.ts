@@ -1,7 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Message,
-  SSEEvent,
   StreamDoneData,
   AssistantAnnotations,
   ToolAnnotation,
@@ -107,7 +106,7 @@ export function useStreamingConversation(
         for await (const event of eventGenerator) {
           switch (event.event) {
             case "thought":
-              accumulatedThought += event.data;
+              accumulatedThought += event.data as string;
               currentAnnotations = {
                 ...currentAnnotations,
                 thought: accumulatedThought,
@@ -118,7 +117,7 @@ export function useStreamingConversation(
               break;
 
             case "token":
-              accumulatedContent += event.data;
+              accumulatedContent += event.data as string;
               setCurrentMessage((prev) =>
                 prev ? { ...prev, content: accumulatedContent } : null,
               );
@@ -128,8 +127,8 @@ export function useStreamingConversation(
               // Transient tool call updates. data might be a single ToolAnnotation or an array.
               if (event.data) {
                 const incomingTools: ToolAnnotation[] = Array.isArray(event.data)
-                  ? event.data
-                  : [event.data];
+                  ? (event.data as ToolAnnotation[])
+                  : [event.data as ToolAnnotation];
 
                 // De-duplicate by ID (falling back to name): new updates for the same tool replace existing ones.
                 const toolMap = new Map<string, ToolAnnotation>();
@@ -150,7 +149,7 @@ export function useStreamingConversation(
               }
               break;
 
-            case "done":
+            case "done": {
               const doneData = event.data as StreamDoneData;
               const finalMessage: Message = {
                 id: doneData.message_id,
@@ -165,9 +164,12 @@ export function useStreamingConversation(
               setIsStreaming(false);
               optionsRef.current?.onDone?.(doneData);
               return; // End of stream
+            }
 
             case "error":
-              throw new Error(event.data.detail || "Streaming error");
+              throw new Error(
+                (event.data as { detail?: string }).detail || "Streaming error",
+              );
 
             default:
               console.warn(`Unknown SSE event type: ${event.event}`);
