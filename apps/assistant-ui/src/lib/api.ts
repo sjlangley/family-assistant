@@ -82,22 +82,23 @@ export async function* streamConversation(
 
         const lines = segment.split("\n");
         let event: SSEEventType | undefined;
-        let data: any;
+        let dataBuffer = "";
 
         for (const line of lines) {
           if (line.startsWith("event: ")) {
-            event = line.substring(7) as SSEEventType;
+            event = line.substring(7).trim() as SSEEventType;
           } else if (line.startsWith("data: ")) {
-            try {
-              data = JSON.parse(line.substring(6));
-            } catch (e) {
-              console.error("Failed to parse SSE data", e, line);
-            }
+            dataBuffer += line.substring(6);
           }
         }
 
-        if (event && data !== undefined) {
-          yield { event, data };
+        if (event && dataBuffer) {
+          try {
+            const data = JSON.parse(dataBuffer);
+            yield { event, data };
+          } catch (e) {
+            console.error("Failed to parse SSE data", e, dataBuffer);
+          }
         }
       }
     }

@@ -121,13 +121,18 @@ export function useStreamingConversation(
             case "tool_call":
               // Transient tool call updates. data might be a single ToolAnnotation or an array.
               if (event.data) {
-                const newTools: ToolAnnotation[] = Array.isArray(event.data)
+                const incomingTools: ToolAnnotation[] = Array.isArray(event.data)
                   ? event.data
                   : [event.data];
 
+                // De-duplicate by name: new updates for the same tool name replace existing ones.
+                const toolMap = new Map<string, ToolAnnotation>();
+                currentAnnotations.tools.forEach((t) => toolMap.set(t.name, t));
+                incomingTools.forEach((t) => toolMap.set(t.name, t));
+
                 currentAnnotations = {
                   ...currentAnnotations,
-                  tools: [...currentAnnotations.tools, ...newTools],
+                  tools: Array.from(toolMap.values()),
                 };
                 setCurrentMessage((prev) =>
                   prev

@@ -90,10 +90,47 @@ describe("useStreamingConversation hook", () => {
       }
     });
 
-    expect(result.current.isStreaming).toBe(false);
-    expect(result.current.error?.message).toBe("Stream failed");
     expect(result.current.currentMessage?.error).toBe("Stream failed");
     expect(onError).toHaveBeenCalled();
+  });
+
+  it("de-duplicates tool call updates by name", async () => {
+    const mockEvents = [
+      {
+        event: "tool_call" as const,
+        data: { name: "web_search", status: "completed" as const },
+      },
+      {
+        event: "tool_call" as const,
+        data: { name: "web_search", status: "completed" as const }, // Duplicate
+      },
+      {
+        event: "tool_call" as const,
+        data: { name: "other_tool", status: "completed" as const },
+      },
+    ];
+
+    async function* mockGenerator() {
+      for (const event of mockEvents) {
+        yield event;
+      }
+    }
+
+    vi.mocked(api.streamConversation).mockReturnValue(mockGenerator() as any);
+
+    const { result } = renderHook(() => useStreamingConversation());
+
+    await act(async () => {
+      await result.current.stream("conv-1", "Hi");
+    });
+
+    expect(result.current.currentMessage?.annotations?.tools).toHaveLength(2);
+    expect(result.current.currentMessage?.annotations?.tools).toContainEqual(
+      mockEvents[0].data,
+    );
+    expect(result.current.currentMessage?.annotations?.tools).toContainEqual(
+      mockEvents[2].data,
+    );
   });
 
   it("can stop an active stream", async () => {

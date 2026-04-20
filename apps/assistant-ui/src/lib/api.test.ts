@@ -511,6 +511,33 @@ describe("API client", () => {
       expect(events[0]).toEqual({ event: "thought", data: "Thinking..." });
     });
 
+    it("handles multi-line SSE data fields", async () => {
+      const mockStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode('event: token\ndata: {"content":\ndata: " multiline"}\n\n'),
+          );
+          controller.close();
+        },
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: mockStream,
+      });
+
+      const events = [];
+      for await (const event of api.streamConversation("conv-1", "Hi")) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toEqual({
+        event: "token",
+        data: { content: " multiline" },
+      });
+    });
+
     it("throws error when response is not ok", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
