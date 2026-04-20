@@ -307,6 +307,22 @@ async def test_create_conversation_with_message_stream_success(
     mock_service.create_conversation_with_message.assert_not_called()
 
 
+async def test_create_conversation_with_message_openapi_documents_sse(
+    async_test_client,
+):
+    """Test OpenAPI documents both JSON and SSE response content types."""
+    response = await async_test_client.get('/openapi.json')
+
+    assert response.status_code == 200
+    schema = response.json()
+    content = schema['paths']['/api/v1/conversations/with-message']['post'][
+        'responses'
+    ]['201']['content']
+
+    assert 'application/json' in content
+    assert 'text/event-stream' in content
+
+
 async def test_create_conversation_with_message_default_params(
     authenticated_async_test_client,
 ):
@@ -550,6 +566,22 @@ async def test_add_message_to_conversation_stream_success(
     assert 'event: done' in response.text
     mock_service.add_message_to_conversation_stream.assert_called_once()
     mock_service.add_message_to_conversation.assert_not_called()
+
+
+async def test_add_message_to_conversation_openapi_documents_sse(
+    async_test_client,
+):
+    """Test OpenAPI documents both JSON and SSE for add-message route."""
+    response = await async_test_client.get('/openapi.json')
+
+    assert response.status_code == 200
+    schema = response.json()
+    content = schema['paths'][
+        '/api/v1/conversations/{conversation_id}/messages'
+    ]['post']['responses']['201']['content']
+
+    assert 'application/json' in content
+    assert 'text/event-stream' in content
 
 
 async def test_add_message_to_conversation_default_params(

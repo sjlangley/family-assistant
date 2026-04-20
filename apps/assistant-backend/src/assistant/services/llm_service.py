@@ -18,6 +18,38 @@ from assistant.services.stream_parser import StreamParser
 logger = logging.getLogger(__name__)
 
 
+def _extract_error_metadata(
+    body_text: str | None,
+) -> tuple[str | None, str | None]:
+    """Extract non-sensitive provider error metadata for logs."""
+    if not body_text:
+        return None, None
+
+    try:
+        payload = json.loads(body_text)
+    except json.JSONDecodeError:
+        return None, None
+
+    if not isinstance(payload, dict):
+        return None, None
+
+    error_obj = payload.get('error')
+    if isinstance(error_obj, dict):
+        code = error_obj.get('code')
+        error_type = error_obj.get('type')
+        return (
+            str(code) if code is not None else None,
+            str(error_type) if error_type is not None else None,
+        )
+
+    code = payload.get('code')
+    error_type = payload.get('type')
+    return (
+        str(code) if code is not None else None,
+        str(error_type) if error_type is not None else None,
+    )
+
+
 class LLMService:
     """Service for interacting with the LLM backend."""
 
@@ -120,11 +152,15 @@ class LLMService:
             ) from exc
         except httpx.HTTPStatusError as exc:
             error_body = exc.response.text[:1000] if exc.response else None
+            error_code, error_type = _extract_error_metadata(error_body)
             logger.error(
-                'LLM backend HTTP error: status=%s body=%s',
+                'LLM backend HTTP error: status=%s provider_error_code=%s provider_error_type=%s',
                 exc.response.status_code if exc.response else None,
-                error_body,
+                error_code,
+                error_type,
             )
+            if error_body:
+                logger.debug('LLM backend HTTP error body: %s', error_body)
             if error_body:
                 lowered = error_body.lower()
                 if (
@@ -246,11 +282,18 @@ class LLMService:
                     # Drain response to get error message if possible
                     raw_body = await response.aread()
                     body_text = raw_body.decode(errors='replace')[:1000]
+                    error_code, error_type = _extract_error_metadata(body_text)
                     logger.error(
-                        'LLM streaming backend error: status=%s body=%s',
+                        'LLM streaming backend error: status=%s provider_error_code=%s provider_error_type=%s',
                         response.status_code,
-                        body_text,
+                        error_code,
+                        error_type,
                     )
+                    if body_text:
+                        logger.debug(
+                            'LLM streaming backend error body: %s',
+                            body_text,
+                        )
                     lowered = body_text.lower()
                     if (
                         'context length' in lowered

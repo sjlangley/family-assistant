@@ -540,20 +540,6 @@ class ConversationService:
                     emitted_tokens += 1
                     yield SSEEncoder.encode('token', output.token)
 
-                if output.tool_calls:
-                    stream_started = True
-                    for tool_call in output.tool_calls:
-                        emitted_tool_calls += 1
-                        logger.debug(
-                            'stream tool_call event: conversation_id=%s tool_name=%s tool_call_id=%s (event only; execution currently handled in non-stream tool loop)',
-                            conversation.id,
-                            tool_call.function.name,
-                            tool_call.id,
-                        )
-                        yield SSEEncoder.encode(
-                            'tool_call', tool_call.model_dump()
-                        )
-
                 if output.model:
                     model_name = output.model
                 if output.usage:

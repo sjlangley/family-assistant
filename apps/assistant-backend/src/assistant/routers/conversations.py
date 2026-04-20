@@ -20,6 +20,21 @@ from assistant.utils.database import DBSession
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+STREAMING_RESPONSE_SCHEMA = {
+    'description': 'JSON response or SSE stream when `stream=true`.',
+    'content': {
+        'application/json': {
+            'schema': ConversationWithMessagesResponse.model_json_schema()
+        },
+        'text/event-stream': {
+            'schema': {
+                'type': 'string',
+                'example': 'event: token\ndata: "Hello"\n\n',
+            }
+        },
+    },
+}
+
 
 @router.get(
     '',
@@ -61,7 +76,8 @@ async def get_conversation_messages(
     '/with-message',
     response_description='Return HTTP Status Code 201 (OK)',
     status_code=status.HTTP_201_CREATED,
-    response_model=ConversationWithMessagesResponse,
+    response_model=None,
+    responses={status.HTTP_201_CREATED: STREAMING_RESPONSE_SCHEMA},
     include_in_schema=True,
 )
 async def create_conversation_with_message(
@@ -96,18 +112,21 @@ async def create_conversation_with_message(
             },
         )
 
-    return await conversation_service.create_conversation_with_message(
-        session=session,
-        user_id=user.userid,
-        payload=payload,
-        background_tasks=background_tasks,
+    return ConversationWithMessagesResponse.model_validate(
+        await conversation_service.create_conversation_with_message(
+            session=session,
+            user_id=user.userid,
+            payload=payload,
+            background_tasks=background_tasks,
+        )
     )
 
 
 @router.post(
     '/{conversation_id}/messages',
     status_code=status.HTTP_201_CREATED,
-    response_model=ConversationWithMessagesResponse,
+    response_model=None,
+    responses={status.HTTP_201_CREATED: STREAMING_RESPONSE_SCHEMA},
 )
 async def add_message_to_conversation(
     request: Request,
@@ -146,10 +165,12 @@ async def add_message_to_conversation(
             },
         )
 
-    return await conversation_service.add_message_to_conversation(
-        session=session,
-        user_id=user.userid,
-        conversation_id=conversation_id,
-        payload=payload,
-        background_tasks=background_tasks,
+    return ConversationWithMessagesResponse.model_validate(
+        await conversation_service.add_message_to_conversation(
+            session=session,
+            user_id=user.userid,
+            conversation_id=conversation_id,
+            payload=payload,
+            background_tasks=background_tasks,
+        )
     )

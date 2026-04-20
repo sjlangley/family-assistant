@@ -320,6 +320,43 @@ describe("ConversationsChat", () => {
       });
     });
 
+    it("keeps input text when stream and fallback both fail", async () => {
+      const user = userEvent.setup({ delay: null });
+      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockCreateConversationWithMessage.mockRejectedValueOnce(
+        new Error("Fallback failed"),
+      );
+
+      async function* brokenStream() {
+        yield* [];
+      }
+
+      mockStreamConversation.mockReturnValueOnce(brokenStream());
+
+      renderWithAuth();
+
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(
+            /type a message to start a new conversation/i,
+          ),
+        ).toBeInTheDocument();
+      });
+
+      const input = screen.getByPlaceholderText(
+        /type a message to start a new conversation/i,
+      ) as HTMLInputElement;
+      await user.type(input, "Hello");
+      await user.click(screen.getByRole("button", { name: /send/i }));
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/error:.*fallback failed/i),
+        ).toBeInTheDocument();
+      });
+      expect(input.value).toBe("Hello");
+    });
+
     it("does not send empty messages", async () => {
       const user = userEvent.setup();
       mockListConversations.mockResolvedValueOnce({ items: [] });
@@ -527,6 +564,153 @@ describe("ConversationsChat", () => {
       expect(mockGetConversationMessages).toHaveBeenNthCalledWith(2, "conv-1");
       expect(screen.getByText("Streamed answer")).toBeInTheDocument();
       expect(screen.getByText("Follow-up question")).toBeInTheDocument();
+    });
+
+    it("preserves newer optimistic messages while reconciliation is pending", async () => {
+      const user = userEvent.setup({ delay: null });
+
+      const mockConversations = {
+        items: [
+          {
+            id: "conv-1",
+            title: "Existing Conversation",
+            created_at: "2024-01-01T00:00:00Z",
+            updated_at: "2024-01-01T00:00:00Z",
+          },
+        ],
+      };
+
+      const initialTranscript = {
+        conversation: mockConversations.items[0],
+        items: [
+          {
+            id: "msg-1",
+            role: "user" as const,
+            content: "Previous question",
+            sequence_number: 1,
+            created_at: "2024-01-01T00:00:00Z",
+            error: null,
+            annotations: null,
+          },
+          {
+            id: "msg-2",
+            role: "assistant" as const,
+            content: "Previous answer",
+            sequence_number: 2,
+            created_at: "2024-01-01T00:00:00Z",
+            error: null,
+            annotations: null,
+          },
+        ],
+      };
+
+      let resolveReconciledTranscript:
+        | ((value: typeof initialTranscript) => void)
+        | undefined;
+      const delayedReconciledTranscript = new Promise<typeof initialTranscript>(
+        (resolve) => {
+          resolveReconciledTranscript = resolve;
+        },
+      );
+
+      const reconciledTranscript = {
+        conversation: mockConversations.items[0],
+        items: [
+          ...initialTranscript.items,
+          {
+            id: "persisted-user-3",
+            role: "user" as const,
+            content: "First streamed follow-up",
+            sequence_number: 3,
+            created_at: "2024-01-01T00:01:00Z",
+            error: null,
+            annotations: null,
+          },
+          {
+            id: "persisted-assistant-4",
+            role: "assistant" as const,
+            content: "Streamed answer",
+            sequence_number: 4,
+            created_at: "2024-01-01T00:01:02Z",
+            error: null,
+            annotations: null,
+          },
+        ],
+      };
+
+      async function* firstStream() {
+        yield { event: "token" as const, data: "Streamed answer" };
+        yield {
+          event: "done" as const,
+          data: {
+            conversation_id: "conv-1",
+            message_id: "persisted-assistant-4",
+            content: "Streamed answer",
+            annotations: {
+              thought: null,
+              sources: [],
+              tools: [],
+              memory_hits: [],
+              memory_saved: [],
+              failure: null,
+            },
+          },
+        };
+      }
+
+      async function* brokenStream() {
+        yield* [];
+      }
+
+      mockListConversations.mockResolvedValue(mockConversations);
+      mockGetConversationMessages
+        .mockResolvedValueOnce(initialTranscript)
+        .mockReturnValueOnce(delayedReconciledTranscript);
+      mockStreamConversation
+        .mockReturnValueOnce(firstStream())
+        .mockReturnValueOnce(brokenStream());
+      mockAddMessageToConversation.mockRejectedValueOnce(
+        new Error("Fallback failed"),
+      );
+
+      renderWithAuth();
+
+      await waitFor(() => {
+        expect(screen.getByText("Existing Conversation")).toBeInTheDocument();
+      });
+      await user.click(screen.getByText("Existing Conversation"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Previous question")).toBeInTheDocument();
+      });
+
+      const input = screen.getByPlaceholderText(
+        /type your message/i,
+      ) as HTMLInputElement;
+      await user.type(input, "First streamed follow-up");
+      await user.click(screen.getByRole("button", { name: /send/i }));
+
+      await waitFor(() => {
+        expect(mockGetConversationMessages).toHaveBeenCalledTimes(2);
+      });
+
+      await user.clear(input);
+      await user.type(input, "Second optimistic follow-up");
+      await user.click(screen.getByRole("button", { name: /send/i }));
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/error:.*fallback failed/i),
+        ).toBeInTheDocument();
+      });
+
+      resolveReconciledTranscript?.(reconciledTranscript);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Second optimistic follow-up"),
+        ).toBeInTheDocument();
+      });
     });
 
     it("loads and displays messages when conversation is selected", async () => {

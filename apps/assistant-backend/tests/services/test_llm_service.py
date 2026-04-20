@@ -1,6 +1,7 @@
 """Tests for LLMService."""
 
 import json
+import logging
 from unittest.mock import AsyncMock
 
 import httpx
@@ -228,6 +229,63 @@ async def test_complete_messages_backend_error():
         assert exc_info.value.backend_status_code == 500
     finally:
         await service.aclose()
+
+
+async def test_complete_messages_backend_error_logs_redacted_metadata(
+    caplog,
+):
+    """It logs only non-sensitive backend error metadata at error level."""
+    response = httpx.Response(
+        500,
+        json={
+            'error': {
+                'code': 'context_length_exceeded',
+                'type': 'invalid_request_error',
+                'message': 'user prompt: tell me a secret',
+            }
+        },
+        request=httpx.Request('POST', 'http://test'),
+    )
+    error = httpx.HTTPStatusError(
+        'LLM error',
+        request=response.request,
+        response=response,
+    )
+
+    client = httpx.AsyncClient(base_url='http://test')
+    client.post = AsyncMock(side_effect=error)
+    service = LLMService(
+        base_url='http://test', timeout_seconds=5, client=client
+    )
+
+    try:
+        with caplog.at_level(
+            logging.ERROR, logger='assistant.services.llm_service'
+        ):
+            with pytest.raises(LLMCompletionError):
+                await service.complete_messages(
+                    messages=[],
+                    model='test',
+                    temperature=0.7,
+                    max_tokens=100,
+                )
+    finally:
+        await service.aclose()
+
+    error_messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.levelno >= logging.ERROR
+    ]
+    assert any(
+        'provider_error_code=context_length_exceeded' in msg
+        for msg in error_messages
+    )
+    assert any(
+        'provider_error_type=invalid_request_error' in msg
+        for msg in error_messages
+    )
+    assert all('tell me a secret' not in msg for msg in error_messages)
 
 
 async def test_complete_messages_invalid_response_shape():
@@ -509,6 +567,58 @@ async def test_stream_messages_backend_error():
         assert exc_info.value.backend_status_code == 500
     finally:
         await service.aclose()
+
+
+async def test_stream_messages_backend_error_logs_redacted_metadata(caplog):
+    """It avoids logging raw streaming error bodies at error level."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            500,
+            json={
+                'error': {
+                    'code': 'model_not_found',
+                    'type': 'invalid_request_error',
+                    'message': 'tool output: private family context',
+                }
+            },
+            request=request,
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = httpx.AsyncClient(transport=transport, base_url='http://test')
+    service = LLMService(
+        base_url='http://test', timeout_seconds=5, client=client
+    )
+
+    try:
+        with caplog.at_level(
+            logging.ERROR, logger='assistant.services.llm_service'
+        ):
+            with pytest.raises(LLMCompletionError):
+                async for _ in service.stream_messages(
+                    messages=[],
+                    model='test',
+                    temperature=0.7,
+                    max_tokens=100,
+                ):
+                    pass
+    finally:
+        await service.aclose()
+
+    error_messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.levelno >= logging.ERROR
+    ]
+    assert any(
+        'provider_error_code=model_not_found' in msg for msg in error_messages
+    )
+    assert any(
+        'provider_error_type=invalid_request_error' in msg
+        for msg in error_messages
+    )
+    assert all('private family context' not in msg for msg in error_messages)
 
 
 async def test_stream_messages_raises_on_missing_done_marker():

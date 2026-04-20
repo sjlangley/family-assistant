@@ -20,6 +20,52 @@ interface ConversationsChatProps {
   onLogout: () => void;
 }
 
+function compareMessages(a: Message, b: Message): number {
+  const aPersisted = a.sequence_number >= 0;
+  const bPersisted = b.sequence_number >= 0;
+
+  if (aPersisted !== bPersisted) {
+    return aPersisted ? -1 : 1;
+  }
+
+  if (aPersisted && bPersisted && a.sequence_number !== b.sequence_number) {
+    return a.sequence_number - b.sequence_number;
+  }
+
+  return a.created_at.localeCompare(b.created_at);
+}
+
+function mergeTranscriptMessages(
+  transcriptMessages: Message[],
+  currentMessages: Message[],
+): Message[] {
+  const merged = [...transcriptMessages];
+  const seenIds = new Set(merged.map((message) => message.id));
+
+  for (const message of currentMessages) {
+    const isTempMessage = message.id.startsWith("temp-");
+    const hasPersistedEquivalent =
+      isTempMessage &&
+      transcriptMessages.some(
+        (transcriptMessage) =>
+          transcriptMessage.role === message.role &&
+          transcriptMessage.content === message.content,
+      );
+
+    if (hasPersistedEquivalent) {
+      continue;
+    }
+
+    if (!seenIds.has(message.id)) {
+      merged.push(message);
+      seenIds.add(message.id);
+    }
+  }
+
+  merged.sort(compareMessages);
+  return merged;
+}
+
 // Check if annotations have displayable content
 function hasAnnotationContent(annotations: AssistantAnnotations): boolean {
   return (
@@ -402,6 +448,8 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
     startedWithoutActiveConversation: boolean;
   } | null>(null);
   const streamFailedRef = useRef(false);
+  const streamSucceededRef = useRef(false);
+  const reconcileRequestIdRef = useRef(0);
 
   // Get user from authState (it should always be present when component is mounted)
   const user = authState.status === "authenticated" ? authState.user : null;
@@ -494,14 +542,25 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
         pendingStreamMetaRef.current?.startedWithoutActiveConversation ?? false;
 
       if (startedWithoutActiveConversation) {
+        streamSucceededRef.current = true;
+        setInputMessage("");
         setActiveConversationId(doneData.conversation_id);
       } else {
+        const reconcileRequestId = ++reconcileRequestIdRef.current;
         void (async () => {
           try {
             const transcript = await getConversationMessages(
               doneData.conversation_id,
             );
-            setMessages(transcript.items);
+            if (reconcileRequestIdRef.current !== reconcileRequestId) {
+              return;
+            }
+
+            streamSucceededRef.current = true;
+            setMessages((prev) =>
+              mergeTranscriptMessages(transcript.items, prev),
+            );
+            setInputMessage("");
           } catch (err) {
             if (err instanceof Error && err.message === "UNAUTHORIZED") {
               onLogout();
@@ -520,6 +579,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
       onDone: handleStreamDone,
       onError: (streamError) => {
         streamFailedRef.current = true;
+        streamSucceededRef.current = false;
         pendingStreamMetaRef.current = null;
         if (streamError.message === "UNAUTHORIZED") {
           onLogout();
@@ -611,6 +671,8 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
   const handleNewChat = useCallback(() => {
     stop();
     reset();
+    reconcileRequestIdRef.current += 1;
+    streamSucceededRef.current = false;
     setActiveConversationId(null);
     setMessages([]);
     setError(null);
@@ -621,6 +683,8 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
     (conversationId: string) => {
       stop();
       reset();
+      reconcileRequestIdRef.current += 1;
+      streamSucceededRef.current = false;
       setActiveConversationId(conversationId);
       setError(null);
     },
@@ -670,6 +734,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
     setSendingMessage(true);
     setError(null);
     streamFailedRef.current = false;
+    streamSucceededRef.current = false;
 
     try {
       const userMessage: Message = {
@@ -686,7 +751,6 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
       } else {
         setMessages([userMessage]);
       }
-      setInputMessage("");
 
       pendingStreamMetaRef.current = {
         startedWithoutActiveConversation: !activeConversationId,
@@ -694,6 +758,9 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
 
       // Primary path: stream incremental assistant output.
       await stream(activeConversationId, trimmedMessage, {});
+      if (!streamFailedRef.current && streamSucceededRef.current) {
+        setInputMessage("");
+      }
 
       // Fallback path for environments or flows where streaming fails.
       if (streamFailedRef.current) {
@@ -723,6 +790,8 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
           setMessages([response.user_message, response.assistant_message]);
           setActiveConversationId(response.conversation.id);
         }
+
+        setInputMessage("");
       }
     } catch (err) {
       if (err instanceof Error) {
