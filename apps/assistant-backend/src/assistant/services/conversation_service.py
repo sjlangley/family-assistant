@@ -1,5 +1,6 @@
 import asyncio
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 import logging
 from typing import AsyncGenerator, cast
@@ -698,7 +699,7 @@ class ConversationService:
             annotations=annotations_obj.model_dump(),
         )
         session.add(assistant_message)
-        conversation.updated_at = func.now()
+        conversation.updated_at = datetime.now(timezone.utc)
         await session.commit()
         await session.refresh(assistant_message)
         return assistant_message
