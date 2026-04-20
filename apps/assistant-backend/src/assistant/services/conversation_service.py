@@ -1,4 +1,6 @@
+import asyncio
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 import logging
 from typing import AsyncGenerator, cast
@@ -415,7 +417,7 @@ class ConversationService:
         async for event in self._stream_assistant_lifecycle(
             session=session,
             user_id=user_id,
-            conversation_id=conversation.id,
+            conversation=conversation,
             user_message_id=user_message.id,
             assistant_sequence_number=2,
             context_messages=context_result.messages,
@@ -443,7 +445,7 @@ class ConversationService:
                 detail='Message content cannot be empty',
             )
 
-        await self._get_conversation_for_user(
+        conversation = await self._get_conversation_for_user(
             session,
             user_id=user_id,
             conversation_id=conversation_id,
@@ -479,7 +481,7 @@ class ConversationService:
         async for event in self._stream_assistant_lifecycle(
             session=session,
             user_id=user_id,
-            conversation_id=conversation_id,
+            conversation=conversation,
             user_message_id=user_message.id,
             assistant_sequence_number=next_seq + 1,
             context_messages=context_result.messages,
@@ -495,7 +497,7 @@ class ConversationService:
         *,
         session: AsyncSession,
         user_id: str,
-        conversation_id: uuid.UUID,
+        conversation: Conversation,
         user_message_id: uuid.UUID,
         assistant_sequence_number: int,
         context_messages: list[dict],
@@ -543,7 +545,7 @@ class ConversationService:
             if stream_started:
                 await self._persist_streaming_assistant_message(
                     session=session,
-                    conversation_id=conversation_id,
+                    conversation=conversation,
                     sequence_number=assistant_sequence_number,
                     content=''.join(content_parts)
                     or 'Unable to generate a response. Please try again.',
@@ -563,9 +565,27 @@ class ConversationService:
             )
             return
 
+        except asyncio.CancelledError:
+            if stream_started:
+                cancellation_error = LLMCompletionError(
+                    kind=LLMCompletionErrorKind.backend_error,
+                    message='Streaming response interrupted by client disconnect',
+                )
+                await self._persist_streaming_assistant_message(
+                    session=session,
+                    conversation=conversation,
+                    sequence_number=assistant_sequence_number,
+                    content=''.join(content_parts)
+                    or 'Unable to generate a response. Please try again.',
+                    thought=''.join(thought_parts) or None,
+                    fact_ids=fact_ids,
+                    error=cancellation_error,
+                )
+            raise
+
         assistant_message = await self._persist_streaming_assistant_message(
             session=session,
-            conversation_id=conversation_id,
+            conversation=conversation,
             sequence_number=assistant_sequence_number,
             content=''.join(content_parts)
             or 'Unable to generate a response. Please try again.',
@@ -578,14 +598,16 @@ class ConversationService:
             background_tasks.add_task(
                 self.extract_and_save_background,
                 user_id=user_id,
-                conversation_id=conversation_id,
+                conversation_id=conversation.id,
                 assistant_message_id=assistant_message.id,
                 latest_user_message_id=user_message_id,
             )
 
         done_payload: dict[str, object] = {
+            'conversation_id': str(conversation.id),
             'message_id': str(assistant_message.id),
             'content': assistant_message.content,
+            'annotations': assistant_message.annotations,
         }
         if model_name:
             done_payload['model'] = model_name
@@ -598,7 +620,7 @@ class ConversationService:
         self,
         *,
         session: AsyncSession,
-        conversation_id: uuid.UUID,
+        conversation: Conversation,
         sequence_number: int,
         content: str,
         thought: str | None,
@@ -624,7 +646,7 @@ class ConversationService:
             annotations_obj.thought = thought
 
         assistant_message = Message(
-            conversation_id=conversation_id,
+            conversation_id=conversation.id,
             role='assistant',
             content=content,
             sequence_number=sequence_number,
@@ -632,12 +654,7 @@ class ConversationService:
             annotations=annotations_obj.model_dump(),
         )
         session.add(assistant_message)
-        await session.execute(
-            update(Conversation)
-            # pyrefly: ignore [bad-argument-type]
-            .where(Conversation.id == conversation_id)
-            .values(updated_at=func.now())
-        )
+        conversation.updated_at = datetime.now(timezone.utc)
         await session.commit()
         await session.refresh(assistant_message)
         return assistant_message
@@ -832,8 +849,6 @@ class ConversationService:
             role='system', content=SYSTEM_PROMPT
         )
         llm_messages = [system_message.model_dump()] + messages
-        available_tools = self.tool_service.get_available_tools()
-        tools = available_tools if available_tools else None
 
         completion_kwargs = {
             'messages': llm_messages,
@@ -841,13 +856,15 @@ class ConversationService:
             'temperature': temperature,
             'max_tokens': max_tokens,
         }
-        if tools:
-            completion_kwargs['tools'] = [tool.model_dump() for tool in tools]
-            completion_kwargs['tool_choice'] = ToolChoice.auto
 
         async for output in self.llm_service.stream_messages(
             **completion_kwargs
         ):
+            if output.tool_calls:
+                raise LLMCompletionError(
+                    kind=LLMCompletionErrorKind.invalid_response,
+                    message='Streaming tool calls are not yet supported',
+                )
             yield output
 
     @staticmethod

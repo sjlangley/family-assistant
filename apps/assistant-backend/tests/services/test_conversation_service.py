@@ -1,5 +1,6 @@
 """Tests for ConversationService."""
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 import json
 from unittest.mock import AsyncMock, Mock, patch
@@ -4173,9 +4174,11 @@ async def test_add_message_to_conversation_stream_persists_lifecycle_success(
         event for event in all_events if event.startswith('event: done')
     )
     done_payload = json.loads(done_event.split('data: ', 1)[1].strip())
+    assert done_payload['conversation_id'] == str(conversation.id)
     assert done_payload['content'] == 'Hello world'
     assert done_payload['model'] == 'test-model'
     assert done_payload['usage']['total_tokens'] == 6
+    assert done_payload['annotations']['thought'] == 'thinking...'
 
     result = await async_session.execute(
         select(Message)
@@ -4305,6 +4308,117 @@ async def test_add_message_to_conversation_stream_skips_assistant_persistence_wi
     assert persisted_messages[0].role == 'user'
 
 
+async def test_add_message_to_conversation_stream_errors_on_tool_calls(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    async_session,
+    test_user_id,
+):
+    """Streaming path emits terminal error when model returns tool calls."""
+    conversation = Conversation(user_id=test_user_id, title='Streaming Tool')
+    async_session.add(conversation)
+    await async_session.commit()
+    await async_session.refresh(conversation)
+
+    mock_context_assembly.assemble_context.return_value = ContextAssemblyResult(
+        messages=[{'role': 'user', 'content': 'Trigger tool call'}],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+
+    async def stream_outputs():
+        yield StreamParserOutput(
+            tool_calls=[
+                ChatCompletionMessageToolCall(
+                    id='call_1',
+                    type='function',
+                    function=ChatCompletionMessageToolCallFunction(
+                        name='current_time', arguments='{}'
+                    ),
+                )
+            ]
+        )
+
+    mock_llm_service.stream_messages = Mock(return_value=stream_outputs())
+
+    payload = CreateMessageRequest(content='Trigger tool call')
+    emitted_events = []
+    async for event in conversation_service.add_message_to_conversation_stream(
+        session=async_session,
+        user_id=test_user_id,
+        conversation_id=conversation.id,
+        payload=payload,
+    ):
+        emitted_events.append(event)
+
+    assert len(emitted_events) == 1
+    assert emitted_events[0].startswith('event: error')
+    error_payload = json.loads(emitted_events[0].split('data: ', 1)[1].strip())
+    assert 'not yet supported' in error_payload['detail'].lower()
+
+    result = await async_session.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation.id)
+        .order_by(Message.sequence_number.asc())
+    )
+    persisted_messages = list(result.scalars().all())
+    assert len(persisted_messages) == 1
+    assert persisted_messages[0].role == 'user'
+
+
+async def test_add_message_to_conversation_stream_persists_partial_on_cancellation(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    async_session,
+    test_user_id,
+):
+    """Client cancellation persists assistant partial output in terminal error state."""
+    conversation = Conversation(
+        user_id=test_user_id, title='Streaming Cancellation'
+    )
+    async_session.add(conversation)
+    await async_session.commit()
+    await async_session.refresh(conversation)
+
+    mock_context_assembly.assemble_context.return_value = ContextAssemblyResult(
+        messages=[{'role': 'user', 'content': 'Trigger cancellation'}],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+
+    async def stream_outputs():
+        yield StreamParserOutput(token='partial output')
+        raise asyncio.CancelledError()
+
+    mock_llm_service.stream_messages = Mock(return_value=stream_outputs())
+
+    payload = CreateMessageRequest(content='Trigger cancellation')
+
+    with pytest.raises(asyncio.CancelledError):
+        async for _ in conversation_service.add_message_to_conversation_stream(
+            session=async_session,
+            user_id=test_user_id,
+            conversation_id=conversation.id,
+            payload=payload,
+        ):
+            pass
+
+    result = await async_session.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation.id)
+        .order_by(Message.sequence_number.asc())
+    )
+    persisted_messages = list(result.scalars().all())
+    assert len(persisted_messages) == 2
+    assert persisted_messages[1].role == 'assistant'
+    assert persisted_messages[1].content == 'partial output'
+    assert 'interrupted' in (persisted_messages[1].error or '').lower()
+
+
 async def test_create_conversation_with_message_stream_persists_lifecycle_success(
     conversation_service,
     mock_llm_service,
@@ -4369,8 +4483,10 @@ async def test_create_conversation_with_message_stream_persists_lifecycle_succes
         event for event in all_events if event.startswith('event: done')
     )
     done_payload = json.loads(done_event.split('data: ', 1)[1].strip())
+    assert done_payload['conversation_id'] == str(conversations[0].id)
     assert done_payload['content'] == 'Hello world'
     assert done_payload['model'] == 'test-model'
+    assert done_payload['annotations']['thought'] == 'thinking...'
 
     result = await async_session.execute(
         select(Message)
