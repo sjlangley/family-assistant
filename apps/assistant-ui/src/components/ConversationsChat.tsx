@@ -587,9 +587,11 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
               return;
             }
 
-            setMessages((prev) =>
-              mergeTranscriptMessages(transcript.items, prev),
-            );
+            if (transcript?.items) {
+              setMessages((prev) =>
+                mergeTranscriptMessages(transcript.items, prev),
+              );
+            }
             setInputMessage("");
           } catch (err) {
             if (err instanceof Error && err.message === "UNAUTHORIZED") {
@@ -671,7 +673,9 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
           activeConversationId,
           controller.signal,
         );
-        setMessages(response.items);
+        if (response?.items) {
+          setMessages(response.items);
+        }
       } catch (err) {
         if (err instanceof Error) {
           if (err.name === "AbortError") return;
@@ -965,7 +969,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
               </div>
             )}
 
-            {error && (
+            {error && (!currentMessage || error !== currentMessage.error) && (
               <div className="max-w-3xl mx-auto mt-4 p-4 bg-[#f8e9e6] text-[#a54034] rounded border border-[#e0b5ad]">
                 Error: {error}
               </div>

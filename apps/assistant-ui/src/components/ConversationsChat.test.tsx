@@ -88,18 +88,34 @@ function renderWithAuth(
 describe("ConversationsChat", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
+    mockGetConversationMessages.mockResolvedValue(null as any);
+
     mockStreamConversation.mockImplementation((conversationId, content) => {
       if (conversationId) {
         return (async function* () {
           const response = await mockAddMessageToConversation(conversationId, {
             content,
           });
+          // Mock the subsequent getConversationMessages call that happens on stream completion
+          mockGetConversationMessages.mockResolvedValue({
+            conversation: response.conversation,
+            items: [response.user_message, response.assistant_message],
+          });
           yield* streamDoneFromResponse(response);
         })();
       }
-
       return (async function* () {
         const response = await mockCreateConversationWithMessage({ content });
+        // Mock the subsequent listConversations call that happens on stream completion
+        mockListConversations.mockResolvedValue({
+          items: [response.conversation],
+        });
+        // Mock the subsequent getConversationMessages call that happens when activeConversationId is set
+        mockGetConversationMessages.mockResolvedValue({
+          conversation: response.conversation,
+          items: [response.user_message, response.assistant_message],
+        });
         yield* streamDoneFromResponse(response);
       })();
     });
@@ -128,7 +144,7 @@ describe("ConversationsChat", () => {
         ],
       };
 
-      mockListConversations.mockResolvedValueOnce(mockConversations);
+      mockListConversations.mockResolvedValue(mockConversations);
 
       renderWithAuth();
 
@@ -159,7 +175,7 @@ describe("ConversationsChat", () => {
     });
 
     it("displays empty state when no conversations exist", async () => {
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       renderWithAuth();
 
@@ -183,7 +199,7 @@ describe("ConversationsChat", () => {
   describe("New chat flow", () => {
     it("streams the first assistant response and renders thought traces", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       async function* streamEvents() {
         yield { event: "thought" as const, data: "Gathering context..." };
@@ -242,7 +258,7 @@ describe("ConversationsChat", () => {
 
     it("renders streaming tool lifecycle updates inline", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
       let releaseStream!: () => void;
       const streamPaused = new Promise<void>((resolve) => {
         releaseStream = resolve;
@@ -315,7 +331,7 @@ describe("ConversationsChat", () => {
     });
 
     it("shows welcome message when no conversation is selected", async () => {
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       renderWithAuth();
 
@@ -332,7 +348,7 @@ describe("ConversationsChat", () => {
 
     it("creates new conversation when sending first message", async () => {
       const user = userEvent.setup();
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -398,7 +414,7 @@ describe("ConversationsChat", () => {
 
     it("clears input after sending message", async () => {
       const user = userEvent.setup();
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -452,7 +468,7 @@ describe("ConversationsChat", () => {
 
     it("keeps input text and surfaces the stream failure for a new chat", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       async function* brokenStream() {
         yield* [];
@@ -487,7 +503,7 @@ describe("ConversationsChat", () => {
 
     it("does not send empty messages", async () => {
       const user = userEvent.setup();
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       renderWithAuth();
 
@@ -517,7 +533,7 @@ describe("ConversationsChat", () => {
 
     it("allows sending message by pressing Enter", async () => {
       const user = userEvent.setup();
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -881,8 +897,8 @@ describe("ConversationsChat", () => {
         ],
       };
 
-      mockListConversations.mockResolvedValueOnce(mockConversations);
-      mockGetConversationMessages.mockResolvedValueOnce(mockMessages);
+      mockListConversations.mockResolvedValue(mockConversations);
+      mockGetConversationMessages.mockResolvedValue(mockMessages);
 
       renderWithAuth();
 
@@ -976,8 +992,8 @@ describe("ConversationsChat", () => {
         },
       };
 
-      mockListConversations.mockResolvedValueOnce(mockConversations);
-      mockGetConversationMessages.mockResolvedValueOnce(mockMessages);
+      mockListConversations.mockResolvedValue(mockConversations);
+      mockGetConversationMessages.mockResolvedValue(mockMessages);
       mockAddMessageToConversation.mockResolvedValueOnce(
         mockNewMessageResponse,
       );
@@ -1032,7 +1048,7 @@ describe("ConversationsChat", () => {
         ],
       };
 
-      mockListConversations.mockResolvedValueOnce(mockConversations);
+      mockListConversations.mockResolvedValue(mockConversations);
       mockGetConversationMessages.mockResolvedValue({
         conversation: mockConversations.items[0],
         items: [],
@@ -1089,8 +1105,8 @@ describe("ConversationsChat", () => {
         ],
       };
 
-      mockListConversations.mockResolvedValueOnce(mockConversations);
-      mockGetConversationMessages.mockResolvedValueOnce(mockMessages);
+      mockListConversations.mockResolvedValue(mockConversations);
+      mockGetConversationMessages.mockResolvedValue(mockMessages);
 
       renderWithAuth();
 
@@ -1123,7 +1139,7 @@ describe("ConversationsChat", () => {
   describe("Error handling", () => {
     it("displays error message when sending message fails", async () => {
       const user = userEvent.setup();
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
       mockCreateConversationWithMessage.mockRejectedValueOnce(
         new Error("Network error"),
       );
@@ -1153,7 +1169,7 @@ describe("ConversationsChat", () => {
       const user = userEvent.setup();
       const onLogout = vi.fn();
 
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
       mockCreateConversationWithMessage.mockRejectedValueOnce(
         new Error("UNAUTHORIZED"),
       );
@@ -1181,7 +1197,7 @@ describe("ConversationsChat", () => {
 
     it("displays a failed assistant bubble when the stream errors", async () => {
       const user = userEvent.setup();
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -1245,7 +1261,7 @@ describe("ConversationsChat", () => {
 
   describe("Logout", () => {
     it("displays user email and logout button", async () => {
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       renderWithAuth();
 
@@ -1263,7 +1279,7 @@ describe("ConversationsChat", () => {
     it("calls onLogout when logout button is clicked", async () => {
       const user = userEvent.setup();
       const onLogout = vi.fn();
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       renderWithAuth(onLogout);
 
@@ -1282,7 +1298,7 @@ describe("ConversationsChat", () => {
   describe("Pending assistant placeholder", () => {
     it("sends message and displays user and assistant messages", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -1345,7 +1361,7 @@ describe("ConversationsChat", () => {
   describe("Trust metadata rendering", () => {
     it("renders trust metadata when assistant message has annotations", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -1420,7 +1436,7 @@ describe("ConversationsChat", () => {
 
     it("does not render trust row when annotations are null", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -1478,7 +1494,7 @@ describe("ConversationsChat", () => {
 
     it("renders partial annotations safely", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -1543,7 +1559,7 @@ describe("ConversationsChat", () => {
 
     it("renders failure annotations distinctly", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const failureAnnotation = {
         sources: [] as never[],
@@ -1617,7 +1633,7 @@ describe("ConversationsChat", () => {
   describe("Detail components - SourceDetail", () => {
     it("renders source detail with title, snippet, rationale, and link", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -1713,7 +1729,7 @@ describe("ConversationsChat", () => {
   describe("Detail components - ToolDetail", () => {
     it("renders tool in trust metadata with completed status", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -1776,7 +1792,7 @@ describe("ConversationsChat", () => {
 
     it("renders failed tool in trust metadata", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -1841,7 +1857,7 @@ describe("ConversationsChat", () => {
   describe("Detail components - MemoryDetail", () => {
     it("renders memory in trust metadata as memory hit", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -1909,7 +1925,7 @@ describe("ConversationsChat", () => {
 
     it("renders memory in trust metadata as memory saved", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -1979,7 +1995,7 @@ describe("ConversationsChat", () => {
   describe("Detail components - Complex annotations", () => {
     it("renders all annotation types together in evidence panel", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -2063,7 +2079,7 @@ describe("ConversationsChat", () => {
 
     it("does not render trust row when all annotations are empty", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -2135,7 +2151,7 @@ describe("ConversationsChat", () => {
   describe("Failure scenarios", () => {
     it("handles LLM stage failure", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -2201,7 +2217,7 @@ describe("ConversationsChat", () => {
 
     it("handles annotation stage failure", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
@@ -2270,7 +2286,7 @@ describe("ConversationsChat", () => {
 
   describe("Accessibility features", () => {
     it("renders aria-live region for screen reader announcements", () => {
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const { container } = renderWithAuth();
 
@@ -2285,7 +2301,7 @@ describe("ConversationsChat", () => {
 
     it("renders trust row button with proper accessibility attributes", async () => {
       const user = userEvent.setup({ delay: null });
-      mockListConversations.mockResolvedValueOnce({ items: [] });
+      mockListConversations.mockResolvedValue({ items: [] });
 
       const mockResponse = {
         conversation: {
