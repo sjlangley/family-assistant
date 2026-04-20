@@ -1070,6 +1070,13 @@ class ConversationService:
                         else 'failed',
                     },
                 }
+                yield {
+                    'type': 'meta',
+                    'data': {
+                        'executed_tools': executed_tools,
+                        'attempted_tool_execution': attempted_tool_execution,
+                    },
+                }
 
                 llm_messages.append(
                     {

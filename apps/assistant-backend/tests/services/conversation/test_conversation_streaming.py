@@ -474,6 +474,92 @@ async def test_add_message_to_conversation_stream_persists_partial_on_cancellati
 
 
 @pytest.mark.asyncio
+async def test_add_message_to_conversation_stream_persists_executed_tools_on_cancellation(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    mock_tool_service,
+    async_session,
+    test_user_id,
+):
+    """Cancellation after a successful tool run still persists tool metadata."""
+    conversation = Conversation(
+        user_id=test_user_id, title='Streaming Cancellation With Tool'
+    )
+    async_session.add(conversation)
+    await async_session.commit()
+    await async_session.refresh(conversation)
+
+    mock_context_assembly.assemble_context.return_value = ContextAssemblyResult(
+        messages=[
+            {'role': 'user', 'content': 'Trigger cancellation after tool'}
+        ],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+
+    async def first_round():
+        yield StreamParserOutput(token='Checking ')
+        yield StreamParserOutput(
+            tool_calls=[
+                ChatCompletionMessageToolCall(
+                    id='call_cancel',
+                    type='function',
+                    function=ChatCompletionMessageToolCallFunction(
+                        name='current_time', arguments='{}'
+                    ),
+                )
+            ]
+        )
+
+    async def second_round():
+        raise asyncio.CancelledError()
+        yield  # pragma: no cover
+
+    mock_llm_service.stream_messages = Mock(
+        side_effect=[first_round(), second_round()]
+    )
+    mock_tool_service.execute_tool.return_value = ToolExecutionResult(
+        tool_name='current_time',
+        status=ToolExecutionStatus.SUCCESS,
+        tool_call={
+            'name': 'current_time',
+            'arguments': {},
+            'started_at': datetime.now(timezone.utc),
+            'finished_at': datetime.now(timezone.utc),
+            'status': ToolExecutionStatus.SUCCESS,
+        },
+        llm_context='The current time is 10:00.',
+    )
+
+    payload = CreateMessageRequest(content='Trigger cancellation after tool')
+
+    with pytest.raises(asyncio.CancelledError):
+        async for _ in conversation_service.add_message_to_conversation_stream(
+            session=async_session,
+            user_id=test_user_id,
+            conversation_id=conversation.id,
+            payload=payload,
+        ):
+            pass
+
+    result = await async_session.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation.id)
+        .order_by(Message.sequence_number.asc())
+    )
+    persisted_messages = list(result.scalars().all())
+    assert len(persisted_messages) == 2
+    assert persisted_messages[1].role == 'assistant'
+    assert persisted_messages[1].content == 'Checking '
+    assert persisted_messages[1].annotations['tools'] == [
+        {'id': None, 'name': 'current_time', 'status': 'completed'}
+    ]
+    assert persisted_messages[1].annotations['failure']['stage'] == 'tool'
+
+
+@pytest.mark.asyncio
 async def test_create_conversation_with_message_stream_persists_lifecycle_success(
     conversation_service,
     mock_llm_service,
