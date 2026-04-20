@@ -88,7 +88,7 @@ export async function* streamConversation(
           if (line.startsWith("event: ")) {
             event = line.substring(7).trim() as SSEEventType;
           } else if (line.startsWith("data: ")) {
-            dataBuffer += line.substring(6);
+            dataBuffer += (dataBuffer ? "\n" : "") + line.substring(6);
           }
         }
 

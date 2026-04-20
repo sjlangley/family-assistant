@@ -94,19 +94,23 @@ describe("useStreamingConversation hook", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("de-duplicates tool call updates by name", async () => {
+  it("de-duplicates tool call updates by id (falling back to name)", async () => {
     const mockEvents = [
       {
         event: "tool_call" as const,
-        data: { name: "web_search", status: "completed" as const },
+        data: { id: "call-1", name: "web_search", status: "completed" as const },
       },
       {
         event: "tool_call" as const,
-        data: { name: "web_search", status: "completed" as const }, // Duplicate
+        data: { id: "call-1", name: "web_search", status: "completed" as const }, // Duplicate ID
       },
       {
         event: "tool_call" as const,
         data: { name: "other_tool", status: "completed" as const },
+      },
+      {
+        event: "tool_call" as const,
+        data: { name: "other_tool", status: "completed" as const }, // Duplicate name (no ID)
       },
     ];
 

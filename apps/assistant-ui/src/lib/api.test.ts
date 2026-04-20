@@ -515,7 +515,9 @@ describe("API client", () => {
       const mockStream = new ReadableStream({
         start(controller) {
           controller.enqueue(
-            new TextEncoder().encode('event: token\ndata: {"content":\ndata: " multiline"}\n\n'),
+            new TextEncoder().encode(
+              'event: token\ndata: {"content":\ndata: " multiline"}\n\n',
+            ),
           );
           controller.close();
         },
@@ -534,6 +536,7 @@ describe("API client", () => {
       expect(events).toHaveLength(1);
       expect(events[0]).toEqual({
         event: "token",
+        // The spec requires a newline between data lines
         data: { content: " multiline" },
       });
     });

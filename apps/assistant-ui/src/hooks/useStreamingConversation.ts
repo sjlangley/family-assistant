@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Message,
   SSEEvent,
@@ -37,6 +37,12 @@ export function useStreamingConversation(
   const [currentMessage, setCurrentMessage] = useState<Message | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Store options in a ref to stabilize the stream callback
+  const optionsRef = useRef(options);
+  useEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
 
   const reset = useCallback(() => {
     setCurrentMessage(null);
@@ -125,10 +131,12 @@ export function useStreamingConversation(
                   ? event.data
                   : [event.data];
 
-                // De-duplicate by name: new updates for the same tool name replace existing ones.
+                // De-duplicate by ID (falling back to name): new updates for the same tool replace existing ones.
                 const toolMap = new Map<string, ToolAnnotation>();
-                currentAnnotations.tools.forEach((t) => toolMap.set(t.name, t));
-                incomingTools.forEach((t) => toolMap.set(t.name, t));
+                currentAnnotations.tools.forEach((t) =>
+                  toolMap.set(t.id || t.name, t),
+                );
+                incomingTools.forEach((t) => toolMap.set(t.id || t.name, t));
 
                 currentAnnotations = {
                   ...currentAnnotations,
@@ -155,7 +163,7 @@ export function useStreamingConversation(
               };
               setCurrentMessage(finalMessage);
               setIsStreaming(false);
-              options?.onDone?.(doneData);
+              optionsRef.current?.onDone?.(doneData);
               return; // End of stream
 
             case "error":
@@ -178,7 +186,7 @@ export function useStreamingConversation(
           prev ? { ...prev, error: streamError.message } : null,
         );
 
-        options?.onError?.(streamError);
+        optionsRef.current?.onError?.(streamError);
       } finally {
         setIsStreaming(false);
         if (abortControllerRef.current === controller) {
@@ -186,7 +194,7 @@ export function useStreamingConversation(
         }
       }
     },
-    [options, stop],
+    [stop],
   );
 
   return {
