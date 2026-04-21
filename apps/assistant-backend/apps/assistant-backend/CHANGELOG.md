@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/sjlangley/family-assistant/compare/assistant-backend-v0.1.0...assistant-backend-v0.1.1) (2026-04-21)
+
+
+### Bug Fixes
+
+* **backend:** avoid expired conversation loads in streams ([#116](https://github.com/sjlangley/family-assistant/issues/116)) ([4e97318](https://github.com/sjlangley/family-assistant/commit/4e97318b301577b392d9278d679ab87647091902))
+
 ## [0.1.0](https://github.com/sjlangley/family-assistant/compare/assistant-backend-v0.0.1...assistant-backend-v0.1.0) (2026-04-21)
 
 
