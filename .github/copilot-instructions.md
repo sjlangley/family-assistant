@@ -11,7 +11,7 @@ memory isolation.
 
 **Tech stack:**
 - **Backend**: Python 3.13+ / FastAPI (`apps/assistant-backend/`)
-- **Frontend**: TypeScript / React 18 / Vite (`apps/assistant-ui/`)
+- **Frontend**: TypeScript / React 19 / Vite (`apps/assistant-ui/`)
 - **Database**: PostgreSQL 16
 - **LLM Runtime**: llama.cpp / Ollama (external service, `apps/llm-server/`)
 - **Auth**: Google OAuth 2.0 with session cookies
@@ -88,6 +88,8 @@ pyrefly check src/             # type checking
 
 ### Backend capabilities to keep in mind
 - Conversation replies use one bounded native tool loop through `ConversationService`
+- Token limits enforced via `LLM_MAX_TOKENS` setting (default: 1024 tokens)
+- Truncation recovery: finish_reason tracking enables Continue button in UI
 - Tool definitions and dispatch live in `src/assistant/services/tools/`
 - The currently shipped backend tools are:
   - `get_current_time`
