@@ -7,6 +7,9 @@ from unittest.mock import Mock
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlmodel import SQLModel
 
 from assistant.models.conversation import (
     CreateConversationWithMessageRequest,
@@ -813,6 +816,72 @@ async def test_create_conversation_with_message_stream_persists_lifecycle_succes
     assert persisted_messages[1].role == 'assistant'
     assert persisted_messages[1].content == 'Hello world'
     assert persisted_messages[1].annotations['thought'] == 'thinking...'
+
+
+@pytest.mark.asyncio
+async def test_create_conversation_with_message_stream_handles_expired_conversation_after_commit(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    test_user_id,
+):
+    """Streaming new conversations should work with default expiring sessions."""
+    engine = create_async_engine(
+        'sqlite+aiosqlite:///:memory:',
+        echo=False,
+    )
+
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+
+    expiring_session_maker = sessionmaker(engine, class_=AsyncSession)
+
+    mock_context_assembly.assemble_context_new_conversation.return_value = (
+        ContextAssemblyResult(
+            messages=[{'role': 'user', 'content': 'Start stream'}],
+            used_summary=False,
+            summary_id=None,
+            fact_ids=[],
+        )
+    )
+
+    async def stream_outputs():
+        yield StreamParserOutput(token='Hello')
+        yield StreamParserOutput(
+            token=' world',
+            finish_reason='stop',
+            usage=CompletionUsage(
+                prompt_tokens=4,
+                completion_tokens=2,
+                total_tokens=6,
+            ),
+            model='test-model',
+        )
+
+    mock_llm_service.stream_messages = Mock(return_value=stream_outputs())
+
+    try:
+        async with expiring_session_maker() as expiring_session:
+            payload = CreateConversationWithMessageRequest(
+                content='Start stream'
+            )
+            emitted_events = []
+            async for (
+                event
+            ) in conversation_service.create_conversation_with_message_stream(
+                session=expiring_session,
+                user_id=test_user_id,
+                payload=payload,
+            ):
+                emitted_events.append(event)
+
+        done_event = next(
+            event for event in emitted_events if event.startswith('event: done')
+        )
+        done_payload = json.loads(done_event.split('data: ', 1)[1].strip())
+        assert done_payload['content'] == 'Hello world'
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
