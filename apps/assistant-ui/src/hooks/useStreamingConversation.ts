@@ -154,6 +154,26 @@ export function useStreamingConversation(
               }
               break;
 
+            case "meta": {
+              const metaData = event.data as {
+                model?: string;
+                usage?: unknown;
+                finish_reason?: string | null;
+              };
+              if (metaData.finish_reason !== undefined) {
+                currentAnnotations = {
+                  ...currentAnnotations,
+                  finish_reason: metaData.finish_reason,
+                };
+                setCurrentMessage((prev) =>
+                  prev
+                    ? { ...prev, annotations: { ...currentAnnotations } }
+                    : null,
+                );
+              }
+              break;
+            }
+
             case "done": {
               receivedDone = true;
               const doneData = event.data as StreamDoneData;

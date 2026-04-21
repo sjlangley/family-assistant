@@ -925,3 +925,140 @@ async def test_create_conversation_with_message_stream_skips_assistant_persisten
     persisted_messages = list(result.scalars().all())
     assert len(persisted_messages) == 1
     assert persisted_messages[0].role == 'user'
+
+
+@pytest.mark.asyncio
+async def test_add_message_to_conversation_stream_captures_finish_reason_length(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    async_session,
+    test_user_id,
+):
+    """When LLM returns finish_reason='length', it's captured and persisted in annotations."""
+    conversation = Conversation(
+        user_id=test_user_id, title='Truncated Response'
+    )
+    async_session.add(conversation)
+    await async_session.commit()
+    await async_session.refresh(conversation)
+
+    mock_context_assembly.assemble_context.return_value = ContextAssemblyResult(
+        messages=[{'role': 'user', 'content': 'Tell me a long story'}],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+
+    async def stream_outputs():
+        yield StreamParserOutput(token='Once upon a time')
+        yield StreamParserOutput(token='...')
+        yield StreamParserOutput(
+            finish_reason='length',
+            usage=CompletionUsage(
+                prompt_tokens=10,
+                completion_tokens=10,
+                total_tokens=20,
+            ),
+            model='test-model',
+        )
+
+    mock_llm_service.stream_messages = Mock(return_value=stream_outputs())
+
+    payload = CreateMessageRequest(content='Tell me a long story')
+
+    emitted_events = []
+    async for event in conversation_service.add_message_to_conversation_stream(
+        session=async_session,
+        user_id=test_user_id,
+        conversation_id=conversation.id,
+        payload=payload,
+    ):
+        emitted_events.append(event)
+
+    # Check that finish_reason='length' is included in the done event
+    done_event = next(
+        event for event in emitted_events if event.startswith('event: done')
+    )
+    done_payload = json.loads(done_event.split('data: ', 1)[1].strip())
+    assert done_payload['annotations']['finish_reason'] == 'length'
+    assert done_payload['content'] == 'Once upon a time...'
+
+    # Check that finish_reason='length' is persisted in the database
+    result = await async_session.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation.id)
+        .order_by(Message.sequence_number.asc())
+    )
+    persisted_messages = list(result.scalars().all())
+    assert len(persisted_messages) == 2
+    assert persisted_messages[1].role == 'assistant'
+    assert persisted_messages[1].content == 'Once upon a time...'
+    assert persisted_messages[1].annotations['finish_reason'] == 'length'
+
+
+@pytest.mark.asyncio
+async def test_add_message_to_conversation_stream_captures_finish_reason_stop(
+    conversation_service,
+    mock_llm_service,
+    mock_context_assembly,
+    async_session,
+    test_user_id,
+):
+    """When LLM returns finish_reason='stop', it's captured and persisted in annotations."""
+    conversation = Conversation(user_id=test_user_id, title='Complete Response')
+    async_session.add(conversation)
+    await async_session.commit()
+    await async_session.refresh(conversation)
+
+    mock_context_assembly.assemble_context.return_value = ContextAssemblyResult(
+        messages=[{'role': 'user', 'content': 'Say hello'}],
+        used_summary=False,
+        summary_id=None,
+        fact_ids=[],
+    )
+
+    async def stream_outputs():
+        yield StreamParserOutput(token='Hello!')
+        yield StreamParserOutput(
+            finish_reason='stop',
+            usage=CompletionUsage(
+                prompt_tokens=5,
+                completion_tokens=2,
+                total_tokens=7,
+            ),
+            model='test-model',
+        )
+
+    mock_llm_service.stream_messages = Mock(return_value=stream_outputs())
+
+    payload = CreateMessageRequest(content='Say hello')
+
+    emitted_events = []
+    async for event in conversation_service.add_message_to_conversation_stream(
+        session=async_session,
+        user_id=test_user_id,
+        conversation_id=conversation.id,
+        payload=payload,
+    ):
+        emitted_events.append(event)
+
+    # Check that finish_reason='stop' is included in the done event
+    done_event = next(
+        event for event in emitted_events if event.startswith('event: done')
+    )
+    done_payload = json.loads(done_event.split('data: ', 1)[1].strip())
+    assert done_payload['annotations']['finish_reason'] == 'stop'
+    assert done_payload['content'] == 'Hello!'
+
+    # Check that finish_reason='stop' is persisted in the database
+    result = await async_session.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation.id)
+        .order_by(Message.sequence_number.asc())
+    )
+    persisted_messages = list(result.scalars().all())
+    assert len(persisted_messages) == 2
+    assert persisted_messages[1].role == 'assistant'
+    assert persisted_messages[1].content == 'Hello!'
+    assert persisted_messages[1].annotations['finish_reason'] == 'stop'

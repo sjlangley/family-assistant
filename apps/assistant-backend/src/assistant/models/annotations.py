@@ -53,3 +53,6 @@ class AssistantAnnotations(BaseModel):
     memory_hits: list[MemoryHitAnnotation] = Field(default_factory=list)
     memory_saved: list[MemorySavedAnnotation] = Field(default_factory=list)
     failure: FailureAnnotation | None = None
+    finish_reason: str | None = Field(
+        None, description='Reason generation stopped (e.g. stop, length)'
+    )

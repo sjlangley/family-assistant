@@ -15,13 +15,14 @@ Today the shipped system includes:
 - persisted assistant `annotations` for trust metadata and evidence
 - desktop trust UI with an inline trust row and evidence panel
 
-## Upcoming Scope (Active Development)
+## Recently Shipped
 
-We are currently rolling out real-time streaming for assistant replies:
+Real-time streaming for assistant replies is now complete:
 
-- **SSE Infrastructure:** Application-level SSE protocol and encoder to deliver structured events (`thought`, `token`, `done`, `error`) to the frontend.
-- **Incremental LLM Parsing:** `LLMService` support for consuming raw provider streams and parsing reasoning segments (thoughts) from user content.
-- **Delivery Verification:** A `/api/v1/chat/debug-stream` endpoint for verifying the end-to-end SSE delivery pipeline.
+- **SSE Infrastructure:** Application-level SSE protocol delivers structured events (`thought`, `token`, `tool_call`, `meta`, `done`, `error`) to the frontend.
+- **Incremental LLM Parsing:** `LLMService` consumes raw provider streams and parses reasoning segments (thoughts) from user content.
+- **Token Limit Handling:** Backend tracks `finish_reason` from LLM, persists in annotations, enables Continue button in UI when responses truncate due to length.
+- **Delivery Verification:** `/api/v1/chat/debug-stream` endpoint verifies end-to-end SSE delivery pipeline.
 
 ## High-Level Architecture
 
@@ -90,20 +91,20 @@ The stored payload can include:
 The frontend never regenerates this trust metadata client-side.
 It renders what the backend persisted on the assistant message.
 
-## Target Architecture: Streaming Response Lifecycle
+## Streaming Response Lifecycle
 
-Once fully integrated, the system will support real-time delivery of assistant responses using Server-Sent Events (SSE):
+The system supports real-time delivery of assistant responses using Server-Sent Events (SSE):
 
 1. **Incremental Parsing:** `LLMService` consumes the raw LLM stream, and `StreamParser` distinguishes between reasoning traces (thoughts) and user-visible content.
-2. **App-Level SSE Protocol:** The backend translates internal chunks into a structured app-level protocol (`thought`, `token`, `tool_call`, `done`, `error`) using `SSEEncoder`.
-3. **Persistence Timing:** User messages are persisted immediately to ensure durable history. Assistant messages are persisted only after the stream reaches a terminal state, capturing the full content and reasoning trace.
-4. **UI Updates:** The frontend hook consumes the SSE stream, updating the UI in real-time while distinguishing between reasoning and final content.
+2. **App-Level SSE Protocol:** The backend translates internal chunks into a structured app-level protocol (`thought`, `token`, `tool_call`, `meta`, `done`, `error`) using `SSEEncoder`.
+3. **Token Limit Handling:** Backend enforces `LLM_MAX_TOKENS` (default: 1024), captures `finish_reason` from LLM, persists in `AssistantAnnotations`. When `finish_reason === 'length'`, frontend displays truncation indicator and Continue button.
+4. **Persistence Timing:** User messages are persisted immediately to ensure durable history. Assistant messages are persisted only after the stream reaches a terminal state, capturing the full content, reasoning trace, and finish_reason.
+5. **UI Updates:** The frontend hook consumes the SSE stream, updating the UI in real-time while distinguishing between reasoning and final content.
 
 ## Current Boundaries
 
 The shipped architecture intentionally does not include:
 
-- full end-to-end streaming of conversation replies (currently in progress)
 - image, audio, or video generation
 - Google Drive ingestion
 - household shared-memory features

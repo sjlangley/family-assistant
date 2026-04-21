@@ -35,36 +35,54 @@ Follow TDD for all code changes:
 
 ## Required Validation Before Commit or Push
 
+**CRITICAL: These are pre-commit gates, not post-commit checks.**
+
 Treat local validation as a hard gate, not a nice-to-have.
 Do not create a commit, push a branch, or open a PR until every relevant check
 for the files you changed has been run locally and is passing.
 Do not rely on CI to tell you what you should have checked before committing.
 
+**The workflow is:**
+1. Make code changes
+2. Run ALL validation commands for changed files
+3. Fix any errors found
+4. Re-run ALL validation commands
+5. Only when all checks pass → create commit
+6. Never commit with failing checks
+
+**Exception:** If you discover a check failure after committing, create a
+separate fix commit with the corrected code. Do not amend or rewrite history
+on branches that have been pushed.
+
 ### Frontend changes: `apps/assistant-ui/**`
 
-Run these from `apps/assistant-ui` whenever you touch frontend code, styles,
-config, or tests:
+**WORKFLOW: Run these in order from `apps/assistant-ui` BEFORE EVERY COMMIT:**
 
 ```bash
-npm run format
-npm run lint
-npm run typecheck
-npm run test:coverage
-npm run build
+npm run format        # Auto-fix formatting (REQUIRED, not format:check)
+npm run lint          # Check linting rules
+npm run typecheck     # Verify TypeScript types
+npm run test:coverage # Run all tests with coverage
+npm run build         # Verify production build works
 ```
+
+**All five commands must pass with zero errors before creating a commit.**
+Do not commit if any check fails. Fix the issue first, then re-run all checks.
 
 ### Backend changes: `apps/assistant-backend/**`
 
-Run these from `apps/assistant-backend` whenever you touch backend code,
-migrations, config, or tests:
+**WORKFLOW: Run these in order from `apps/assistant-backend` BEFORE EVERY COMMIT:**
 
 ```bash
-ruff format src/ tests/
-ruff check src/ tests/
-ruff format --check src/ tests/
-pyrefly check src/
-pytest -v
+source .venv/bin/activate  # Activate virtual environment
+ruff format src/ tests/     # Auto-fix formatting
+ruff check src/ tests/      # Check linting rules
+pyrefly check src/          # Type check with pyrefly
+pytest -v                   # Run all tests
 ```
+
+**All checks must pass with zero errors before creating a commit.**
+Do not commit if any check fails. Fix the issue first, then re-run all checks.
 
 ### Scope rules
 
@@ -75,14 +93,22 @@ pytest -v
 
 ### Reporting requirements
 
-Before finishing the task, explicitly report:
+**Before creating each commit, explicitly state:**
 
-- Which validation commands you ran and whether they passed.
-- Which checks were intentionally skipped, and why.
+```
+Pre-commit validation for [backend/frontend]:
+✅ format - passed
+✅ lint - passed
+✅ typecheck - passed (frontend) OR pyrefly - passed (backend)
+✅ test:coverage - passed (frontend) OR pytest - passed (backend)
+✅ build - passed (frontend only)
+```
 
-If a required check fails, fix it before committing or pushing.
-If you cannot run a required check, stop before commit or push and explain the
-blocker.
+If a required check fails, do not commit. Report the failure, fix it,
+re-run all checks, then commit.
+
+If you cannot run a required check due to environment issues, stop before
+commit and explain the blocker.
 
 ---
 
