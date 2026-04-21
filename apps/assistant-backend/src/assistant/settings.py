@@ -79,6 +79,8 @@ class Settings(BaseSettings):
         default=1024,
         description='Default maximum tokens to generate.',
         alias='LLM_MAX_TOKENS',
+        gt=0,
+        le=4096,
     )
 
     # Conversation storage
