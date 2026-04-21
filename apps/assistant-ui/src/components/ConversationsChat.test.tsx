@@ -5,7 +5,12 @@ import { ConversationsChat } from "./ConversationsChat";
 import * as api from "../lib/api";
 import { AuthContext } from "../lib/auth";
 import type { AuthState } from "../lib/auth";
-import type { AssistantAnnotations, Message, SSEEvent } from "../types/api";
+import type {
+  AssistantAnnotations,
+  GetConversationMessagesResponse,
+  Message,
+  SSEEvent,
+} from "../types/api";
 
 // Mock API functions
 vi.mock("../lib/api", () => ({
@@ -89,8 +94,9 @@ describe("ConversationsChat", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    mockGetConversationMessages.mockResolvedValue(null as any);
-
+    mockGetConversationMessages.mockResolvedValue(
+      null as unknown as GetConversationMessagesResponse,
+    );
     mockStreamConversation.mockImplementation((conversationId, content) => {
       if (conversationId) {
         return (async function* () {
