@@ -231,7 +231,7 @@ OpenAI-style chat-message accounting, even though it is not the ground-truth
 tokenizer for Qwen.
 
 - OpenAI `tiktoken`:
-  [Context7 reference](https://context7.com/openai/tiktoken/llms.txt)
+  [How to count tokens with tiktoken](https://cookbook.openai.com/examples/how_to_count_tokens_with_tiktoken)
 
 ### Rolling Summary Middleware
 
