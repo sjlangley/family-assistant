@@ -16,14 +16,9 @@ from assistant.services.tools.web_fetch import UnsafeUrlError, WebFetchTool
 def mock_http_client():
     """Mock httpx.AsyncClient for web fetch tests."""
     with patch('assistant.services.tools.web_fetch.httpx.AsyncClient') as mock:
-        with patch.object(
-            WebFetchTool,
-            '_resolve_host_ips',
-            new=AsyncMock(return_value={'93.184.216.34'}),
-        ):
-            mock_instance = AsyncMock()
-            mock.return_value = mock_instance
-            yield mock_instance
+        mock_instance = AsyncMock()
+        mock.return_value = mock_instance
+        yield mock_instance
 
 
 @pytest.fixture
