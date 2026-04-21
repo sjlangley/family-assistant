@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.0](https://github.com/sjlangley/family-assistant/compare/assistant-ui-v0.1.0...assistant-ui-v0.2.0) (2026-04-21)
+
+
+### Features
+
+* **assistant:** add token-limit handling and truncation recovery ([#112](https://github.com/sjlangley/family-assistant/issues/112)) ([73acdef](https://github.com/sjlangley/family-assistant/commit/73acdef13fe811d4cc7cb57507ba87fc4405e000))
+* **streaming:** add stop control for active responses ([#113](https://github.com/sjlangley/family-assistant/issues/113)) ([ff9e4b7](https://github.com/sjlangley/family-assistant/commit/ff9e4b79ddd576632d60b6d292f3517835ee0be1))
+* **ui:** implement useStreamingConversation hook and SSE client (Phase 4) ([#104](https://github.com/sjlangley/family-assistant/issues/104)) ([946fc1b](https://github.com/sjlangley/family-assistant/commit/946fc1ba9436d7567ba71f391c0ee5dbd2306c60))
+
+
+### Bug Fixes
+
+* **ui:** remove silent streaming fallback and improve stability ([#111](https://github.com/sjlangley/family-assistant/issues/111)) ([cad6e8c](https://github.com/sjlangley/family-assistant/commit/cad6e8ca65e3d22c2328da30a94246784c62bea1))
+
 ## [0.1.0](https://github.com/sjlangley/family-assistant/compare/assistant-ui-v0.0.1...assistant-ui-v0.1.0) (2026-04-17)
 
 ### Features
