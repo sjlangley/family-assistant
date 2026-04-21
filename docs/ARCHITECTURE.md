@@ -21,7 +21,9 @@ Real-time streaming for assistant replies is now complete:
 
 - **SSE Infrastructure:** Application-level SSE protocol delivers structured events (`thought`, `token`, `tool_call`, `meta`, `done`, `error`) to the frontend.
 - **Incremental LLM Parsing:** `LLMService` consumes raw provider streams and parses reasoning segments (thoughts) from user content.
+- **Streaming Tool Loop:** tool calls emitted during streaming are executed in-stream, their results are fed back to the model, and tool lifecycle state is surfaced in the UI.
 - **Token Limit Handling:** Backend tracks `finish_reason` from LLM, persists in annotations, enables Continue button in UI when responses truncate due to length.
+- **Cancellation Support:** the chat composer exposes a `Stop` button during active streams, which aborts the SSE request and lets the backend persist truthful terminal state.
 - **Delivery Verification:** `/api/v1/chat/debug-stream` endpoint verifies end-to-end SSE delivery pipeline.
 
 ## High-Level Architecture
@@ -99,7 +101,8 @@ The system supports real-time delivery of assistant responses using Server-Sent 
 2. **App-Level SSE Protocol:** The backend translates internal chunks into a structured app-level protocol (`thought`, `token`, `tool_call`, `meta`, `done`, `error`) using `SSEEncoder`.
 3. **Token Limit Handling:** Backend enforces `LLM_MAX_TOKENS` (default: 1024), captures `finish_reason` from LLM, persists in `AssistantAnnotations`. When `finish_reason === 'length'`, frontend displays truncation indicator and Continue button.
 4. **Persistence Timing:** User messages are persisted immediately to ensure durable history. Assistant messages are persisted only after the stream reaches a terminal state, capturing the full content, reasoning trace, and finish_reason.
-5. **UI Updates:** The frontend hook consumes the SSE stream, updating the UI in real-time while distinguishing between reasoning and final content.
+5. **Streaming Tool Execution:** Conversation streaming can execute allowlisted tools between stream rounds, emit tool lifecycle events, and continue the assistant turn with tool results included in prompt state.
+6. **UI Updates:** The frontend hook consumes the SSE stream, updating the UI in real-time while distinguishing between reasoning and final content. While a stream is active, the composer shows a `Stop` action that aborts the request.
 
 ## Current Boundaries
 

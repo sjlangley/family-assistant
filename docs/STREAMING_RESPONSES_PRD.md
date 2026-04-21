@@ -1,5 +1,27 @@
 # Streaming Responses PRD
 
+## Status
+
+Streaming responses are now fully implemented relative to the goals in this
+PRD.
+
+Shipped behavior includes:
+
+- SSE delivery for conversation creation and follow-up message endpoints when
+  `stream: true`
+- real-time `thought`, `token`, `tool_call`, `meta`, `done`, and `error`
+  events
+- in-stream tool execution with bounded multi-round continuation
+- immediate user-message persistence and deferred assistant persistence
+- persistence of reasoning traces, tool metadata, terminal failures, and
+  `finish_reason`
+- UI handling for thought traces, tool lifecycle state, truncation recovery via
+  `Continue`, and user-initiated cancellation via `Stop`
+
+The remaining value of this document is as an implementation record and design
+reference. Any previous "remaining gaps" below have been updated to match the
+shipped system.
+
 ## Summary
 
 This document defines the implementation plan for real-time streaming
@@ -31,7 +53,8 @@ the user as it is generated.
 
 ## Problem Statement
 
-The current backend is entirely non-streaming. When a user sends a message:
+Before this work, the backend was entirely non-streaming. When a user sent a
+message:
 1. The backend makes a blocking call to the LLM.
 2. The LLM generates the full response (often taking 10-60+ seconds).
 3. The backend returns the final result.
@@ -51,8 +74,8 @@ while being more efficient than long polling.
 ### Tool calls must be handled carefully
 Streaming complicates tool-calling loops. The system must decide when to
 emit tokens to the user and when to pause for tool execution.
-Initially, we may stream the reasoning/content until a tool call is
-identified, execute the tool, and then continue streaming the next turn.
+The shipped implementation streams reasoning/content until a tool call is
+identified, executes the tool, and then continues streaming the next turn.
 
 ### Persistence distinguishes user vs. assistant messages
 To maintain a consistent history while preserving failure recovery semantics,
@@ -113,6 +136,7 @@ Update `Chat.tsx` and `ConversationsChat.tsx` to:
 - Show an active streaming state for the latest assistant message.
 - Render content as it arrives.
 - Distinguish between reasoning traces and final content.
+- Let the user stop an active stream without leaving the conversation.
 
 ## Architecture Changes
 
@@ -124,9 +148,10 @@ Update `Chat.tsx` and `ConversationsChat.tsx` to:
 ### Existing areas touched
 - `apps/assistant-backend/src/assistant/services/llm_service.py`
 - `apps/assistant-backend/src/assistant/services/conversation_service.py`
-- `apps/assistant-backend/src/assistant/routers/chat.py`
+- `apps/assistant-backend/src/assistant/routers/conversations.py`
 - `apps/assistant-ui/src/lib/api.ts`
-- `apps/assistant-ui/src/components/Chat.tsx`
+- `apps/assistant-ui/src/hooks/useStreamingConversation.ts`
+- `apps/assistant-ui/src/components/ConversationsChat.tsx`
 
 ## Rollout Plan
 
@@ -165,27 +190,30 @@ Update `Chat.tsx` and `ConversationsChat.tsx` to:
   - Keep persistence guarantees: user message immediate, assistant message deferred to
     terminal state.
 
-## Current Status & Remaining Gaps
+## Current Status
 
-The current implementation supports token/thought streaming and persistence lifecycle,
-but it is not yet complete relative to the product goals. Remaining work:
+The implementation now covers the original product goals:
 
-- **Streaming tool execution is incomplete:** tool calls detected during streaming are
-  not yet executed in-stream.
-- **Fallback behavior masks failures:** UI fallback from stream to non-stream can hide
-  stream-path bugs and produce confusing duplicate failures.
-- **Token-limit handling needs operator controls:** truncation (`finish_reason=length`)
-  is observable, but default limits and user-facing behavior for truncation recovery
-  need to be finalized.
-- **End-to-end test coverage gaps:** add backend router/service tests and frontend
-  integration tests for:
-  - streaming with tool calls
-  - interrupted streams with partial assistant output
-  - terminal error handling without silent fallback
-  - `done` payload integrity (message id, annotations, usage when available)
-- **Operational guidance:** document model/endpoint requirements (OpenAI-compatible
-  `/v1/chat/completions`) and expected behavior when backend/model does not support the
-  configured path.
+- **Streaming delivery is live:** conversation endpoints support JSON or SSE
+  delivery, selected by the request body's `stream: true` flag.
+- **Streaming tool execution is complete:** tool calls detected during
+  streaming are executed in-stream, tool results are fed back into the LLM,
+  and the assistant turn continues until a terminal state.
+- **Persistence lifecycle is complete:** the user turn is persisted
+  immediately; the assistant turn is persisted only when the stream reaches a
+  terminal success, cancellation, or error state.
+- **Token-limit handling is live:** `finish_reason` is captured, persisted, and
+  surfaced in the UI, including `Continue` affordances for
+  `finish_reason=\"length\"`.
+- **Cancellation support is live:** the frontend can stop an active stream,
+  which aborts the SSE request and lets the backend persist partial output in a
+  terminal error state when needed.
+- **Test coverage exists across layers:** backend router/service tests and
+  frontend integration tests cover successful streams, tool calls,
+  interruptions, cancellation, terminal errors, and `done` payload handling.
+- **Operational guidance exists:** the backend expects an OpenAI-compatible
+  `/v1/chat/completions` endpoint for both non-streaming and streaming
+  completions.
 
 ## Testing Strategy
 
@@ -193,6 +221,8 @@ but it is not yet complete relative to the product goals. Remaining work:
 - **Backend:** Test persistence of interrupted streams.
 - **Frontend:** Verify UI responsiveness during streaming.
 - **Frontend:** Test reconnection/error handling for dropped streams.
+- **Frontend:** Test user-initiated cancellation through the visible `Stop`
+  control.
 
 ## Open Questions & Proposed Answers
 
@@ -220,7 +250,9 @@ type.
 **Recommendation:** Yes.
 - **Implementation:** If the frontend closes the SSE connection, the backend
   should detect the `ClientDisconnect` (standard in FastAPI/Starlette) and
-  cancel the underlying LLM request to save local compute resources.
+  cancel the underlying LLM request to save local compute resources. The
+  shipped UI exposes this behavior through a visible `Stop` button while a
+  response is streaming.
 
 ## Technical Flow & Wiring
 
