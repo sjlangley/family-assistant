@@ -415,6 +415,7 @@ class ConversationService:
             content=content,
             sequence_number=1,
         )
+        conversation_id = conversation.id
         session.add(user_message)
         await session.commit()
         await session.refresh(user_message)
@@ -432,7 +433,7 @@ class ConversationService:
         async for event in self._stream_assistant_lifecycle(
             session=session,
             user_id=user_id,
-            conversation=conversation,
+            conversation_id=conversation_id,
             user_message_id=user_message.id,
             assistant_sequence_number=2,
             context_messages=context_result.messages,
@@ -460,7 +461,7 @@ class ConversationService:
                 detail='Message content cannot be empty',
             )
 
-        conversation = await self._get_conversation_for_user(
+        await self._get_conversation_for_user(
             session,
             user_id=user_id,
             conversation_id=conversation_id,
@@ -498,7 +499,7 @@ class ConversationService:
         async for event in self._stream_assistant_lifecycle(
             session=session,
             user_id=user_id,
-            conversation=conversation,
+            conversation_id=conversation_id,
             user_message_id=user_message.id,
             assistant_sequence_number=next_seq + 1,
             context_messages=context_result.messages,
@@ -514,7 +515,7 @@ class ConversationService:
         *,
         session: AsyncSession,
         user_id: str,
-        conversation: Conversation,
+        conversation_id: uuid.UUID,
         user_message_id: uuid.UUID,
         assistant_sequence_number: int,
         context_messages: list[dict],
@@ -526,7 +527,7 @@ class ConversationService:
         """Run streaming loop and persist assistant row only at terminal states."""
         logger.debug(
             'stream lifecycle start: conversation_id=%s user_message_id=%s seq=%s',
-            conversation.id,
+            conversation_id,
             user_message_id,
             assistant_sequence_number,
         )
@@ -593,7 +594,7 @@ class ConversationService:
         except LLMCompletionError as error:
             logger.debug(
                 'stream lifecycle llm error: conversation_id=%s stream_started=%s token_events=%s thought_events=%s tool_call_events=%s kind=%s detail=%s',
-                conversation.id,
+                conversation_id,
                 stream_started,
                 emitted_tokens,
                 emitted_thoughts,
@@ -604,7 +605,7 @@ class ConversationService:
             if stream_started:
                 await self._persist_streaming_assistant_message(
                     session=session,
-                    conversation=conversation,
+                    conversation_id=conversation_id,
                     sequence_number=assistant_sequence_number,
                     content=''.join(content_parts)
                     or 'Unable to generate a response. Please try again.',
@@ -630,7 +631,7 @@ class ConversationService:
         except asyncio.CancelledError:
             logger.debug(
                 'stream lifecycle cancelled: conversation_id=%s stream_started=%s token_events=%s thought_events=%s tool_call_events=%s',
-                conversation.id,
+                conversation_id,
                 stream_started,
                 emitted_tokens,
                 emitted_thoughts,
@@ -643,7 +644,7 @@ class ConversationService:
                 )
                 await self._persist_streaming_assistant_message(
                     session=session,
-                    conversation=conversation,
+                    conversation_id=conversation_id,
                     sequence_number=assistant_sequence_number,
                     content=''.join(content_parts)
                     or 'Unable to generate a response. Please try again.',
@@ -658,7 +659,7 @@ class ConversationService:
 
         assistant_message = await self._persist_streaming_assistant_message(
             session=session,
-            conversation=conversation,
+            conversation_id=conversation_id,
             sequence_number=assistant_sequence_number,
             content=''.join(content_parts)
             or 'Unable to generate a response. Please try again.',
@@ -671,7 +672,7 @@ class ConversationService:
         )
         logger.debug(
             'stream lifecycle done: conversation_id=%s assistant_message_id=%s token_events=%s thought_events=%s tool_call_events=%s content_len=%s',
-            conversation.id,
+            conversation_id,
             assistant_message.id,
             emitted_tokens,
             emitted_thoughts,
@@ -683,13 +684,13 @@ class ConversationService:
             background_tasks.add_task(
                 self.extract_and_save_background,
                 user_id=user_id,
-                conversation_id=conversation.id,
+                conversation_id=conversation_id,
                 assistant_message_id=assistant_message.id,
                 latest_user_message_id=user_message_id,
             )
 
         done_payload: dict[str, object] = {
-            'conversation_id': str(conversation.id),
+            'conversation_id': str(conversation_id),
             'message_id': str(assistant_message.id),
             'content': assistant_message.content,
             'annotations': assistant_message.annotations,
@@ -705,7 +706,7 @@ class ConversationService:
         self,
         *,
         session: AsyncSession,
-        conversation: Conversation,
+        conversation_id: uuid.UUID,
         sequence_number: int,
         content: str,
         thought: str | None,
@@ -737,7 +738,7 @@ class ConversationService:
             annotations_obj.finish_reason = finish_reason
 
         assistant_message = Message(
-            conversation_id=conversation.id,
+            conversation_id=conversation_id,
             role='assistant',
             content=content,
             sequence_number=sequence_number,
@@ -745,7 +746,12 @@ class ConversationService:
             annotations=annotations_obj.model_dump(),
         )
         session.add(assistant_message)
-        conversation.updated_at = datetime.now(timezone.utc)
+        await session.execute(
+            update(Conversation)
+            # pyrefly: ignore [bad-argument-type]
+            .where(Conversation.id == conversation_id)
+            .values(updated_at=datetime.now(timezone.utc))
+        )
         await session.commit()
         await session.refresh(assistant_message)
         return assistant_message
