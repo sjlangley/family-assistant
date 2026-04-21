@@ -15,6 +15,7 @@ Chroma for retrieval support, and an external OpenAI-compatible LLM server for i
 - **User API** — retrieves the currently authenticated user
 - **Shared LLM completion seam** — one typed path powers both `/api/v1/chat/completions` and conversation replies
 - **Conversation orchestration** — creates conversations, appends messages, and persists terminal assistant failures instead of dropping outcomes
+- **Streaming conversation replies** — conversation endpoints support Server-Sent Events when `stream: true`, including thought traces, tool lifecycle events, terminal metadata, and cancellation-aware persistence
 - **Bounded context assembly** — conversation replies use recent turns, one latest saved summary, and active per-user durable facts from PostgreSQL
 - **Canonical memory storage** — conversation summaries and durable facts are stored in Postgres and mirrored into Chroma only for retrieval support
 - **Tool orchestration** — `ToolFactory` and `ToolService` expose an explicit allowlist with a bounded model-native tool loop
@@ -37,9 +38,9 @@ Chroma for retrieval support, and an external OpenAI-compatible LLM server for i
 | `GET` | `/health` | Health check |
 | `POST` | `/api/v1/chat/completions` | Send a chat message and receive an LLM response |
 | `GET` | `/api/v1/conversations` | List all conversations for the current user |
-| `POST` | `/api/v1/conversations/with-message` | Create a new conversation with an initial message |
+| `POST` | `/api/v1/conversations/with-message` | Create a new conversation with an initial message; returns JSON or SSE when `stream=true` |
 | `GET` | `/api/v1/conversations/{id}/messages` | Get all messages in a conversation |
-| `POST` | `/api/v1/conversations/{id}/messages` | Add a message to an existing conversation |
+| `POST` | `/api/v1/conversations/{id}/messages` | Add a message to an existing conversation; returns JSON or SSE when `stream=true` |
 
 ---
 
