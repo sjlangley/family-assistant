@@ -6,12 +6,7 @@ import type {
   FailureAnnotation,
   StreamDoneData,
 } from "../types/api";
-import {
-  listConversations,
-  getConversationMessages,
-  createConversationWithMessage,
-  addMessageToConversation,
-} from "../lib/api";
+import { listConversations, getConversationMessages } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { MarkdownContent } from "./MarkdownContent";
 import { useStreamingConversation } from "../hooks/useStreamingConversation";
@@ -486,8 +481,6 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
   const pendingStreamMetaRef = useRef<{
     startedWithoutActiveConversation: boolean;
   } | null>(null);
-  const streamFailedRef = useRef(false);
-  const streamSucceededRef = useRef(false);
   const reconcileRequestIdRef = useRef(0);
 
   // Get user from authState (it should always be present when component is mounted)
@@ -581,7 +574,6 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
         pendingStreamMetaRef.current?.startedWithoutActiveConversation ?? false;
 
       if (startedWithoutActiveConversation) {
-        streamSucceededRef.current = true;
         setInputMessage("");
         setActiveConversationId(doneData.conversation_id);
       } else {
@@ -595,10 +587,11 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
               return;
             }
 
-            streamSucceededRef.current = true;
-            setMessages((prev) =>
-              mergeTranscriptMessages(transcript.items, prev),
-            );
+            if (transcript?.items) {
+              setMessages((prev) =>
+                mergeTranscriptMessages(transcript.items, prev),
+              );
+            }
             setInputMessage("");
           } catch (err) {
             if (err instanceof Error && err.message === "UNAUTHORIZED") {
@@ -617,8 +610,6 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
     useStreamingConversation({
       onDone: handleStreamDone,
       onError: (streamError) => {
-        streamFailedRef.current = true;
-        streamSucceededRef.current = false;
         pendingStreamMetaRef.current = null;
         if (streamError.message === "UNAUTHORIZED") {
           onLogout();
@@ -682,7 +673,9 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
           activeConversationId,
           controller.signal,
         );
-        setMessages(response.items);
+        if (response?.items) {
+          setMessages(response.items);
+        }
       } catch (err) {
         if (err instanceof Error) {
           if (err.name === "AbortError") return;
@@ -711,7 +704,6 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
     stop();
     reset();
     reconcileRequestIdRef.current += 1;
-    streamSucceededRef.current = false;
     setActiveConversationId(null);
     setMessages([]);
     setError(null);
@@ -723,43 +715,10 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
       stop();
       reset();
       reconcileRequestIdRef.current += 1;
-      streamSucceededRef.current = false;
       setActiveConversationId(conversationId);
       setError(null);
     },
     [reset, stop],
-  );
-
-  // Update conversations list with new or updated conversation
-  const updateConversationsList = useCallback(
-    (conversationResponse: {
-      conversation: ConversationSummary;
-      user_message: Message;
-      assistant_message: Message;
-    }) => {
-      const { conversation } = conversationResponse;
-      setConversations((prev) => {
-        const existing = prev.find((c) => c.id === conversation.id);
-        const updatedConversation = {
-          id: conversation.id,
-          title: conversation.title,
-          created_at: conversation.created_at,
-          updated_at: conversation.updated_at,
-        };
-
-        if (existing) {
-          // Update existing conversation and re-sort by updated_at desc
-          return [
-            updatedConversation,
-            ...prev.filter((c) => c.id !== conversation.id),
-          ];
-        } else {
-          // Add new conversation at the beginning
-          return [updatedConversation, ...prev];
-        }
-      });
-    },
-    [],
   );
 
   // Handle sending a message
@@ -772,8 +731,6 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
 
     setSendingMessage(true);
     setError(null);
-    streamFailedRef.current = false;
-    streamSucceededRef.current = false;
 
     try {
       const userMessage: Message = {
@@ -797,41 +754,6 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
 
       // Primary path: stream incremental assistant output.
       await stream(activeConversationId, trimmedMessage, {});
-      if (!streamFailedRef.current && streamSucceededRef.current) {
-        setInputMessage("");
-      }
-
-      // Fallback path for environments or flows where streaming fails.
-      if (streamFailedRef.current) {
-        setError(null);
-        if (activeConversationId) {
-          const response = await addMessageToConversation(
-            activeConversationId,
-            {
-              content: trimmedMessage,
-            },
-          );
-
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === userMessage.id ? response.user_message : msg,
-            ),
-          );
-          setMessages((prev) => [...prev, response.assistant_message]);
-          updateConversationsList(response);
-        } else {
-          const response = await createConversationWithMessage({
-            content: trimmedMessage,
-          });
-
-          updateConversationsList(response);
-          skipFetchForConversation.current = response.conversation.id;
-          setMessages([response.user_message, response.assistant_message]);
-          setActiveConversationId(response.conversation.id);
-        }
-
-        setInputMessage("");
-      }
     } catch (err) {
       if (err instanceof Error) {
         if (err.message === "UNAUTHORIZED") {
@@ -855,7 +777,9 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
   };
 
   const messagesToRender =
-    isStreaming && currentMessage ? [...messages, currentMessage] : messages;
+    currentMessage && (isStreaming || !!currentMessage.error)
+      ? [...messages, currentMessage]
+      : messages;
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -1045,7 +969,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
               </div>
             )}
 
-            {error && (
+            {error && (!currentMessage || error !== currentMessage.error) && (
               <div className="max-w-3xl mx-auto mt-4 p-4 bg-[#f8e9e6] text-[#a54034] rounded border border-[#e0b5ad]">
                 Error: {error}
               </div>
