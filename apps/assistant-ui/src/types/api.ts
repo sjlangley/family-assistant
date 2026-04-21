@@ -75,6 +75,7 @@ export interface AssistantAnnotations {
   memory_hits: MemoryHitAnnotation[];
   memory_saved: MemorySavedAnnotation[];
   failure: FailureAnnotation | null;
+  finish_reason?: string | null;
 }
 
 /**

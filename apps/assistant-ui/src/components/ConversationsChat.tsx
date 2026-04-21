@@ -769,6 +769,49 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
     }
   };
 
+  // Handle continue button click for truncated responses
+  const handleContinue = useCallback(async () => {
+    if (!activeConversationId) return;
+
+    // Guard against concurrent sends while request is in flight
+    if (sendingMessage || isStreaming) return;
+
+    setSendingMessage(true);
+    setError(null);
+
+    try {
+      const userMessage: Message = {
+        id: `temp-user-${Date.now()}`,
+        role: "user",
+        content: "Continue",
+        sequence_number: -1,
+        created_at: new Date().toISOString(),
+        error: null,
+        annotations: null,
+      };
+      setMessages((prev) => [...prev, userMessage]);
+
+      pendingStreamMetaRef.current = {
+        startedWithoutActiveConversation: false,
+      };
+
+      // Stream the continuation
+      await stream(activeConversationId, "Continue", {});
+    } catch (err) {
+      if (err instanceof Error) {
+        if (err.message === "UNAUTHORIZED") {
+          onLogout();
+          return;
+        }
+        setError(err.message);
+      } else {
+        setError("Failed to continue");
+      }
+    } finally {
+      setSendingMessage(false);
+    }
+  }, [activeConversationId, sendingMessage, isStreaming, stream, onLogout]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -911,6 +954,21 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
                                     />
                                   )}
                                 <MarkdownContent content={msg.content} />
+                                {msg.annotations?.finish_reason ===
+                                  "length" && (
+                                  <div className="mt-2 flex flex-col gap-2">
+                                    <div className="text-sm italic text-gray-500">
+                                      ... [Response truncated due to length]
+                                    </div>
+                                    <button
+                                      onClick={() => handleContinue()}
+                                      disabled={sendingMessage || isStreaming}
+                                      className="self-start text-xs bg-[#24453a] text-white px-3 py-1 rounded hover:bg-[#1a3428] transition-colors disabled:bg-[#d6cebd] disabled:cursor-not-allowed"
+                                    >
+                                      Continue
+                                    </button>
+                                  </div>
+                                )}
                               </>
                             ) : (
                               <div className="whitespace-pre-wrap">

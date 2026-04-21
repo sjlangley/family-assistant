@@ -59,6 +59,7 @@ class _LLMLoopResult:
     executed_tools: list[ToolExecutionResult]
     error: LLMCompletionError | None = None
     attempted_tool_execution: bool = False  # True if tool loop was entered
+    finish_reason: str | None = None
 
 
 def conversation_title_from_first_message(content: str) -> str:
@@ -170,11 +171,13 @@ class ConversationService:
             )
         )
 
+        max_tokens = payload.max_tokens or settings.llm_max_tokens
+
         # Make LLM call outside of transaction
         loop_result = await self._call_llm_chat_completion(
             messages=context_result.messages,
             temperature=payload.temperature,
-            max_tokens=payload.max_tokens,
+            max_tokens=max_tokens,
         )
 
         # Build annotations or failure metadata
@@ -186,6 +189,8 @@ class ConversationService:
                 executed_tools=loop_result.executed_tools,
                 attempted_tool_execution=loop_result.attempted_tool_execution,
             )
+            if loop_result.finish_reason:
+                annotations_obj.finish_reason = loop_result.finish_reason
             annotations_dict = annotations_obj.model_dump()
             error_text = self.annotation_service.format_error_detail(
                 loop_result.error
@@ -195,6 +200,8 @@ class ConversationService:
                 executed_tools=loop_result.executed_tools,
                 fact_ids=context_result.fact_ids,
             )
+            if loop_result.finish_reason:
+                annotations_obj.finish_reason = loop_result.finish_reason
             annotations_dict = annotations_obj.model_dump()
 
         # Transaction 2: Create assistant message and update conversation
@@ -296,11 +303,13 @@ class ConversationService:
             new_user_message=None,
         )
 
+        max_tokens = payload.max_tokens or settings.llm_max_tokens
+
         # Make LLM call outside of transaction
         loop_result = await self._call_llm_chat_completion(
             messages=context_result.messages,
             temperature=payload.temperature,
-            max_tokens=payload.max_tokens,
+            max_tokens=max_tokens,
         )
 
         # Build annotations or failure metadata
@@ -312,6 +321,8 @@ class ConversationService:
                 executed_tools=loop_result.executed_tools,
                 attempted_tool_execution=loop_result.attempted_tool_execution,
             )
+            if loop_result.finish_reason:
+                annotations_obj.finish_reason = loop_result.finish_reason
             annotations_dict = annotations_obj.model_dump()
             error_text = self.annotation_service.format_error_detail(
                 loop_result.error
@@ -321,6 +332,8 @@ class ConversationService:
                 executed_tools=loop_result.executed_tools,
                 fact_ids=context_result.fact_ids,
             )
+            if loop_result.finish_reason:
+                annotations_obj.finish_reason = loop_result.finish_reason
             annotations_dict = annotations_obj.model_dump()
 
         # Transaction 2: Create assistant message and update conversation
@@ -414,6 +427,8 @@ class ConversationService:
             )
         )
 
+        max_tokens = payload.max_tokens or settings.llm_max_tokens
+
         async for event in self._stream_assistant_lifecycle(
             session=session,
             user_id=user_id,
@@ -423,7 +438,7 @@ class ConversationService:
             context_messages=context_result.messages,
             fact_ids=context_result.fact_ids,
             temperature=payload.temperature,
-            max_tokens=payload.max_tokens,
+            max_tokens=max_tokens,
             background_tasks=background_tasks,
         ):
             yield event
@@ -478,6 +493,8 @@ class ConversationService:
             new_user_message=None,
         )
 
+        max_tokens = payload.max_tokens or settings.llm_max_tokens
+
         async for event in self._stream_assistant_lifecycle(
             session=session,
             user_id=user_id,
@@ -487,7 +504,7 @@ class ConversationService:
             context_messages=context_result.messages,
             fact_ids=context_result.fact_ids,
             temperature=payload.temperature,
-            max_tokens=payload.max_tokens,
+            max_tokens=max_tokens,
             background_tasks=background_tasks,
         ):
             yield event
@@ -519,6 +536,7 @@ class ConversationService:
         attempted_tool_execution = False
         model_name: str | None = None
         usage_payload: dict | None = None
+        finish_reason: str | None = None
         stream_started = False
         emitted_tokens = 0
         emitted_thoughts = 0
@@ -567,6 +585,8 @@ class ConversationService:
                     attempted_tool_execution = cast(
                         bool, event['data']['attempted_tool_execution']
                     )
+                    if event['data'].get('finish_reason') is not None:
+                        finish_reason = cast(str, event['data']['finish_reason'])
 
         except LLMCompletionError as error:
             logger.debug(
@@ -591,6 +611,7 @@ class ConversationService:
                     executed_tools=executed_tools,
                     attempted_tool_execution=attempted_tool_execution,
                     error=error,
+                    finish_reason=None,
                 )
 
             yield SSEEncoder.encode(
@@ -629,6 +650,7 @@ class ConversationService:
                     executed_tools=executed_tools,
                     attempted_tool_execution=attempted_tool_execution,
                     error=cancellation_error,
+                    finish_reason=None,
                 )
             raise
 
@@ -643,6 +665,7 @@ class ConversationService:
             executed_tools=executed_tools,
             attempted_tool_execution=attempted_tool_execution,
             error=None,
+            finish_reason=finish_reason,
         )
         logger.debug(
             'stream lifecycle done: conversation_id=%s assistant_message_id=%s token_events=%s thought_events=%s tool_call_events=%s content_len=%s',
@@ -688,6 +711,7 @@ class ConversationService:
         executed_tools: list[ToolExecutionResult],
         attempted_tool_execution: bool,
         error: LLMCompletionError | None,
+        finish_reason: str | None,
     ) -> Message:
         """Persist an assistant message row for terminal stream completion."""
         if error:
@@ -706,6 +730,9 @@ class ConversationService:
 
         if thought:
             annotations_obj.thought = thought
+
+        if finish_reason:
+            annotations_obj.finish_reason = finish_reason
 
         assistant_message = Message(
             conversation_id=conversation.id,
@@ -820,6 +847,8 @@ class ConversationService:
                         content=result.content,
                         executed_tools=executed_tools,
                         error=None,
+                        attempted_tool_execution=len(executed_tools) > 0,
+                        finish_reason=result.finish_reason,
                     )
 
                 # Tool calls requested - add assistant response and execute
@@ -938,6 +967,7 @@ class ConversationService:
         for _ in range(MAXIMUM_TOOL_ROUNDS):
             round_tool_calls: dict[str, ChatCompletionMessageToolCall] = {}
             round_content_parts: list[str] = []
+            finish_reason: str | None = None
 
             completion_kwargs = {
                 'messages': llm_messages,
@@ -955,6 +985,7 @@ class ConversationService:
                 **completion_kwargs
             ):
                 if output.finish_reason is not None:
+                    finish_reason = output.finish_reason
                     logger.debug(
                         'conversation streaming turn complete: finish_reason=%s usage=%s',
                         output.finish_reason,
@@ -983,6 +1014,7 @@ class ConversationService:
                             else None,
                             'executed_tools': executed_tools,
                             'attempted_tool_execution': attempted_tool_execution,
+                            'finish_reason': finish_reason,
                         },
                     }
 
@@ -996,6 +1028,7 @@ class ConversationService:
                     'data': {
                         'executed_tools': executed_tools,
                         'attempted_tool_execution': attempted_tool_execution,
+                        'finish_reason': finish_reason,
                     },
                 }
                 return

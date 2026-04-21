@@ -75,6 +75,11 @@ class Settings(BaseSettings):
         description='Name of the LLM model to use.',
         alias='LLM_MODEL',
     )
+    llm_max_tokens: int = Field(
+        default=1024,
+        description='Default maximum tokens to generate.',
+        alias='LLM_MAX_TOKENS',
+    )
 
     # Conversation storage
     database_url: str | None = Field(default=None, alias='DATABASE_URL')
