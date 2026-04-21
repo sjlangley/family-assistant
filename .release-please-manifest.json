@@ -1,4 +1,4 @@
 {
   "apps/assistant-backend": "0.1.0",
-  "apps/assistant-ui": "0.1.0"
+  "apps/assistant-ui": "0.2.0"
 }
