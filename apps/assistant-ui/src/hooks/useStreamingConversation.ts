@@ -157,7 +157,7 @@ export function useStreamingConversation(
             case "meta": {
               const metaData = event.data as {
                 model?: string;
-                usage?: any;
+                usage?: unknown;
                 finish_reason?: string | null;
               };
               if (metaData.finish_reason !== undefined) {

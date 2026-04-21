@@ -586,7 +586,9 @@ class ConversationService:
                         bool, event['data']['attempted_tool_execution']
                     )
                     if event['data'].get('finish_reason') is not None:
-                        finish_reason = cast(str, event['data']['finish_reason'])
+                        finish_reason = cast(
+                            str, event['data']['finish_reason']
+                        )
 
         except LLMCompletionError as error:
             logger.debug(
