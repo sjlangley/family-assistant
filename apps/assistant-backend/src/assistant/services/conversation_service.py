@@ -810,6 +810,7 @@ class ConversationService:
         tools = available_tools if available_tools else None
 
         executed_tools: list[ToolExecutionResult] = []
+        attempted_tool_execution = False
 
         for _ in range(MAXIMUM_TOOL_ROUNDS):
             try:
@@ -849,11 +850,12 @@ class ConversationService:
                         content=result.content,
                         executed_tools=executed_tools,
                         error=None,
-                        attempted_tool_execution=len(executed_tools) > 0,
+                        attempted_tool_execution=attempted_tool_execution,
                         finish_reason=result.finish_reason,
                     )
 
-                # Tool calls requested - add assistant response and execute
+                # Tool calls requested - mark as attempted and process
+                attempted_tool_execution = True
                 llm_messages.append(
                     {
                         'role': 'assistant',
@@ -889,7 +891,7 @@ class ConversationService:
                             content='',
                             executed_tools=executed_tools,
                             error=error,
-                            attempted_tool_execution=True,
+                            attempted_tool_execution=attempted_tool_execution,
                         )
 
                     try:
@@ -908,7 +910,7 @@ class ConversationService:
                             content='',
                             executed_tools=executed_tools,
                             error=error,
-                            attempted_tool_execution=True,
+                            attempted_tool_execution=attempted_tool_execution,
                         )
                     except Exception as exc:
                         # Other tool execution error - return as terminal failure
@@ -920,7 +922,7 @@ class ConversationService:
                             content='',
                             executed_tools=executed_tools,
                             error=error,
-                            attempted_tool_execution=True,
+                            attempted_tool_execution=attempted_tool_execution,
                         )
 
                     llm_messages.append(
@@ -937,6 +939,7 @@ class ConversationService:
                     content='',
                     executed_tools=executed_tools,
                     error=exc,
+                    attempted_tool_execution=attempted_tool_execution,
                 )
 
         # Exceeded tool rounds - return as terminal failure
@@ -948,6 +951,7 @@ class ConversationService:
             content='',
             executed_tools=executed_tools,
             error=error,
+            attempted_tool_execution=attempted_tool_execution,
         )
 
     async def _call_llm_chat_completion_stream(
