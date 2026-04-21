@@ -1071,11 +1071,18 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
               className="flex-1 border border-[#ded6c7] rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#24453a] disabled:bg-[#f6f2ea]"
             />
             <button
-              onClick={handleSendMessage}
-              disabled={sendingMessage || !inputMessage.trim()}
-              className="bg-[#24453a] text-white px-6 py-2 rounded hover:bg-[#1a3428] transition-colors disabled:bg-[#d6cebd] disabled:cursor-not-allowed"
+              type="button"
+              onClick={isStreaming ? stop : handleSendMessage}
+              disabled={
+                isStreaming ? false : sendingMessage || !inputMessage.trim()
+              }
+              className={`px-6 py-2 rounded transition-colors disabled:cursor-not-allowed ${
+                isStreaming
+                  ? "bg-[#a54034] text-white hover:bg-[#8a3328]"
+                  : "bg-[#24453a] text-white hover:bg-[#1a3428] disabled:bg-[#d6cebd]"
+              }`}
             >
-              {sendingMessage ? "Sending..." : "Send"}
+              {isStreaming ? "Stop" : sendingMessage ? "Sending..." : "Send"}
             </button>
           </div>
         </div>

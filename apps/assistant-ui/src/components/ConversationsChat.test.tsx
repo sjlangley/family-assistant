@@ -336,6 +336,80 @@ describe("ConversationsChat", () => {
       });
     });
 
+    it("shows a Stop button while streaming and aborts the stream when clicked", async () => {
+      const user = userEvent.setup({ delay: null });
+      mockListConversations.mockResolvedValue({ items: [] });
+
+      let receivedSignal: AbortSignal | undefined;
+      let releaseStream!: () => void;
+      const streamStopped = new Promise<void>((resolve) => {
+        releaseStream = resolve;
+      });
+
+      mockStreamConversation.mockImplementationOnce(async function* (
+        _conversationId: string | null,
+        _content: string,
+        options?: {
+          temperature?: number;
+          max_tokens?: number;
+          signal?: AbortSignal;
+        },
+      ): AsyncGenerator<SSEEvent, void, unknown> {
+        receivedSignal = options?.signal;
+        yield { event: "token" as const, data: "Working" };
+
+        if (receivedSignal?.aborted) {
+          return;
+        }
+
+        await new Promise<void>((resolve) => {
+          receivedSignal?.addEventListener(
+            "abort",
+            () => {
+              releaseStream();
+              resolve();
+            },
+            { once: true },
+          );
+        });
+      } as unknown as typeof mockStreamConversation);
+
+      renderWithAuth();
+
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(
+            /type a message to start a new conversation/i,
+          ),
+        ).toBeInTheDocument();
+      });
+
+      const input = screen.getByPlaceholderText(
+        /type a message to start a new conversation/i,
+      );
+      await user.type(input, "Hello");
+      await user.click(screen.getByRole("button", { name: /send/i }));
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: /stop/i }),
+        ).toBeInTheDocument();
+      });
+
+      const stopButton = screen.getByRole("button", { name: /stop/i });
+      await user.click(stopButton);
+
+      await streamStopped;
+
+      await waitFor(() => {
+        expect(
+          screen.queryByRole("button", { name: /stop/i }),
+        ).not.toBeInTheDocument();
+      });
+      expect(receivedSignal?.aborted).toBe(true);
+      expect((input as HTMLInputElement).value).toBe("Hello");
+    });
+
     it("shows welcome message when no conversation is selected", async () => {
       mockListConversations.mockResolvedValue({ items: [] });
 
