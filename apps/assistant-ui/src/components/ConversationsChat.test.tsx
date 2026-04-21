@@ -2595,21 +2595,19 @@ describe("ConversationsChat", () => {
 
       mockListConversations.mockResolvedValue(mockConversations);
       mockGetConversationMessages.mockResolvedValue(mockMessages);
-      mockStreamConversation.mockImplementationOnce(
-        async function* () {
-          yield {
-            event: "done",
-            data: {
-              conversation_id: mockContinueResponse.conversation.id,
-              message_id: mockContinueResponse.assistant_message.id,
-              content: mockContinueResponse.assistant_message.content,
-              annotations:
-                mockContinueResponse.assistant_message.annotations ??
-                emptyAnnotations(),
-            },
-          };
-        } as unknown as typeof mockStreamConversation,
-      );
+      mockStreamConversation.mockImplementationOnce(async function* () {
+        yield {
+          event: "done",
+          data: {
+            conversation_id: mockContinueResponse.conversation.id,
+            message_id: mockContinueResponse.assistant_message.id,
+            content: mockContinueResponse.assistant_message.content,
+            annotations:
+              mockContinueResponse.assistant_message.annotations ??
+              emptyAnnotations(),
+          },
+        };
+      } as unknown as typeof mockStreamConversation);
 
       renderWithAuth();
 
@@ -2696,22 +2694,20 @@ describe("ConversationsChat", () => {
       mockGetConversationMessages.mockResolvedValue(mockMessages);
 
       // Mock a slow streaming response
-      mockStreamConversation.mockImplementationOnce(
-        async function* () {
-          yield { event: "token", data: "Streaming" };
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          yield { event: "token", data: "..." };
-          yield {
-            event: "done",
-            data: {
-              conversation_id: "conv-1",
-              message_id: "msg-4",
-              content: "Streaming...",
-              annotations: emptyAnnotations(),
-            },
-          };
-        } as unknown as typeof mockStreamConversation,
-      );
+      mockStreamConversation.mockImplementationOnce(async function* () {
+        yield { event: "token", data: "Streaming" };
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        yield { event: "token", data: "..." };
+        yield {
+          event: "done",
+          data: {
+            conversation_id: "conv-1",
+            message_id: "msg-4",
+            content: "Streaming...",
+            annotations: emptyAnnotations(),
+          },
+        };
+      } as unknown as typeof mockStreamConversation);
 
       renderWithAuth();
 
@@ -2787,11 +2783,11 @@ describe("ConversationsChat", () => {
 
       mockListConversations.mockResolvedValue(mockConversations);
       mockGetConversationMessages.mockResolvedValue(mockMessages);
-      mockStreamConversation.mockImplementationOnce(
-        async function* () {
-          throw new Error("Network error");
-        } as unknown as typeof mockStreamConversation,
-      );
+      mockStreamConversation.mockImplementationOnce(async function* () {
+        // Start streaming then error - more realistic than immediate error
+        yield { event: "token" as const, data: "..." };
+        throw new Error("Network error");
+      } as unknown as typeof mockStreamConversation);
 
       renderWithAuth();
 
