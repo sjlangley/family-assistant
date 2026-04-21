@@ -239,10 +239,10 @@ LangChain provides a reference implementation of token-triggered chat-history
 summarization that keeps the latest messages verbatim while compressing older
 context.
 
-- LangChain short-term memory:
-  [short-term-memory](https://docs.langchain.com/oss/python/langchain/short-term-memory)
+- LangChain memory concepts:
+  [Memory](https://python.langchain.com/docs/concepts/memory/)
 - LangChain context engineering:
-  [context-engineering](https://docs.langchain.com/oss/python/langchain/context-engineering)
+  [Prompt Engineering](https://python.langchain.com/docs/concepts/prompt_engineering/)
 
 ### Summary-Backed Memory Buffers
 
