@@ -960,13 +960,23 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
                                     <div className="text-sm italic text-gray-500">
                                       ... [Response truncated due to length]
                                     </div>
-                                    <button
-                                      onClick={() => handleContinue()}
-                                      disabled={sendingMessage || isStreaming}
-                                      className="self-start text-xs bg-[#24453a] text-white px-3 py-1 rounded hover:bg-[#1a3428] transition-colors disabled:bg-[#d6cebd] disabled:cursor-not-allowed"
-                                    >
-                                      Continue
-                                    </button>
+                                    {messages
+                                      .slice()
+                                      .reverse()
+                                      .find(
+                                        (message) =>
+                                          message.role === "assistant" &&
+                                          message.annotations
+                                            ?.finish_reason === "length",
+                                      )?.id === msg.id && (
+                                      <button
+                                        onClick={() => handleContinue()}
+                                        disabled={sendingMessage || isStreaming}
+                                        className="self-start text-xs bg-[#24453a] text-white px-3 py-1 rounded hover:bg-[#1a3428] transition-colors disabled:bg-[#d6cebd] disabled:cursor-not-allowed"
+                                      >
+                                        Continue
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </>
