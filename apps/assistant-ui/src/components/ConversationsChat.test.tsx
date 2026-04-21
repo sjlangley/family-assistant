@@ -2377,4 +2377,444 @@ describe("ConversationsChat", () => {
       });
     });
   });
+
+  describe("Continue button for truncated responses", () => {
+    it("renders Continue button when finish_reason is 'length'", async () => {
+      const user = userEvent.setup({ delay: null });
+      mockListConversations.mockResolvedValue({ items: [] });
+
+      const mockResponse = {
+        conversation: {
+          id: "new-conv",
+          title: "New Conversation",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+        user_message: {
+          id: "msg-1",
+          role: "user" as const,
+          content: "Tell me a long story",
+          sequence_number: 1,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+          annotations: null,
+        },
+        assistant_message: {
+          id: "msg-2",
+          role: "assistant" as const,
+          content: "Once upon a time...",
+          sequence_number: 2,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+          annotations: {
+            thought: null,
+            sources: [],
+            tools: [],
+            memory_hits: [],
+            memory_saved: [],
+            failure: null,
+            finish_reason: "length",
+          },
+        },
+      };
+
+      mockCreateConversationWithMessage.mockResolvedValueOnce(mockResponse);
+
+      renderWithAuth();
+
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(
+            /type a message to start a new conversation/i,
+          ),
+        ).toBeInTheDocument();
+      });
+
+      const input = screen.getByPlaceholderText(
+        /type a message to start a new conversation/i,
+      );
+      await user.type(input, "Tell me a long story");
+      await user.click(screen.getByRole("button", { name: /send/i }));
+
+      // Should show truncation message and Continue button
+      await waitFor(() => {
+        expect(
+          screen.getByText(/response truncated due to length/i),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: /continue/i }),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it("does not render Continue button when finish_reason is 'stop'", async () => {
+      const user = userEvent.setup({ delay: null });
+      mockListConversations.mockResolvedValue({ items: [] });
+
+      const mockResponse = {
+        conversation: {
+          id: "new-conv",
+          title: "New Conversation",
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+        user_message: {
+          id: "msg-1",
+          role: "user" as const,
+          content: "Hello",
+          sequence_number: 1,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+          annotations: null,
+        },
+        assistant_message: {
+          id: "msg-2",
+          role: "assistant" as const,
+          content: "Hi there!",
+          sequence_number: 2,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+          annotations: {
+            thought: null,
+            sources: [],
+            tools: [],
+            memory_hits: [],
+            memory_saved: [],
+            failure: null,
+            finish_reason: "stop",
+          },
+        },
+      };
+
+      mockCreateConversationWithMessage.mockResolvedValueOnce(mockResponse);
+
+      renderWithAuth();
+
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText(
+            /type a message to start a new conversation/i,
+          ),
+        ).toBeInTheDocument();
+      });
+
+      const input = screen.getByPlaceholderText(
+        /type a message to start a new conversation/i,
+      );
+      await user.type(input, "Hello");
+      await user.click(screen.getByRole("button", { name: /send/i }));
+
+      // Should NOT show Continue button
+      await waitFor(() => {
+        expect(screen.getByText("Hi there!")).toBeInTheDocument();
+      });
+
+      expect(
+        screen.queryByText(/response truncated due to length/i),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /continue/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("sends 'Continue' message when Continue button is clicked", async () => {
+      const user = userEvent.setup({ delay: null });
+
+      const mockConversations = {
+        items: [
+          {
+            id: "conv-1",
+            title: "Existing Conversation",
+            created_at: "2024-01-01T00:00:00Z",
+            updated_at: "2024-01-01T00:00:00Z",
+          },
+        ],
+      };
+
+      const mockMessages = {
+        conversation: mockConversations.items[0],
+        items: [
+          {
+            id: "msg-1",
+            role: "user" as const,
+            content: "Tell me more",
+            sequence_number: 1,
+            created_at: "2024-01-01T00:00:00Z",
+            error: null,
+            annotations: null,
+          },
+          {
+            id: "msg-2",
+            role: "assistant" as const,
+            content: "Here is some information...",
+            sequence_number: 2,
+            created_at: "2024-01-01T00:00:00Z",
+            error: null,
+            annotations: {
+              thought: null,
+              sources: [],
+              tools: [],
+              memory_hits: [],
+              memory_saved: [],
+              failure: null,
+              finish_reason: "length",
+            },
+          },
+        ],
+      };
+
+      const mockContinueResponse = {
+        conversation: mockConversations.items[0],
+        user_message: {
+          id: "msg-3",
+          role: "user" as const,
+          content: "Continue",
+          sequence_number: 3,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+          annotations: null,
+        },
+        assistant_message: {
+          id: "msg-4",
+          role: "assistant" as const,
+          content: "...and here is more information.",
+          sequence_number: 4,
+          created_at: "2024-01-01T00:00:00Z",
+          error: null,
+          annotations: {
+            thought: null,
+            sources: [],
+            tools: [],
+            memory_hits: [],
+            memory_saved: [],
+            failure: null,
+            finish_reason: "stop",
+          },
+        },
+      };
+
+      mockListConversations.mockResolvedValue(mockConversations);
+      mockGetConversationMessages.mockResolvedValue(mockMessages);
+      mockStreamConversation.mockImplementationOnce(
+        async function* () {
+          yield {
+            event: "done",
+            data: {
+              conversation_id: mockContinueResponse.conversation.id,
+              message_id: mockContinueResponse.assistant_message.id,
+              content: mockContinueResponse.assistant_message.content,
+              annotations:
+                mockContinueResponse.assistant_message.annotations ??
+                emptyAnnotations(),
+            },
+          };
+        } as unknown as typeof mockStreamConversation,
+      );
+
+      renderWithAuth();
+
+      // Wait and select conversation
+      await waitFor(() => {
+        expect(screen.getByText("Existing Conversation")).toBeInTheDocument();
+      });
+      await user.click(screen.getByText("Existing Conversation"));
+
+      // Wait for messages to load and see Continue button
+      await waitFor(() => {
+        expect(
+          screen.getByText(/response truncated due to length/i),
+        ).toBeInTheDocument();
+      });
+
+      const continueButton = screen.getByRole("button", { name: /continue/i });
+      await user.click(continueButton);
+
+      // Should call streamConversation with "Continue" message
+      await waitFor(() => {
+        expect(mockStreamConversation).toHaveBeenCalledWith(
+          "conv-1",
+          "Continue",
+          expect.objectContaining({}), // Includes signal property
+        );
+      });
+
+      // Should display the continuation response
+      await waitFor(() => {
+        expect(
+          screen.getByText("...and here is more information."),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it("disables Continue button while streaming", async () => {
+      const user = userEvent.setup({ delay: null });
+
+      const mockConversations = {
+        items: [
+          {
+            id: "conv-1",
+            title: "Existing Conversation",
+            created_at: "2024-01-01T00:00:00Z",
+            updated_at: "2024-01-01T00:00:00Z",
+          },
+        ],
+      };
+
+      const mockMessages = {
+        conversation: mockConversations.items[0],
+        items: [
+          {
+            id: "msg-1",
+            role: "user" as const,
+            content: "Tell me more",
+            sequence_number: 1,
+            created_at: "2024-01-01T00:00:00Z",
+            error: null,
+            annotations: null,
+          },
+          {
+            id: "msg-2",
+            role: "assistant" as const,
+            content: "Here is some information...",
+            sequence_number: 2,
+            created_at: "2024-01-01T00:00:00Z",
+            error: null,
+            annotations: {
+              thought: null,
+              sources: [],
+              tools: [],
+              memory_hits: [],
+              memory_saved: [],
+              failure: null,
+              finish_reason: "length",
+            },
+          },
+        ],
+      };
+
+      mockListConversations.mockResolvedValue(mockConversations);
+      mockGetConversationMessages.mockResolvedValue(mockMessages);
+
+      // Mock a slow streaming response
+      mockStreamConversation.mockImplementationOnce(
+        async function* () {
+          yield { event: "token", data: "Streaming" };
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          yield { event: "token", data: "..." };
+          yield {
+            event: "done",
+            data: {
+              conversation_id: "conv-1",
+              message_id: "msg-4",
+              content: "Streaming...",
+              annotations: emptyAnnotations(),
+            },
+          };
+        } as unknown as typeof mockStreamConversation,
+      );
+
+      renderWithAuth();
+
+      // Wait and select conversation
+      await waitFor(() => {
+        expect(screen.getByText("Existing Conversation")).toBeInTheDocument();
+      });
+      await user.click(screen.getByText("Existing Conversation"));
+
+      // Wait for messages to load
+      await waitFor(() => {
+        expect(
+          screen.getByText(/response truncated due to length/i),
+        ).toBeInTheDocument();
+      });
+
+      const continueButton = screen.getByRole("button", { name: /continue/i });
+      expect(continueButton).not.toBeDisabled();
+
+      await user.click(continueButton);
+
+      // Continue button should be disabled while streaming
+      await waitFor(() => {
+        expect(continueButton).toBeDisabled();
+      });
+    });
+
+    it("handles errors when Continue button is clicked", async () => {
+      const user = userEvent.setup({ delay: null });
+
+      const mockConversations = {
+        items: [
+          {
+            id: "conv-1",
+            title: "Existing Conversation",
+            created_at: "2024-01-01T00:00:00Z",
+            updated_at: "2024-01-01T00:00:00Z",
+          },
+        ],
+      };
+
+      const mockMessages = {
+        conversation: mockConversations.items[0],
+        items: [
+          {
+            id: "msg-1",
+            role: "user" as const,
+            content: "Tell me more",
+            sequence_number: 1,
+            created_at: "2024-01-01T00:00:00Z",
+            error: null,
+            annotations: null,
+          },
+          {
+            id: "msg-2",
+            role: "assistant" as const,
+            content: "Here is some information...",
+            sequence_number: 2,
+            created_at: "2024-01-01T00:00:00Z",
+            error: null,
+            annotations: {
+              thought: null,
+              sources: [],
+              tools: [],
+              memory_hits: [],
+              memory_saved: [],
+              failure: null,
+              finish_reason: "length",
+            },
+          },
+        ],
+      };
+
+      mockListConversations.mockResolvedValue(mockConversations);
+      mockGetConversationMessages.mockResolvedValue(mockMessages);
+      mockStreamConversation.mockImplementationOnce(
+        async function* () {
+          throw new Error("Network error");
+        } as unknown as typeof mockStreamConversation,
+      );
+
+      renderWithAuth();
+
+      // Wait and select conversation
+      await waitFor(() => {
+        expect(screen.getByText("Existing Conversation")).toBeInTheDocument();
+      });
+      await user.click(screen.getByText("Existing Conversation"));
+
+      // Wait for messages to load
+      await waitFor(() => {
+        expect(
+          screen.getByText(/response truncated due to length/i),
+        ).toBeInTheDocument();
+      });
+
+      const continueButton = screen.getByRole("button", { name: /continue/i });
+      await user.click(continueButton);
+
+      // Should display error message
+      await waitFor(() => {
+        expect(screen.getByText(/network error/i)).toBeInTheDocument();
+      });
+    });
+  });
 });
