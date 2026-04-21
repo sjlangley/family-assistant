@@ -966,8 +966,8 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
                                       .find(
                                         (message) =>
                                           message.role === "assistant" &&
-                                          message.annotations
-                                            ?.finish_reason === "length",
+                                          message.annotations?.finish_reason ===
+                                            "length",
                                       )?.id === msg.id && (
                                       <button
                                         onClick={() => handleContinue()}
