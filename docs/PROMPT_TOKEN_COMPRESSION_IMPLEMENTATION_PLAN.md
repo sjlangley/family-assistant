@@ -424,7 +424,7 @@ After this project lands:
 
 - We are not changing product surface area in this effort.
 - We want a clean internal foundation, not a one-off heuristic patch.
-- `transformers` is the preferred long-term counting backend, but the
+- `tokenizers` is the preferred long-term counting backend, but the
   interface comes first.
 - This plan should be implemented with TDD and one small reviewable PR at a
   time.
