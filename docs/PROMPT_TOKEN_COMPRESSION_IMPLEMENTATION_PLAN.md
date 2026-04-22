@@ -228,12 +228,15 @@ Create the token-budget foundation without changing runtime behavior.
 - Add `PromptBudget`, `PromptSection`, `PromptCompressionResult`, and
   `PromptTokenEstimator` abstractions.
 - Add a default estimator implementation.
+- Add env-backed prompt budget settings and wire them into backend settings
+  loading.
 - Thread token metadata through context assembly without changing selection
   behavior.
 
 **Reviewable outcome**
 
 - New types and tests are in place.
+- Budget configuration is available for later compression PRs.
 - Existing context assembly behavior is unchanged.
 - Metadata is computed and available internally.
 
@@ -241,6 +244,7 @@ Create the token-budget foundation without changing runtime behavior.
 
 - estimator returns deterministic counts
 - section counts sum to total
+- settings load correctly and apply configured budget values
 - current assembly tests still pass unchanged
 
 ### PR 2: Section-Based Context Assembly Refactor
@@ -254,7 +258,9 @@ output parity.
 - Replace direct `_build_message_list` assembly with:
   - candidate section creation
   - final render step
-- Preserve current ordering and fixed limits.
+- Preserve current ordering and current effective behavior while sourcing budget
+  thresholds from configured settings instead of local constants where
+  applicable.
 
 **Reviewable outcome**
 
@@ -336,11 +342,10 @@ Handle extreme prompt pressure safely.
 ### PR 6: Settings, Logging, And Operator Visibility
 
 **Purpose**
-Make the feature tunable and inspectable.
+Make the feature inspectable once compression behavior is complete.
 
 **Changes**
 
-- Add env-backed settings.
 - Add structured logs for token usage and compression actions without logging
   raw full-prompt or raw message content.
 - Optionally add a debug-only inspection seam if logs are insufficient, but
@@ -354,7 +359,6 @@ Make the feature tunable and inspectable.
 
 **Tests**
 
-- settings load correctly
 - logs and metadata contain expected compression fields
 - no sensitive full-prompt leakage
 
