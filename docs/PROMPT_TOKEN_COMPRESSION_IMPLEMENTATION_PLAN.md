@@ -341,8 +341,12 @@ Make the feature tunable and inspectable.
 **Changes**
 
 - Add env-backed settings.
-- Add structured logs for token usage and compression actions.
-- Optionally add a debug-only inspection seam if logs are insufficient.
+- Add structured logs for token usage and compression actions without logging
+  raw full-prompt or raw message content.
+- Optionally add a debug-only inspection seam if logs are insufficient, but
+  keep it limited to redacted or summarized prompt-shaping metadata only
+  (never raw message content), gate it behind an explicit debug flag, and
+  disable it by default in production.
 
 **Reviewable outcome**
 
