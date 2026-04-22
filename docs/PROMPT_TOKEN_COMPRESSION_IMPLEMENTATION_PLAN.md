@@ -46,8 +46,8 @@ This project should make context assembly budget-aware instead of count-aware.
 
 ### Library Choice
 
-- Preferred long-term library: `transformers` for model-aware tokenization and
-  future chat-template-aware counting.
+- Preferred long-term library: tokenizers (the core of transformers) for
+  model-aware tokenization and future chat-template-aware counting.
 - Acceptable v1 fallback: a lightweight local estimator with a swappable
   interface.
 - Do not adopt `tiktoken` as the core long-term counter unless the product
