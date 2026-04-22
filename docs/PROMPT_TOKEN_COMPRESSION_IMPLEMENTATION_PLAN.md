@@ -87,8 +87,8 @@ Priority order is fixed for v1:
 
 1. New user message
 2. Newest exchange:
-   most recent assistant turn plus immediately preceding user turn when
-   available
+   the most recent assistant turn, any associated tool calls/results, and the
+   immediately preceding user turn.
 3. Saved summary
 4. Relevant durable facts
 5. Older recent turns
