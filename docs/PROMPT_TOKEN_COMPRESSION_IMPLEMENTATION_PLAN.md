@@ -95,7 +95,7 @@ Use this order whenever the candidate prompt is over budget:
 1. Drop weakest durable facts.
 2. Shrink older transcript turns while preserving the newest interaction
    bundle.
-3. Compress summary to a smaller emergency budget.
+3. Reduce summary size using deterministic sentence-level compaction.
 4. Further truncate retained fact text if still needed.
 5. Fall back to the minimum viable prompt:
    current user message + newest interaction bundle + smallest viable memory
@@ -105,6 +105,7 @@ Never drop the current user message.
 Never silently produce an invalid chat message list.
 Never reorder preserved transcript turns.
 Never insert an extra LLM summarization pass into the request path.
+Never use blind summary truncation as the normal summary-reduction strategy.
 
 Fact-text truncation in step 4 is deterministic, not semantic rewriting:
 
@@ -150,8 +151,8 @@ final interaction bundle, not just the visible assistant text.
 
 ### Summary Compression
 
-"Compress summary" in this document means local prompt-time shortening of the
-already-saved summary text.
+"Reduce summary size" in this document means local prompt-time reduction of the
+already-saved summary text for the current request only.
 
 It does not mean:
 
@@ -160,19 +161,42 @@ It does not mean:
 - mutating the canonical saved summary during request handling
 - surfacing a user-visible compression status
 
-V1 summary compression is local, deterministic, and request-scoped only.
+V1 summary reduction is local, deterministic, and request-scoped only.
+
+Normal summary-reduction path for v1:
+
+1. Split the saved summary into sentence-like units.
+2. Score those units with deterministic heuristics.
+3. Keep the highest-value units that fit within the current summary budget.
+4. Preserve original sentence order in the final rendered summary.
+5. Only if the selected summary is still too large, apply token-aware
+   truncation as an emergency fallback.
+
+This is intentionally more conservative than blind truncation because blind
+token truncation can preserve low-value connective language while dropping
+important facts that appear later in the saved summary. That would be a real
+regression risk for the active user turn.
+
+Heuristic sentence scoring for v1 should remain deterministic and cheap.
+Recommended signals:
+
+- overlap with the current user message
+- named people, places, and family entities
+- years and dates
+- conflict/uncertainty markers such as `conflict`, `uncertain`, `possible`
+- provenance/source-quality markers such as `primary`, `derivative`, `source`
+- de-prioritization of low-value narrative lead-ins such as
+  `The family previously discussed`
 
 How this works in code:
 
 - load the canonical saved summary text from Postgres
 - do not ask an LLM to rewrite it
 - do not persist a new summary row
-- shorten only the copy being assembled into the current prompt
-- prefer token-aware truncation using the same tokenizer/counting path used by
-  the estimator
-- if the model-aware tokenizer path is not yet available in the first
-  foundation PR, allow a temporary deterministic fallback that truncates by a
-  conservative character budget
+- reduce only the copy being assembled into the current prompt
+- prefer sentence-level selection first
+- use token-aware truncation only as an emergency fallback after sentence
+  selection
 
 Before and after example:
 
@@ -197,56 +221,76 @@ person. They also reviewed two web sources and noted that one source may be
 derivative rather than primary.
 ```
 
-Emergency compressed version for this one request only:
+Sentence-selected reduced version for this one request only:
 
 ```text
 [Conversation summary]:
-The family previously discussed George Langley's birth year, possible migration
-records, conflicting census evidence from 1901 and 1911, Mary Langley's
-marriage timing...
+George Langley's birth year remains unresolved. Census evidence from 1901 and
+1911 is in conflict. Mary Langley's marriage timing is still relevant. One web
+source may be derivative rather than primary.
 ```
 
 The important point is that the stored summary does not change. Only the prompt
-copy is shortened for the current request.
+copy is reduced for the current request.
 
 Illustrative pseudocode:
 
 ```python
-def shorten_summary_for_prompt(
+def reduce_summary_for_prompt(
     summary_text: str,
     *,
     estimator: PromptTokenEstimator,
+    current_user_message: str,
+    summary_soft_max_tokens: int,
     emergency_max_tokens: int,
     fallback_max_chars: int = 600,
 ) -> str:
-    """Return a request-local shortened copy of the saved summary."""
-    if estimator.estimate_text(summary_text) <= emergency_max_tokens:
+    """Return a request-local reduced copy of the saved summary."""
+    if estimator.estimate_text(summary_text) <= summary_soft_max_tokens:
         return summary_text
 
-    # Preferred path: token-aware truncation using the same tokenizer family
-    # that backs prompt estimation.
+    sentences = split_summary_into_sentences(summary_text)
+    ranked_sentences = rank_summary_sentences(
+        sentences,
+        current_user_message=current_user_message,
+    )
+    selected_summary = select_sentences_under_budget(
+        ranked_sentences,
+        estimator=estimator,
+        max_tokens=summary_soft_max_tokens,
+    )
+
+    if selected_summary and (
+        estimator.estimate_text(selected_summary) <= emergency_max_tokens
+    ):
+        return selected_summary
+
+    # Emergency-only path: token-aware truncation using the same tokenizer
+    # family that backs prompt estimation.
     if hasattr(estimator, "truncate_text_to_tokens"):
         shortened = estimator.truncate_text_to_tokens(
-            summary_text,
+            selected_summary or summary_text,
             max_tokens=emergency_max_tokens,
         )
-        if shortened != summary_text:
+        if shortened != (selected_summary or summary_text):
             return shortened.rstrip() + "..."
 
     # Temporary fallback for early PRs if token-aware truncation is not yet
     # implemented. This is deterministic, local, and request-scoped only.
-    if len(summary_text) <= fallback_max_chars:
-        return summary_text
-    return summary_text[: fallback_max_chars - 3].rstrip() + "..."
+    fallback_source = selected_summary or summary_text
+    if len(fallback_source) <= fallback_max_chars:
+        return fallback_source
+    return fallback_source[: fallback_max_chars - 3].rstrip() + "..."
 ```
 
 Implementation note:
 
 - This behavior is not "library supported" as one turnkey compression feature.
-- The tokenizer library helps with token counting and token-aware truncation.
-- The compression policy itself is application logic that we implement in
-  `ContextAssemblyService` or a helper it owns.
-- In v1, this is intentionally simple deterministic shortening, not semantic
+- The tokenizer library helps with token counting and emergency token-aware
+  truncation.
+- Sentence splitting, sentence scoring, and sentence selection are application
+  logic that we implement in `ContextAssemblyService` or a helper it owns.
+- In v1, this is deterministic rule-based compaction, not LLM semantic
   rewriting.
 
 ### Fact Compression At Storage Time
@@ -759,6 +803,39 @@ After this project lands:
 - `Continue` and truncation frequency should decrease under normal use
 - prompt shaping becomes observable instead of implicit
 - storage-time fact normalization can be considered later as a distinct follow-on
+
+## V.Next Follow-On: Background Semantic Prompt Summaries
+
+This project intentionally does not add semantic compression on the foreground
+request path. However, a strong follow-on opportunity is to improve future
+prompt assembly by generating denser prompt-oriented summaries in the
+background.
+
+Why this is attractive:
+
+- it can produce meaningfully better compression than blunt truncation
+- it avoids adding latency to the live user request
+- it keeps deterministic request-path fallback logic intact
+- it lets the system improve the saved context artifact rather than repeatedly
+  shortening it on every request
+
+Recommended shape of that follow-on:
+
+- keep the existing canonical conversation summary as the human-readable,
+  faithful summary artifact
+- add a separate prompt-optimized summary artifact for context assembly
+- generate or refresh the prompt-optimized summary in background work, not in
+  the foreground request path
+- continue using deterministic token-budget fallback in the request path even
+  after prompt-optimized summaries exist
+
+Explicit decisions for v.next:
+
+- do not replace request-path budgeting with semantic summarization
+- do not block the live request on an extra LLM compression call
+- do not overwrite the canonical saved summary blindly
+- prefer a separate stored prompt-summary field or artifact so behavior remains
+  debuggable and reversible
 
 ## Assumptions
 
