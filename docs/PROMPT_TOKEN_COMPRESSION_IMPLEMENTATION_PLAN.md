@@ -73,6 +73,10 @@ This project should make context assembly budget-aware instead of count-aware.
 - Do not make `Selective Context` the default implementation. It can be
   revisited later as an experimental reducer behind an interface once the
   rule-based budgeter is in place.
+- Do not make learned prompt compressors such as LLMLingua the default
+  implementation for this slice. They may be valuable later, but the current
+  slice needs product-specific preservation guarantees and highly explainable
+  behavior.
 
 ### Token Counting Strategy
 
@@ -87,6 +91,25 @@ This project should make context assembly budget-aware instead of count-aware.
   implementation without changing compression logic.
 - All compression decisions must depend only on the estimator interface, not a
   specific tokenizer library.
+
+### Why Learned Prompt Compressors Are Not The Default Here
+
+Tools like LLMLingua are promising because they can remove low-value prompt
+tokens without requiring a large foreground model call. However, they are not
+the default for this plan because this project is not only about compression
+ratio. It also needs strict product-level guarantees.
+
+This project must preserve invariants such as:
+
+- never drop the current user turn
+- preserve the newest interaction bundle
+- preserve ranked fact ordering before trimming from the tail
+- keep behavior deterministic enough for unit tests and reviewable PRs
+- keep compression decisions explainable in logs and code review
+
+A learned compressor may still be useful later, but it should sit behind an
+explicit reducer interface and be evaluated against the rule-based baseline
+rather than replacing it by default.
 
 ### Compression Policy
 
@@ -836,6 +859,22 @@ Explicit decisions for v.next:
 - do not overwrite the canonical saved summary blindly
 - prefer a separate stored prompt-summary field or artifact so behavior remains
   debuggable and reversible
+
+Possible experimental inputs for v.next:
+
+- learned prompt compressors such as LLMLingua, evaluated offline or in
+  background jobs
+- attachment or tool-output compression flows where the input is much larger and
+  less conversationally fragile than the active turn context
+
+Guardrails if LLMLingua or a similar learned compressor is evaluated later:
+
+- it must not become the default request-path reducer without a separate design
+  decision
+- it must not remove the current user turn
+- it must not break the newest interaction bundle
+- it must be compared against the deterministic rule-based baseline for
+  relevance preservation, latency, and debuggability
 
 ## Assumptions
 
