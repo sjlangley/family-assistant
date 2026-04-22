@@ -162,6 +162,93 @@ It does not mean:
 
 V1 summary compression is local, deterministic, and request-scoped only.
 
+How this works in code:
+
+- load the canonical saved summary text from Postgres
+- do not ask an LLM to rewrite it
+- do not persist a new summary row
+- shorten only the copy being assembled into the current prompt
+- prefer token-aware truncation using the same tokenizer/counting path used by
+  the estimator
+- if the model-aware tokenizer path is not yet available in the first
+  foundation PR, allow a temporary deterministic fallback that truncates by a
+  conservative character budget
+
+Before and after example:
+
+Stored summary in Postgres:
+
+```text
+The family previously discussed George Langley's birth year, possible migration
+records, conflicting census evidence from 1901 and 1911, Mary Langley's
+marriage timing, and whether a probate record from Sussex refers to the same
+person. They also reviewed two web sources and noted that one source may be
+derivative rather than primary.
+```
+
+Normal prompt-time inclusion when under the soft summary budget:
+
+```text
+[Conversation summary]:
+The family previously discussed George Langley's birth year, possible migration
+records, conflicting census evidence from 1901 and 1911, Mary Langley's
+marriage timing, and whether a probate record from Sussex refers to the same
+person. They also reviewed two web sources and noted that one source may be
+derivative rather than primary.
+```
+
+Emergency compressed version for this one request only:
+
+```text
+[Conversation summary]:
+The family previously discussed George Langley's birth year, possible migration
+records, conflicting census evidence from 1901 and 1911, Mary Langley's
+marriage timing...
+```
+
+The important point is that the stored summary does not change. Only the prompt
+copy is shortened for the current request.
+
+Illustrative pseudocode:
+
+```python
+def shorten_summary_for_prompt(
+    summary_text: str,
+    *,
+    estimator: PromptTokenEstimator,
+    emergency_max_tokens: int,
+    fallback_max_chars: int = 600,
+) -> str:
+    """Return a request-local shortened copy of the saved summary."""
+    if estimator.estimate_text(summary_text) <= emergency_max_tokens:
+        return summary_text
+
+    # Preferred path: token-aware truncation using the same tokenizer family
+    # that backs prompt estimation.
+    if hasattr(estimator, "truncate_text_to_tokens"):
+        shortened = estimator.truncate_text_to_tokens(
+            summary_text,
+            max_tokens=emergency_max_tokens,
+        )
+        if shortened != summary_text:
+            return shortened.rstrip() + "..."
+
+    # Temporary fallback for early PRs if token-aware truncation is not yet
+    # implemented. This is deterministic, local, and request-scoped only.
+    if len(summary_text) <= fallback_max_chars:
+        return summary_text
+    return summary_text[: fallback_max_chars - 3].rstrip() + "..."
+```
+
+Implementation note:
+
+- This behavior is not "library supported" as one turnkey compression feature.
+- The tokenizer library helps with token counting and token-aware truncation.
+- The compression policy itself is application logic that we implement in
+  `ContextAssemblyService` or a helper it owns.
+- In v1, this is intentionally simple deterministic shortening, not semantic
+  rewriting.
+
 ### Fact Compression At Storage Time
 
 This project does not change how durable facts are stored.
