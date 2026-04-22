@@ -106,6 +106,15 @@ Never silently produce an invalid chat message list.
 Never reorder preserved transcript turns.
 Never insert an extra LLM summarization pass into the request path.
 
+Fact-text truncation in step 4 is deterministic, not semantic rewriting:
+
+- truncate only facts that survived ranked fact selection
+- preserve fact ordering
+- shorten each retained fact's text locally to a smaller prompt-time limit
+- do not rerank facts during this step
+- do not call an LLM to rewrite fact text
+- do not persist the shortened fact text back to storage
+
 ### Definition Of "Weakest Durable Facts"
 
 "Weakest durable facts" is not an LLM judgment in this project. It is the tail
@@ -330,6 +339,26 @@ independent of `LLM_MAX_TOKENS`.
 
 These settings must land early in the PR sequence so later compression PRs can
 test real configured behavior rather than temporary hardcoded values.
+
+Meaning of each setting:
+
+- `PROMPT_TARGET_TOKENS`
+  The normal soft ceiling for the assembled prompt before compression stops.
+- `PROMPT_HARD_MAX_TOKENS`
+  The maximum allowed estimated prompt size after all compression and fallback
+  steps.
+- `PROMPT_SUMMARY_SOFT_MAX_TOKENS`
+  The normal token budget allocated to the saved summary before emergency
+  compression is needed.
+- `PROMPT_SUMMARY_EMERGENCY_MAX_TOKENS`
+  The smaller token budget used when the summary must be shortened more
+  aggressively under pressure.
+- `PROMPT_FACTS_SOFT_MAX_TOKENS`
+  The normal token budget allocated to the durable-facts section before fact
+  trimming begins.
+- `PROMPT_RECENT_TURNS_SOFT_MAX_TOKENS`
+  The normal token budget allocated to older recent transcript turns, excluding
+  the protected newest interaction bundle.
 
 ## Behavioral Spec
 
