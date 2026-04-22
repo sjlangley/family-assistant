@@ -61,8 +61,8 @@ This project should make context assembly budget-aware instead of count-aware.
 
 - Introduce a `PromptTokenEstimator` interface.
 - First implementation may be heuristic if needed for speed of delivery.
-- Design the interface so a later `TransformersPromptTokenEstimator` can
-  replace it without changing compression logic.
+- Design the interface so a later `TokenizersPromptTokenEstimator` can replace
+  it without changing compression logic.
 - All compression decisions must depend only on the estimator interface, not a
   specific library.
 
