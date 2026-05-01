@@ -28,7 +28,7 @@ dependencies = [
     "ddgs==9.13.1",
     "fastapi==0.135.2",
     "cachecontrol==0.14.4",
-    "google-auth==2.48.0",
+    "google-auth==2.50.0",
     "gunicorn==25.3.0",
     "httpx==0.28.1",
     "itsdangerous==2.2.0",
