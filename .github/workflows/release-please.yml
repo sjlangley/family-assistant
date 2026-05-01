@@ -54,7 +54,7 @@ jobs:
           apps/assistant-ui/CHANGELOG.md
 
       - name: Commit formatted changelogs
-        uses: stefanzweifel/git-auto-commit-action@v6
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: 'chore: format release-please changelog updates'
           file_pattern: >-
