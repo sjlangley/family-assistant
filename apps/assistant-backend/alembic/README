@@ -83,7 +83,9 @@ the base schema first:
 
 **Option 1: Use SQLModel.metadata.create_all() then stamp**
 ```python
-# In a Python script or interactive session
+# In a Python script or interactive session. Importing assistant.settings
+# needs the required settings (a full `.env`, or the placeholder env vars set
+# at the top of alembic/env.py).
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 from sqlmodel import SQLModel
@@ -94,15 +96,20 @@ from assistant.settings import settings
 from assistant.models.conversation_sql import Conversation, Message
 from assistant.models.memory_sql import ConversationMemorySummary, DurableFact
 
-# Create all tables using a synchronous engine (mirrors get_url() in env.py)
-url = URL.create(
-    drivername='postgresql+psycopg',
-    username=settings.database_user,
-    password=settings.database_password,
-    host=settings.database_host,
-    port=settings.database_port,
-    database=settings.database_name,
-)
+# Create all tables using a synchronous engine (same URL logic as get_url() in env.py)
+if settings.database_url is not None:
+    url = settings.database_url.replace('+aiosqlite://', '://').replace(
+        'postgresql+asyncpg://', 'postgresql+psycopg://'
+    )
+else:
+    url = URL.create(
+        drivername='postgresql+psycopg',
+        username=settings.database_user,
+        password=settings.database_password,
+        host=settings.database_host,
+        port=settings.database_port,
+        database=settings.database_name,
+    )
 SQLModel.metadata.create_all(create_engine(url))
 ```
 
