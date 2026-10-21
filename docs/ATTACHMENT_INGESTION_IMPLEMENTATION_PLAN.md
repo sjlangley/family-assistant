@@ -617,7 +617,7 @@ If backend files are changed, run from `apps/assistant-backend`:
 ruff format src/ tests/
 ruff check src/ tests/
 ruff format --check src/ tests/
-pyrefly check src/
+pyrefly check
 pytest -v
 ```
 

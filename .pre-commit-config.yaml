@@ -21,8 +21,11 @@ repos:
       - id: check-yaml
       - id: check-merge-conflict
       - id: check-added-large-files
+        # By default this only checks files newly added to the git index, which
+        # is nothing in CI; --enforce-all checks every file it is given.
         # Bundled fonts are deliberately committed; everything else stays
         # under the default 500 KB limit.
+        args: [--enforce-all]
         exclude: ^apps/assistant-ui/public/fonts/
       - id: mixed-line-ending
         args: [--fix=lf]
@@ -110,7 +113,7 @@ repos:
           --ignore-unknown --ignore-path apps/assistant-ui/.prettierignore
         language: system
         files: ^apps/assistant-ui/
-        types_or: [ts, tsx, javascript, jsx, json, css]
+        types_or: [ts, tsx, javascript, jsx, json, css, html]
 
       - id: eslint
         name: eslint
