@@ -170,8 +170,7 @@ src/
 │   └── auth.tsx                  # Auth state management (React Context)
 ├── components/
 │   ├── GoogleSignInButton.tsx    # Google Sign-In button
-│   ├── ConversationsChat.tsx     # Main chat interface with conversation sidebar
-│   └── Chat.tsx                  # Individual chat message display component
+│   └── ConversationsChat.tsx     # Main chat interface with conversation sidebar
 ├── types/
 │   ├── api.ts                    # API type definitions
 │   └── google.d.ts               # Google Identity Services types

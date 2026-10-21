@@ -96,9 +96,9 @@ with `pre-commit autoupdate`.
 
 ## Project Docs
 
-- [Architecture](docs/ARCHITECTURE.md)
+- [Architecture decisions](docs/adr/README.md)
 - [Design System](DESIGN.md)
-- [Roadmap / TODOs](TODOS.md)
+- [Roadmap and specs](https://github.com/sjlangley/family-assistant/issues) (GitHub issues)
 
 ## For AI Agents
 
