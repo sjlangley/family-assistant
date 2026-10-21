@@ -66,16 +66,16 @@ def get_url() -> str:
         return url_str
 
     # Build URL from components with synchronous driver
-    return str(
-        URL.create(
-            drivername='postgresql+psycopg',  # Use synchronous driver for migrations
-            username=settings.database_user,
-            password=settings.database_password,
-            host=settings.database_host,
-            port=settings.database_port,
-            database=settings.database_name,
-        )
+    url = URL.create(
+        drivername='postgresql+psycopg',  # Use synchronous driver for migrations
+        username=settings.database_user,
+        password=settings.database_password,
+        host=settings.database_host,
+        port=settings.database_port,
+        database=settings.database_name,
     )
+    # str(url) masks the password as '***', which would break the connection
+    return url.render_as_string(hide_password=False)
 
 
 def run_migrations_offline() -> None:
