@@ -13,11 +13,11 @@ Dependabot was configured with no groups, so each ecosystem opened one pull requ
 every month (#143). Each needed its own CI run, review and merge. #144 added groups to
 `.github/dependabot.yml`, and its review settled the cases below.
 
-Dependabot counts a bump from `0.x` to `0.(x+1)` as a minor update. Ruff and pyrefly are pre-1.0
-tools that add lint rules and type checks in minor releases, so a minor bump can fail the lint job.
-A failing check on a group blocks every other update in it. After #144, #150 grouped 18 Python
-updates, including SQLModel 0.0.48 and SQLAlchemy 2.1, and pyrefly failed on it until #158 fixed the
-type errors.
+Dependabot counts a bump from `0.x` to `0.(x+1)` as a minor update. Ruff and pyrefly were pre-1.0
+tools when this was decided (pyrefly reached 1.x later the same day) and added lint rules and type
+checks in minor releases, so a minor bump can fail the lint job. A failing check on a group blocks
+every other update in it. After #144, #150 grouped 18 Python updates, including SQLModel 0.0.48 and
+SQLAlchemy 2.1, and pyrefly failed on it until #158 fixed the type errors.
 
 The stale `/apps/worker` entries in `dependabot.yml` are out of scope here and tracked in #141.
 
@@ -45,9 +45,10 @@ This was the reading of "one group for all actions" in #143. The #144 review rej
 
 ## Decision
 
-We will group minor and patch updates, and leave major updates as individual pull requests. The
-groups are `pip-minor-patch` for the backend, `npm-production` and `npm-development` for the
-frontend, and `github-actions`.
+We will group minor and patch updates, and leave major updates as individual pull requests, except
+where a later ADR groups a peer-coupled family of packages (ADR 0019). The groups decided here are
+`pip-minor-patch` for the backend, `npm-production` and `npm-development` for the frontend, and
+`github-actions`.
 
 We will exclude `ruff` and `pyrefly` from `pip-minor-patch`, so they arrive as individual pull
 requests.
@@ -63,6 +64,5 @@ We will leave Docker base images ungrouped, because they update rarely.
   visible CI failure. #150 showed this, and #158 fixed the type errors it exposed.
 - Bad: the grouping can only be exercised by GitHub's Dependabot service, not locally. The
   `check-dependabot` pre-commit hook validates the file against its schema only.
-- One exception followed: #165 added an `eslint` group that includes majors, so ESLint and its
-  plugins land together. #149 (ESLint 9 to 10 alone) failed because a plugin's peer range did not
-  yet accept the new major.
+- One exception followed: ADR 0019 groups ESLint and its plugins including majors, because #149
+  (ESLint 9 to 10 alone) failed on a plugin's peer range.

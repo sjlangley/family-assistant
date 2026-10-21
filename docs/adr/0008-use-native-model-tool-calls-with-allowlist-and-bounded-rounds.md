@@ -10,7 +10,7 @@ superseded_by:
 ## Context
 
 Recorded retrospectively. The decision was made in #73 (2026-04-14), which added the first tool
-layer and a current-time tool. The completion seam from #70 (ADR 0007) already carried `tool_calls`.
+layer and a current-time tool. The completion seam from #70 (ADR 0020) already carried `tool_calls`.
 
 The backend sends tool definitions to the model in the OpenAI function format with
 `tool_choice: auto`, and the model asks for tools in its reply. `ToolFactory`

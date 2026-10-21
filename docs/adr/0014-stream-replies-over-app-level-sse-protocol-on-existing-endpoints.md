@@ -61,7 +61,7 @@ body, and keep the JSON response when it is absent.
 ## Consequences
 
 - Good: replies appear as they are generated, and the protocol is independent of the model server's
-  chunk format, so the UI does not depend on the runtime (ADR 0007).
+  chunk format, so the UI does not depend on the runtime (ADRs 0007 and 0020).
 - Good: reasoning is a separate event type, which ADR 0016 relies on. Closing the connection lets
   the backend see the cancellation, which the Stop button uses (ADR 0015).
 - Bad: the backend and frontend both have to implement the protocol by hand, and a new event type

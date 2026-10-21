@@ -6,8 +6,8 @@ that supersedes the old one. Do not edit an accepted ADR. `adr-check` enforces t
 [ADR 0001](0001-record-architecture-decisions-in-adrs-and-use-issues-for-specs.md) explains why the
 repository uses ADRs.
 
-All ADRs below are accepted. ADRs 0002 to 0017 were written retrospectively and carry the original
-decision date.
+All ADRs below are accepted. ADRs 0002 to 0017 and 0020 were written retrospectively and carry the
+original decision date.
 
 - [0001](0001-record-architecture-decisions-in-adrs-and-use-issues-for-specs.md) Record architecture
   decisions in ADRs and use issues for specs
@@ -21,8 +21,7 @@ decision date.
   source of truth with Chroma as a derived index
 - [0006](0006-manage-schema-with-alembic-and-bootstrap-base-tables-at-startup.md) Manage schema with
   Alembic and bootstrap base tables at startup
-- [0007](0007-use-local-openai-compatible-llm-runtime-behind-one-service-seam.md) Use a local
-  OpenAI-compatible LLM runtime behind one service seam
+- [0007](0007-use-local-openai-compatible-llm-runtime.md) Use a local OpenAI-compatible LLM runtime
 - [0008](0008-use-native-model-tool-calls-with-allowlist-and-bounded-rounds.md) Use native model
   tool calls with an allowlist and bounded rounds
 - [0009](0009-use-duckduckgo-search-and-public-only-web-fetch-tool.md) Use DuckDuckGo search and a
@@ -45,3 +44,7 @@ decision date.
   with release-please
 - [0018](0018-group-dependabot-updates-while-keeping-major-versions-separate.md) Group Dependabot
   updates while keeping major versions separate
+- [0019](0019-group-eslint-and-its-plugins-including-majors.md) Group ESLint and its plugins,
+  including majors
+- [0020](0020-use-ollama-as-default-runtime-behind-one-llm-service-seam.md) Use Ollama as the
+  default runtime behind one LLM service seam

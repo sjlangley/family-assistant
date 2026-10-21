@@ -33,7 +33,11 @@ Architecture decisions are recorded as ADRs in `docs/adr/` (see
   `# NNNN. Title`, the frontmatter keys `status`, `date`, `supersedes` and `superseded_by`, and the
   sections Context, Considered options, Decision and Consequences, in that order. The Decision uses
   "We will ..." sentences, and the Consequences list good and bad. The `adr-check` pre-commit hook
-  and the `adr-check` workflow enforce this, and add new ADRs to `docs/adr/README.md`.
+  and the `adr-check` workflow check only the filename pattern, the H1 number, the frontmatter keys,
+  status and date, that the four sections are present, `supersedes` links and unique numbers (CI
+  also applies the history rules). They do not check section order, wording or the next free number,
+  so check those yourself. Adding a new ADR to `docs/adr/README.md` is also your job, as neither
+  tool touches the index.
 - **Specs, plans and roadmap items live in GitHub issues**, not in PRDs, plan documents or
   `TODOS.md` in the repository.
 

@@ -18,11 +18,17 @@ field (for example DeepSeek-R1) or in `<think>...</think>` tags inside the conte
 (`services/stream_parser.py`) handles both, including tags split across chunks, and yields reasoning
 and content separately.
 
-The stream sends reasoning as `thought` events and the answer as `token` events (ADR 0014). The
-saved assistant message keeps only the clean answer in `content`. The reasoning is stored in the
-`thought` field of `annotations` (ADR 0013). `ContextAssemblyService` builds later prompts from each
-message's `content` only (`services/context_assembly.py`), so a stored trace is never sent back to
-the model. Memory extraction (ADR 0010) reads `content` as well.
+The stream sends reasoning as `thought` events and the answer as `token` events (ADR 0014). On the
+streaming path, the saved assistant message keeps only the clean answer in `content`. The reasoning
+is stored in the `thought` field of `annotations` (ADR 0013). `ContextAssemblyService` builds later
+prompts from each message's `content` only (`services/context_assembly.py`), so a trace kept out of
+`content` is never sent back to the model. Memory extraction (ADR 0010) reads `content` as well.
+
+The non-streaming JSON path, which ADR 0014 keeps when `stream` is absent, does not use
+`StreamParser`. `LLMService.complete_messages()` returns the model's `content` unparsed, and the
+conversation service stores it as is. A model that puts `<think>...</think>` in its content would
+have the trace saved in `content` and sent back on later turns. The shipped UI uses only the
+streaming path.
 
 ## Considered options
 
@@ -39,15 +45,19 @@ The policy records no alternatives.
 We will treat the reasoning trace as separate from the answer: shown as `thought` events while
 streaming, and stored in `annotations.thought`.
 
-We will save the clean final answer as the canonical `content` of the assistant message.
+We will save the clean final answer as the canonical `content` of the assistant message when
+streaming.
 
 We will not include reasoning traces in the conversation history sent on later turns, which avoids
-context contamination.
+context contamination. This applies to traces the parser has separated, which means streamed
+replies.
 
 ## Consequences
 
-- Good: prompts and memory extraction see only answers, so reasoning does not contaminate context or
-  inflate the prompt.
+- Good: on the streaming path, prompts and memory extraction see only answers, so reasoning does not
+  contaminate context or inflate the prompt.
+- Bad: the non-streaming JSON path does not separate reasoning, so the guarantee above holds only
+  for streamed replies.
 - Good: the UI can show the reasoning separately from the answer.
 - Bad: a model's reasoning from an earlier turn is not available to it later, even when it would
   have helped.

@@ -54,8 +54,8 @@ We will run `adr-check` as a pre-commit hook and in CI to enforce the ADR format
 
 - Good: a reader can find what is in force by status, and a changed decision leaves a visible trail
   through `supersedes` and `superseded_by`.
-- Good: ADRs 0002 to 0017 record the decisions already visible in the code, so later changes can be
-  checked against them.
+- Good: ADRs 0002 to 0017 and 0020 record the decisions already visible in the code, so later
+  changes can be checked against them.
 - Bad: the existing PRDs, plans, `TODOS.md` and `docs/ARCHITECTURE.md` stay in the repository until
   a follow-up change moves their content into issues. Until then there are two places to look.
 - Bad: accepted ADRs cannot be edited, so changing a decision costs a new ADR.

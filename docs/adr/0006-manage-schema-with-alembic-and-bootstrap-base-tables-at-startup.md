@@ -17,8 +17,10 @@ PR #67 added `apps/assistant-backend/alembic/`. The driver is converted in `alem
 uses `postgresql+asyncpg` and Alembic uses `postgresql+psycopg`. Its first migration
 (`57bad9ffdeea`) adds the `annotations` column and creates the memory tables, and it assumes the
 `conversations` and `messages` tables already exist. `alembic/README` therefore tells a fresh
-database to be built with `create_all` and then marked with `alembic stamp head`. The same README
-lists a baseline migration as a second option and calls it recommended for production.
+database to be built with `create_all` and then marked with `alembic stamp head`. Startup
+`create_all` creates every table registered by then, memory tables included, so only the `stamp`
+step is manual. The same README lists a baseline migration as a second option and calls it
+recommended for production.
 
 The app does not run `alembic upgrade` at startup. `create_all` creates missing tables only and does
 not alter existing ones.
@@ -44,15 +46,15 @@ This is the second option in `alembic/README`.
 
 We will manage schema changes with Alembic migrations in `apps/assistant-backend/alembic/`.
 
-We will keep creating the base `conversations` and `messages` tables with
-`SQLModel.metadata.create_all()` at startup, and bootstrap a fresh database by running `create_all`
-and then `alembic stamp head`.
+We will keep running `SQLModel.metadata.create_all()` at startup, which creates every registered
+table that is missing, including the base `conversations` and `messages` tables, and bootstrap a
+fresh database by starting the app and then running `alembic stamp head`.
 
 ## Consequences
 
 - Good: schema changes since #67 are versioned migrations.
-- Bad: a fresh database needs a manual `create_all` and `stamp` step, and the first migration cannot
-  run on an empty database.
+- Bad: a fresh database needs a manual `alembic stamp head` step after the app's startup
+  `create_all` has created its tables, and the first migration cannot run on an empty database.
 - Bad: `create_all` and the migrations can disagree; for example, `create_all` already creates the
   unique indexes that migration `af123dbd3ffa` also creates (#138).
 - Bad: `AI_AGENT_GUIDELINES.md` says never to use `create_all` for schema changes in production,

@@ -20,9 +20,10 @@ Those tables hold what the assistant remembers. A durable fact carries its `subj
 
 `services/memory_storage.py` mirrors rows to Chroma with `index_conversation_summary` and
 `index_durable_fact`, which upsert under a stable document ID derived from the Postgres row ID.
-`services/context_assembly.py` asks Chroma for ranked candidate fact IDs, then reloads the facts
-from Postgres before building the prompt. If Chroma fails or returns nothing, it falls back to
-recency-based selection from Postgres.
+`services/context_assembly.py` asks Chroma for ranked candidate fact IDs only when it loads facts
+for a conversation's first message, then reloads the facts from Postgres before building the prompt.
+If that Chroma query fails or returns nothing, it falls back to recency-based selection from
+Postgres. Later messages in an existing conversation never query Chroma.
 
 ## Considered options
 
@@ -51,8 +52,12 @@ and we will reload the actual content from PostgreSQL before it reaches a prompt
 
 - Good: trust and auditability. A remembered fact can record its source conversation, message and
   excerpt, and can be deactivated without losing it.
-- Good: a Chroma outage degrades ranking rather than stopping the assistant, because context
-  assembly falls back to recency-based selection from PostgreSQL.
+- Good: once the backend has built its memory service, a Chroma failure degrades ranking rather than
+  stopping the assistant, because context assembly falls back to recency-based selection from
+  PostgreSQL.
+- Bad: that tolerance does not cover Chroma being unreachable when `MemoryStorage` is first built.
+  Its constructor connects to Chroma and creates the collection, and every conversation endpoint
+  needs it, so they all fail until Chroma is reachable.
 - Bad: the two stores can drift. A row written to PostgreSQL but not indexed is invisible to
   semantic ranking until it is indexed again.
 - Bad: the stack needs both PostgreSQL and a Chroma server in `docker-compose.yml`.
