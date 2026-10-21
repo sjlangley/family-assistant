@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-See [AGENTS.md](AGENTS.md).
+@AGENTS.md
 
-It is the single set of instructions for coding agents in this repository. This file exists only so
-that Claude Code finds it; keep the content in `AGENTS.md` so every agent reads the same thing.
+This file exists only so that Claude Code loads `AGENTS.md`. Agent rules live in
+`AI_AGENT_GUIDELINES.md`, which `AGENTS.md` points every agent at; add or change rules there, not
+here.

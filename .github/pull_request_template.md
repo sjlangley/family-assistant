@@ -4,7 +4,8 @@ A reviewer, human or LLM, reads this before your diff.
 The PR title becomes the commit subject on the trunk: Conventional Commits,
 lowercase, 72 characters or fewer. release-please reads it, so use feat or fix
 only when the change should be released. The description becomes the commit
-body, so everything below is permanent.
+body, so everything below is permanent. Delete these comments before merging;
+they are copied into the commit too.
 -->
 
 ## What

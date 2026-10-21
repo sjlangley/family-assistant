@@ -152,8 +152,8 @@ ______________________________________________________________________
 
 One concern per pull request, refactoring in its own.
 
-Do not reformat or rename what the task did not touch. Prettier rewraps whole files here, so one
-unrelated edit produces a diff nobody can read.
+Do not reformat or rename what the task did not touch. mdformat rewraps every paragraph you edit, so
+one unrelated edit produces a diff nobody can read.
 
 No drive-by fixes. Open an issue.
 
@@ -169,14 +169,17 @@ Conventional Commits, subject line 72 characters or fewer, lowercase, no trailin
 is the affected area of the repo, for example `ci(pre-commit): add hook for X`. The commitizen
 `commit-msg` hook enforces the length.
 
-release-please reads the commit subjects on `main` to cut releases, so use `feat` or `fix` only when
-the change should ship in a release. Tooling and housekeeping use `ci`, `chore`, `style`, `docs`,
-`test` or `refactor`.
+release-please reads the commit messages on `main` to cut releases, so use `feat` or `fix`, a `!`
+after the type, or a `BREAKING CHANGE:` footer only when the change should ship in a release.
+Tooling and housekeeping use `ci`, `chore`, `style`, `docs`, `test` or `refactor`.
 
 Squash merge. The repo is configured so the PR title becomes the commit subject and the PR
 description becomes the commit body, so both are permanent. Write them for someone reading `git log`
 in a year. The `Lint PR` workflow checks the title; for a single-commit PR the title must match that
 commit.
+
+Delete the PR template's instruction comments before merging: the description is copied into the
+squash commit as written, comments included.
 
 One branch per PR, cut from `main`, named `<agent>/<type>/<slug>`: `claude/…`, or `ai/…` for an
 agent without a prefix of its own. Concurrent agents get a worktree each.

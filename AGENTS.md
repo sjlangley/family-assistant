@@ -15,3 +15,7 @@ Read that file in full before taking any action. The sections you must follow ar
   `Co-authored-by` trailer in the PR description.
 - **Getting to Green** — never skip hooks, delete failing tests or weaken lint rules.
 - **Design System** — consult `DESIGN.md` before any visual/UI change.
+
+<!-- Claude Code import, so the full guidelines load with this file. -->
+
+@AI_AGENT_GUIDELINES.md

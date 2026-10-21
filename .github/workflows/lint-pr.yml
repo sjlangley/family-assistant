@@ -8,8 +8,7 @@ on:
       - edited
       - synchronize
 
-# Keyed on the workflow too: concurrency groups are repo-wide, so without it this
-# would cancel the pre-commit run for the same PR.
+# Keyed on the workflow so it cannot share a group with another PR workflow.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -18,9 +17,7 @@ jobs:
   main:
     name: Validate PR title
     runs-on: ubuntu-slim
-    # Dependabot titles its own PRs and we don't control the casing it picks
-    # (e.g. "Bump actions/cache from 4 to 6"), so it fails the lowercase check
-    # below by design rather than by mistake.
+    # Dependabot picks its own title casing, which we don't control.
     if: github.event.pull_request.user.login != 'dependabot[bot]'
     permissions:
       pull-requests: read
@@ -29,11 +26,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          # PR title must not start with a capital letter
+          # Lowercase subject: no leading capital.
           subjectPattern: ^(?![A-Z]).+$
-          # If the PR only contains a single commit, the action will validate that
-          # it matches the configured pattern.
           validateSingleCommit: true
-          # Related to `validateSingleCommit` you can opt-in to validate that the PR
-          # title matches a single commit to avoid confusion.
           validateSingleCommitMatchesPrTitle: true
