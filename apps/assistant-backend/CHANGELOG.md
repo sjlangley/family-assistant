@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.2](https://github.com/sjlangley/family-assistant/compare/assistant-backend-v0.1.1...assistant-backend-v0.1.2) (2026-10-21)
+
+
+### Bug Fixes
+
+* **backend:** accept comma-separated origins and complete compose env ([#176](https://github.com/sjlangley/family-assistant/issues/176)) ([c44c36f](https://github.com/sjlangley/family-assistant/commit/c44c36f91824f9ae923c1af231a9bd0106a101a3))
+* **backend:** keep finish_reason when enriching memory_saved ([#173](https://github.com/sjlangley/family-assistant/issues/173)) ([3e46959](https://github.com/sjlangley/family-assistant/commit/3e46959b2bbfcea7256796f9b658eebd6071e6d9))
+* **backend:** make index migration idempotent ([#175](https://github.com/sjlangley/family-assistant/issues/175)) ([fa76359](https://github.com/sjlangley/family-assistant/commit/fa76359cf912f409e96e4ad65c859e8f967a9e1a))
+* **backend:** run durable fact upsert attempt in a savepoint ([#171](https://github.com/sjlangley/family-assistant/issues/171)) ([9a9dad2](https://github.com/sjlangley/family-assistant/commit/9a9dad2a9c34949a5a678cd30efe1c47113c63e8)), closes [#135](https://github.com/sjlangley/family-assistant/issues/135)
+
 ## [0.1.1](https://github.com/sjlangley/family-assistant/compare/assistant-backend-v0.1.0...assistant-backend-v0.1.1) (2026-04-21)
 
 
