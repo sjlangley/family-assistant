@@ -26,6 +26,8 @@ def _redact_database_url(url) -> str:
         parsed = make_url(url)
     except (ArgumentError, ValueError):
         return '<unparseable database URL>'
+    if '@' in (parsed.host or ''):
+        return '<unparseable database URL>'
     query = {
         k: '***' if k in ('password', 'passwd', 'pwd') else v
         for k, v in parsed.query.items()
@@ -98,7 +100,8 @@ async def lifespan(application: FastAPI):
     async with application.state.engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
-    logger.info(f'Engine URL after parsing: {application.state.engine.url!r}')
+    engine_url = _redact_database_url(application.state.engine.url)
+    logger.info(f'Engine URL after parsing: {engine_url!r}')
     logger.info(
         f'Engine URL components -> dialect='
         f'{application.state.engine.url.get_dialect().name}, '
