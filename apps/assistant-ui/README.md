@@ -16,7 +16,7 @@ sidebar and transcript shell, and the desktop trust UI for persisted assistant a
 
 ## Prerequisites
 
-- Node.js 22+
+- Node.js 22.13+ (ESLint 10 needs `^20.19.0 || ^22.13.0 || >=24`)
 - npm 10+
 - Backend API running (see `apps/assistant-backend`)
 - Google OAuth 2.0 Client ID

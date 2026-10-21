@@ -654,7 +654,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
   // Load messages when active conversation changes
   useEffect(() => {
     if (!activeConversationId) {
-      // TODO: react-hooks 7.1 flags this synchronous reset; refactoring to
+      // TODO(#163): react-hooks 7.1 flags this synchronous reset; refactoring to
       // derive state during render is out of scope for the ESLint 10 upgrade.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMessages([]);
@@ -1052,7 +1052,7 @@ export function ConversationsChat({ onLogout }: ConversationsChatProps) {
             <EvidencePanel
               message={selectedMessage}
               onClose={handleCloseDetails}
-              // TODO: react-hooks 7.1 flags reading a ref during render; moving the
+              // TODO(#163): react-hooks 7.1 flags reading a ref during render; moving the
               // trigger element into state is out of scope for the ESLint 10 upgrade.
               // eslint-disable-next-line react-hooks/refs
               triggerElement={focusTriggerRef.current ?? undefined}
