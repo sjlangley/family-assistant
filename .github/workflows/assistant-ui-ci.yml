@@ -38,15 +38,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Format check
-        run: npm run format:check
-
-      - name: Typecheck
-        run: npm run typecheck
-
+      # Lint, format and typecheck run in the pre-commit workflow.
       - name: Test with coverage
         run: npm run test:coverage
 

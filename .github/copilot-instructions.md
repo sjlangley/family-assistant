@@ -181,14 +181,13 @@ ______________________________________________________________________
 
 ## CI/CD Workflows
 
-| Workflow                             | Trigger                              | Steps                                                        |
-| ------------------------------------ | ------------------------------------ | ------------------------------------------------------------ |
-| `assistant-backend-lint.yml`         | push/PR on `apps/assistant-backend/` | ruff check, ruff format, pyrefly                             |
-| `assistant-backend-test.yml`         | push/PR on `apps/assistant-backend/` | pytest with coverage, codecov upload                         |
-| `assistant-backend-docker-build.yml` | push/PR on `apps/assistant-backend/` | Docker build + health check                                  |
-| `assistant-ui-ci.yml`                | push/PR on `apps/assistant-ui/`      | lint, format:check, typecheck, test:coverage, build, codecov |
-| `assistant-ui-docker-build.yml`      | push/PR on `apps/assistant-ui/`      | Docker build + health check                                  |
-| `pre-commit.yml`                     | every PR, push to `main`             | `pre-commit run --all-files` (all hooks, whole repo)         |
+| Workflow                             | Trigger                              | Steps                                                       |
+| ------------------------------------ | ------------------------------------ | ----------------------------------------------------------- |
+| `assistant-backend-test.yml`         | push/PR on `apps/assistant-backend/` | pytest with coverage, codecov upload                        |
+| `assistant-backend-docker-build.yml` | push/PR on `apps/assistant-backend/` | Docker build + health check                                 |
+| `assistant-ui-ci.yml`                | push/PR on `apps/assistant-ui/`      | test:coverage, build, codecov                               |
+| `assistant-ui-docker-build.yml`      | push/PR on `apps/assistant-ui/`      | Docker build + health check                                 |
+| `pre-commit.yml`                     | every PR, push to `main`             | all pre-commit hooks (whole repo), full-history secret scan |
 
 All CI checks must pass before merging.
 
