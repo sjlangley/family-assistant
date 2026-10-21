@@ -71,6 +71,7 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434}
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-120}
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-1024}
 
       # Database configuration (for future use)
       DATABASE_URL: postgresql+asyncpg://assistant:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/family_assistant
@@ -85,6 +86,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      chroma:
+        condition: service_started
     networks:
       - family-assistant-network
     healthcheck:
