@@ -6,6 +6,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.engine.url import make_url
+from sqlalchemy.exc import ArgumentError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
 from starlette.middleware.sessions import SessionMiddleware
@@ -21,7 +22,15 @@ logger = logging.getLogger(__name__)
 
 
 def _redact_database_url(url) -> str:
-    return make_url(url).render_as_string(hide_password=True)
+    try:
+        parsed = make_url(url)
+    except (ArgumentError, ValueError):
+        return '<unparseable database URL>'
+    query = {
+        k: '***' if k in ('password', 'passwd', 'pwd') else v
+        for k, v in parsed.query.items()
+    }
+    return parsed.set(query=query).render_as_string(hide_password=True)
 
 
 def _get_safe_settings_for_logging(settings_to_log: Settings) -> dict:
@@ -68,6 +77,10 @@ def _log_startup_settings(settings_to_log: Settings) -> None:
     )
 
 
+def _log_database_url(database_url) -> None:
+    logger.info(f'Final Database URL: {_redact_database_url(database_url)!r}')
+
+
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     setup_logging()
@@ -76,7 +89,7 @@ async def lifespan(application: FastAPI):
     # Get the canonical database URL (uses DATABASE_URL or builds TCP connection)
     database_url = get_database_url()
 
-    logger.info(f'Final Database URL: {_redact_database_url(database_url)!r}')
+    _log_database_url(database_url)
 
     application.state.engine = create_async_engine(
         database_url, pool_pre_ping=True

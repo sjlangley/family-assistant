@@ -4,7 +4,11 @@ import logging
 
 import pytest
 
-from assistant.app import _log_startup_settings
+from assistant.app import (
+    _log_database_url,
+    _log_startup_settings,
+    _redact_database_url,
+)
 from assistant.settings import Settings
 
 PREFIX = 'Application startup configuration:'
@@ -67,9 +71,78 @@ def test_log_startup_settings_masks_password_in_database_url(caplog):
 
 
 def test_redact_database_url_hides_password():
-    from assistant.app import _redact_database_url
-
     redacted = _redact_database_url('postgresql+asyncpg://u:secret-789@h/db')
 
     assert 'secret-789' not in redacted
     assert redacted == 'postgresql+asyncpg://u:***@h/db'
+
+
+@pytest.mark.parametrize(
+    'url',
+    [
+        'not-a-url',
+        '',
+        None,
+        'postgresql+asyncpg://u:pw-secret@h:abc/db',
+    ],
+)
+def test_redact_database_url_never_raises(url):
+    redacted = _redact_database_url(url)
+
+    assert isinstance(redacted, str)
+    assert 'pw-secret' not in redacted
+
+
+def test_redact_database_url_does_not_echo_unparseable_input():
+    assert 'pw-secret' not in _redact_database_url('pw-secret')
+
+
+def test_redact_database_url_masks_password_query_param():
+    redacted = _redact_database_url(
+        'postgresql+asyncpg://u@h/db?password=secret'
+    )
+
+    assert 'secret' not in redacted
+
+
+def test_log_startup_settings_survives_unparseable_database_url(caplog):
+    message = _log_with(caplog, DATABASE_URL='not-a-url')
+
+    assert len(caplog.records) == 1
+    assert message.startswith(PREFIX)
+
+
+def test_log_startup_settings_leaves_passwordless_database_url(caplog):
+    message = _log_with(caplog, DATABASE_URL='postgresql+asyncpg://u@h:5432/db')
+
+    assert "'database_url': 'postgresql+asyncpg://u@h:5432/db'" in message
+
+
+def test_log_startup_settings_database_url_empty(caplog):
+    message = _log_with(caplog, DATABASE_URL='')
+
+    assert "'database_url': ''" in message
+
+
+def test_log_startup_settings_database_url_unset(caplog, monkeypatch):
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    test_settings = Settings(
+        GOOGLE_OAUTH_CLIENT_ID='cid',
+        SESSION_SECRET_KEY='sk',
+        LLM_BASE_URL='http://llm',
+        _env_file=None,
+    )
+    with caplog.at_level(logging.INFO, logger='assistant.app'):
+        _log_startup_settings(test_settings)
+
+    assert "'database_url': None" in caplog.records[0].getMessage()
+
+
+def test_log_database_url_hides_password(caplog):
+    with caplog.at_level(logging.INFO, logger='assistant.app'):
+        _log_database_url('postgresql+asyncpg://u:final-pass-1@h:5432/db')
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert len(messages) == 1
+    assert messages[0].startswith('Final Database URL:')
+    assert 'final-pass-1' not in messages[0]
