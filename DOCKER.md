@@ -241,7 +241,7 @@ to:
 
 ### Health Checks
 
-All services have health checks configured:
+PostgreSQL, the backend and the frontend have health checks configured (Chroma and Ollama do not):
 
 - **PostgreSQL**: Checks database readiness
 - **Backend**: Checks `/health` endpoint
