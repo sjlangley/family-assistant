@@ -34,6 +34,7 @@ class Conversation(SQLModel, table=True):
         sa_column=Column(Text, nullable=False),
     )
     created_at: datetime = Field(
+        default=None,
         sa_column=Column(
             DateTime(timezone=True),
             nullable=False,
@@ -41,6 +42,7 @@ class Conversation(SQLModel, table=True):
         ),
     )
     updated_at: datetime = Field(
+        default=None,
         sa_column=Column(
             DateTime(timezone=True),
             nullable=False,
@@ -94,6 +96,7 @@ class Message(SQLModel, table=True):
     )
     sequence_number: int = Field(nullable=False)
     created_at: datetime = Field(
+        default=None,
         sa_column=Column(
             DateTime(timezone=True),
             nullable=False,
