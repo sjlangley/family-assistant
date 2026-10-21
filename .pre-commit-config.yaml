@@ -63,6 +63,16 @@ repos:
       - id: check-dependabot
       - id: check-github-workflows
 
+  - repo: https://github.com/agentic-delivery-au/adr-check
+    # Keep in step with the action version in .github/workflows/adr-check.yml.
+    rev: v0.1.1
+    hooks:
+      # Checks the files in docs/adr/ only. The checks that compare with main
+      # (merged ADRs unchanged, no deletions or reused numbers) run in CI, in
+      # .github/workflows/adr-check.yml. Needs a `python3.14` executable on
+      # PATH, which the package requires and pre-commit's own Python may not be.
+      - id: adr-check
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Keep in step with the ruff pin in apps/assistant-backend/pyproject.toml.
     # Config comes from the root ruff.toml.

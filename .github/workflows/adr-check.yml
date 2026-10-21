@@ -1,0 +1,35 @@
+name: adr-check
+
+# The adr-check pre-commit hook (run by pre-commit.yml) only looks at the files
+# in docs/adr/. This workflow runs the checks that need the base branch: merged
+# ADRs stay unchanged, none is deleted or renamed, numbers are not reused, and no
+# ADR with `status: proposed` reaches main. See
+# https://github.com/agentic-delivery-au/adr-check#in-ci
+
+on:
+  pull_request:
+    # labeled and unlabeled: adding the `adr-correction` label must re-run the
+    # check, or the PR stays red until the next push.
+    types: [opened, reopened, synchronize, edited, labeled, unlabeled]
+  # No `push` trigger: a push carries no PR labels, so a history comparison
+  # would fail every merged `adr-correction`. No `paths:` filter either: a
+  # filtered workflow reports nothing on a PR that touches no ADR, so a required
+  # check would never arrive.
+
+permissions:
+  contents: read
+
+jobs:
+  adr-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          # The check compares the branch with its base, so it needs full history.
+          fetch-depth: 0
+
+      # Keep the version in step with the adr-check `rev` in
+      # .pre-commit-config.yaml, so the hook and CI apply the same rules.
+      - name: Check ADRs
+        uses: agentic-delivery-au/adr-check@v0.1.1
