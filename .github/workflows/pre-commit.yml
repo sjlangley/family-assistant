@@ -29,6 +29,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          # The full-history secret scan below reads every commit.
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -73,3 +76,10 @@ jobs:
 
       - name: Run pre-commit
         run: pre-commit run --all-files --show-diff-on-failure
+
+      # The betterleaks hook in the run above only scans staged changes, which
+      # is nothing in CI. This runs the manual-stage hook that scans the whole
+      # git history with the same pinned scanner and .betterleaks.toml, so a
+      # secret that was committed and later deleted still fails the job.
+      - name: Scan full history for secrets
+        run: pre-commit run betterleaks-history --all-files --hook-stage manual

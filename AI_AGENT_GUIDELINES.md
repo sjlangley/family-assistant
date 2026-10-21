@@ -64,6 +64,8 @@ and CI re-runs the full suite on every PR (`.github/workflows/pre-commit.yml`).
 - The hooks cover format, lint and type checks (ruff, pyrefly, prettier, eslint, tsc), Markdown
   (mdformat, markdownlint), workflow and `dependabot.yml` schemas, shellcheck and secret scanning.
   The `commit-msg` hook enforces Conventional Commits with a subject of 72 characters or fewer.
+  Locally the secret scan covers staged changes; CI also scans the full git history. Run the same
+  scan with `pre-commit run betterleaks-history --all-files --hook-stage manual`.
 - Hooks do **not** run tests or the production build. Keep `pytest`, `npm run test:coverage` and
   `npm run build` as explicit steps below.
 - Bump hook versions with `pre-commit autoupdate`. Keep the `ruff-pre-commit` rev in step with the

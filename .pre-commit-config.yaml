@@ -149,6 +149,18 @@ repos:
       # language_version so every machine builds the same scanner.
       - id: betterleaks
         language_version: "1.27.0"
+      # The hook above only looks at staged changes, so `pre-commit run
+      # --all-files` in CI scans nothing. This manual-stage hook scans the
+      # whole git history (every commit's patches, so a secret that was later
+      # deleted is still found) with the same pinned scanner and config. The
+      # CI workflow runs it with `--hook-stage manual`; run it locally the same
+      # way. It needs full history, so CI checks out with fetch-depth: 0.
+      - id: betterleaks
+        alias: betterleaks-history
+        name: Detect hardcoded secrets (full history)
+        language_version: "1.27.0"
+        stages: [manual]
+        entry: betterleaks git --redact --verbose --no-banner .
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.11.0.1-1
