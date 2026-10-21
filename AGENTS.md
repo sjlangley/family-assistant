@@ -5,6 +5,8 @@ All agent behaviour for this repository is governed by
 
 Read that file in full before taking any action. The sections you must follow are:
 
+- **Architecture Decision Records** — read `docs/adr/` before any architectural change; accepted
+  ADRs bind, and a conflicting change needs a superseding ADR, never an edit.
 - **Test-Driven Development** — write a failing test before production code.
 - **Required Validation Before Commit or Push** — run the full local suite; never rely on CI as a
   substitute.
