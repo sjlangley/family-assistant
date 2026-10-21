@@ -63,5 +63,6 @@ We will leave Docker base images ungrouped, because they update rarely.
   visible CI failure. #150 showed this, and #158 fixed the type errors it exposed.
 - Bad: the grouping can only be exercised by GitHub's Dependabot service, not locally. The
   `check-dependabot` pre-commit hook validates the file against its schema only.
-- The owner's note is that ESLint is to be grouped with the major updates after #149 (ESLint 9 to
-  10). That change is in a separate open branch and is not part of this decision.
+- One exception followed: #165 added an `eslint` group that includes majors, so ESLint and its
+  plugins land together. #149 (ESLint 9 to 10 alone) failed because a plugin's peer range did not
+  yet accept the new major.

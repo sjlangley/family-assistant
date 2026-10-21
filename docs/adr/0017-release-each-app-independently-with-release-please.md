@@ -44,8 +44,9 @@ release-please update them.
 ## Consequences
 
 - Good: no manual changelog or version edits, and a change to one app does not bump the other.
-- Bad: commit types decide the release. Only `feat`, `fix` and `perf` bump a version, so tooling
-  changes use `ci`, `chore` or `style` to avoid cutting a release.
+- Bad: commit types decide the release. `feat`, `fix`, `perf`, `revert` and breaking changes cut a
+  release for either app, and `deps` and `docs` also do for the Python backend, so tooling changes
+  use types its changelog hides, such as `ci`, `chore` or `style`.
 - Bad: with squash merges, the pull request title becomes the commit message, so the title has to be
   a valid Conventional Commit.
 - Bad: release-please owns `apps/*/CHANGELOG.md` and rewrites it in its own format, so formatters
