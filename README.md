@@ -71,8 +71,9 @@ See individual READMEs for detailed instructions:
 ### Pre-commit Hooks
 
 Commits are checked by [pre-commit](https://pre-commit.com) (ruff, pyrefly, prettier, eslint, tsc,
-mdformat, markdownlint, shellcheck, secret scanning, and Conventional Commit messages). CI runs the
-same hooks on every pull request. Install the tool once, then the hooks:
+mdformat, markdownlint, the ADR format check (adr-check), shellcheck, secret scanning, and
+Conventional Commit messages). CI runs the same hooks on every pull request. The adr-check hook
+needs a `python3.14` executable on your `PATH`. Install the tool once, then the hooks:
 
 ```bash
 # 1. Backend venv, so the pyrefly hook can resolve imports

@@ -13,6 +13,36 @@ mode, flag any code that doesn't match `DESIGN.md`.
 
 ______________________________________________________________________
 
+## Architecture Decision Records
+
+Architecture decisions are recorded as ADRs in `docs/adr/` (see
+[ADR 0001](docs/adr/0001-record-architecture-decisions-in-adrs-and-use-issues-for-specs.md)).
+
+- **Read `docs/adr/` before any architectural change.** The index is `docs/adr/README.md`.
+- **`accepted` ADRs bind.** Follow them. `superseded` and `rejected` ADRs are not in force; for a
+  superseded one, follow `superseded_by` to the ADR that replaced it. A `proposed` ADR binds nobody
+  until a person settles it.
+- **Never edit an accepted ADR to fit a change.** If your change conflicts with one, do not work
+  around it: write a superseding ADR (`supersedes: [N]` in the new one, and `status: superseded`
+  plus `superseded_by: N` in the old one, in the same PR) and tell the person you are working for. A
+  person owns the decision.
+- **Write an ADR when a decision is hard to reverse, chooses between real alternatives, or
+  constrains others.** Anything smaller belongs in the PR description or the code. One decision per
+  ADR. List only the options that were actually considered, and never invent one.
+- **Follow the format.** Files are `docs/adr/NNNN-kebab-title.md` with the next free number, an H1
+  `# NNNN. Title`, the frontmatter keys `status`, `date`, `supersedes` and `superseded_by`, and the
+  sections Context, Considered options, Decision and Consequences, in that order. The Decision uses
+  "We will ..." sentences, and the Consequences list good and bad. The `adr-check` pre-commit hook
+  and the `adr-check` workflow check only the filename pattern, the H1 number, the frontmatter keys,
+  status and date, that the four sections are present, `supersedes` links and unique numbers (CI
+  also applies the history rules). They do not check section order, wording or the next free number,
+  so check those yourself. Adding a new ADR to `docs/adr/README.md` is also your job, as neither
+  tool touches the index.
+- **Specs, plans and roadmap items live in GitHub issues**, not in PRDs, plan documents or
+  `TODOS.md` in the repository.
+
+______________________________________________________________________
+
 ## Test-Driven Development
 
 Follow TDD for all code changes:
@@ -62,11 +92,11 @@ and CI re-runs the full suite on every PR (`.github/workflows/pre-commit.yml`).
   that auto-fix (ruff, prettier, mdformat, whitespace) leave the changes unstaged: review them,
   `git add` them and commit again.
 - The hooks cover format, lint and type checks (ruff, pyrefly, prettier, eslint, tsc), Markdown
-  (mdformat, markdownlint), workflow and `dependabot.yml` schemas, shellcheck and secret scanning.
-  The `commit-msg` hook enforces Conventional Commits with a subject of 72 characters or fewer.
-  Locally the secret scan covers staged changes; CI also scans the commit history reachable from
-  `HEAD`. Run the same scan with
-  `pre-commit run betterleaks-history --all-files --hook-stage manual`.
+  (mdformat, markdownlint), workflow and `dependabot.yml` schemas, the ADR format (`adr-check`,
+  which needs a `python3.14` executable on `PATH`), shellcheck and secret scanning. The `commit-msg`
+  hook enforces Conventional Commits with a subject of 72 characters or fewer. Locally the secret
+  scan covers staged changes; CI also scans the commit history reachable from `HEAD`. Run the same
+  scan with `pre-commit run betterleaks-history --all-files --hook-stage manual`.
 - Hooks do **not** run tests or the production build. Keep `pytest`, `npm run test:coverage` and
   `npm run build` as explicit steps below.
 - Bump hook versions with `pre-commit autoupdate`. Keep the `ruff-pre-commit` rev in step with the

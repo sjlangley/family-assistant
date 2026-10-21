@@ -33,6 +33,14 @@ jobs:
           # The secret scan of commit history below reads every commit.
           fetch-depth: 0
 
+      # The adr-check hook builds its environment with `python3.14` (the package
+      # requires it), so that interpreter has to be on PATH. It goes first so the
+      # step below leaves 3.13, the backend's version, as the default `python`.
+      - name: Set up Python 3.14 (for the adr-check hook)
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+
       - name: Set up Python
         uses: actions/setup-python@v7
         with:

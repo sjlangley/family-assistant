@@ -181,14 +181,15 @@ ______________________________________________________________________
 
 ## CI/CD Workflows
 
-| Workflow                             | Trigger                              | Steps                                                                         |
-| ------------------------------------ | ------------------------------------ | ----------------------------------------------------------------------------- |
-| `assistant-backend-test.yml`         | push/PR on `apps/assistant-backend/` | pytest with coverage, codecov upload                                          |
-| `assistant-backend-docker-build.yml` | push/PR on `apps/assistant-backend/` | Docker build + health check                                                   |
-| `assistant-ui-ci.yml`                | push/PR on `apps/assistant-ui/`      | test:coverage, build, codecov                                                 |
-| `assistant-ui-docker-build.yml`      | push/PR on `apps/assistant-ui/`      | Docker build + health check                                                   |
-| `pre-commit.yml`                     | every PR, push to `main`             | all pre-commit hooks (whole repo), secret scan of history reachable from HEAD |
-| `lint-pr.yml`                        | every non-Dependabot PR              | PR title is a lowercase Conventional Commit, matching a single commit         |
+| Workflow                             | Trigger                               | Steps                                                                         |
+| ------------------------------------ | ------------------------------------- | ----------------------------------------------------------------------------- |
+| `assistant-backend-test.yml`         | push/PR on `apps/assistant-backend/`  | pytest with coverage, codecov upload                                          |
+| `assistant-backend-docker-build.yml` | push/PR on `apps/assistant-backend/`  | Docker build + health check                                                   |
+| `assistant-ui-ci.yml`                | push/PR on `apps/assistant-ui/`       | test:coverage, build, codecov                                                 |
+| `assistant-ui-docker-build.yml`      | push/PR on `apps/assistant-ui/`       | Docker build + health check                                                   |
+| `pre-commit.yml`                     | every PR, push to `main`              | all pre-commit hooks (whole repo), secret scan of history reachable from HEAD |
+| `lint-pr.yml`                        | every non-Dependabot PR               | PR title is a lowercase Conventional Commit, matching a single commit         |
+| `adr-check.yml`                      | every PR, including labeled/unlabeled | ADR files and history rules (adr-check CI mode)                               |
 
 All CI checks must pass before merging.
 
@@ -197,9 +198,10 @@ ______________________________________________________________________
 ## Commit & PR Guidelines
 
 - Install the pre-commit hooks once after cloning: `pre-commit install` (needs the backend venv at
-  `apps/assistant-backend/.venv` and `npm ci` in `apps/assistant-ui` first). Run all hooks with
-  `pre-commit run --all-files`. Never commit with `--no-verify`; fix what the hooks report. Hooks do
-  not run tests, so still run `pytest` and `npm run test:coverage`.
+  `apps/assistant-backend/.venv`, `npm ci` in `apps/assistant-ui` and a `python3.14` executable on
+  `PATH` for the `adr-check` hook first). Run all hooks with `pre-commit run --all-files`. Never
+  commit with `--no-verify`; fix what the hooks report. Hooks do not run tests, so still run
+  `pytest` and `npm run test:coverage`.
 - Use **conventional commit syntax**: `feat:`, `fix:`, `chore:`, `test:`, `docs:` (subject line 72
   characters or fewer; the `commit-msg` hook enforces this)
 - PRs are squash-merged: the PR title becomes the commit subject and the description the body.
