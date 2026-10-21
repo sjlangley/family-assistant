@@ -1183,7 +1183,7 @@ class ConversationService:
     def _message_read(message: Message) -> MessageRead:
         return MessageRead(
             id=message.id,
-            role=cast('str', message.role),
+            role=message.role,
             content=message.content,
             sequence_number=message.sequence_number,
             created_at=message.created_at,
@@ -1552,7 +1552,7 @@ class ConversationService:
             update(Message)
             # pyrefly: ignore [bad-argument-type]
             .where(Message.id == assistant_message_id)
-            .values(annotations=enriched_dict)
+            .values({'annotations': enriched_dict})
         )
         await session.commit()
 

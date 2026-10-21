@@ -41,7 +41,7 @@ class CurrentTimeTool(BaseTool):
         now = datetime.now(UTC)
 
         payload = TimePayload(
-            kind=self.name,
+            kind='get_current_time',
             iso_timestamp=now.isoformat(),
             display_text=now.strftime('%Y-%m-%d %H:%M:%S UTC'),
         )
