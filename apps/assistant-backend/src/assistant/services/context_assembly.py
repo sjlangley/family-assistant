@@ -292,7 +292,11 @@ class ContextAssemblyService:
             .limit(1)
         )
         result = await session.execute(stmt)
-        return result.scalar_one_or_none()
+        # Bind to a local first: returning the call directly makes pyrefly
+        # (with SQLAlchemy 2.1 typing) solve the Result type parameter from the
+        # `| None` return annotation and reject `self`.
+        summary = result.scalar_one_or_none()
+        return summary
 
     async def _load_active_facts(
         self,

@@ -68,6 +68,7 @@ class ConversationMemorySummary(SQLModel, table=True):
         sa_column=Column(Integer, nullable=False, server_default='1'),
     )
     created_at: datetime = Field(
+        default=None,
         sa_column=Column(
             DateTime(timezone=True),
             nullable=False,
@@ -75,6 +76,7 @@ class ConversationMemorySummary(SQLModel, table=True):
         ),
     )
     updated_at: datetime = Field(
+        default=None,
         sa_column=Column(
             DateTime(timezone=True),
             nullable=False,
@@ -164,6 +166,7 @@ class DurableFact(SQLModel, table=True):
         ),
     )
     created_at: datetime = Field(
+        default=None,
         sa_column=Column(
             DateTime(timezone=True),
             nullable=False,
@@ -171,6 +174,7 @@ class DurableFact(SQLModel, table=True):
         ),
     )
     updated_at: datetime = Field(
+        default=None,
         sa_column=Column(
             DateTime(timezone=True),
             nullable=False,
