@@ -81,13 +81,15 @@ repos:
       # uses the backend venv at apps/assistant-backend/.venv when present
       # (see README "Getting Started") and otherwise falls back to a `pyrefly`
       # on PATH, which is how CI runs it (pip install -e "apps/assistant-backend[dev]").
-      # Runs from the backend directory so pyrefly picks up its pyrefly.toml.
+      # Runs from the backend directory so pyrefly picks up its pyrefly.toml, and
+      # takes no path argument: passing `src/` makes pyrefly ignore the
+      # project-excludes in that file (see its comment).
       - id: pyrefly
         name: pyrefly
         entry: >-
           bash -c 'cd apps/assistant-backend &&
-          if [ -x .venv/bin/pyrefly ]; then exec .venv/bin/pyrefly check src/;
-          else exec pyrefly check src/; fi'
+          if [ -x .venv/bin/pyrefly ]; then exec .venv/bin/pyrefly check;
+          else exec pyrefly check; fi'
         language: system
         files: ^apps/assistant-backend/.*\.(py|pyi|toml)$
         pass_filenames: false # the checker needs the project, not the staged files

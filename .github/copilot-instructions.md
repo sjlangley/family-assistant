@@ -77,7 +77,7 @@ pytest --cov --cov-report=term # with coverage report
 cd apps/assistant-backend
 ruff check src/ tests/         # lint
 ruff format src/ tests/        # format
-pyrefly check src/             # type checking
+pyrefly check                  # type checking (checks src/, per pyrefly.toml)
 ```
 
 - **Ruff** handles both linting and formatting (configured in `/ruff.toml`)

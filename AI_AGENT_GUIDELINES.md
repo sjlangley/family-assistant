@@ -94,7 +94,7 @@ check fails. Fix the issue first, then re-run all checks.
 source .venv/bin/activate  # Activate virtual environment
 ruff format src/ tests/     # Auto-fix formatting
 ruff check src/ tests/      # Check linting rules
-pyrefly check src/          # Type check with pyrefly
+pyrefly check              # Type check with pyrefly (checks src/, per pyrefly.toml)
 pytest -v                   # Run all tests
 ```
 
