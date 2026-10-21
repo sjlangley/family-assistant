@@ -48,5 +48,6 @@ Full stack: `cp .env.example .env`, fill in the required values, then `docker co
 - Schema changes go through Alembic migrations.
 - Read [DESIGN.md](../DESIGN.md) before any UI change.
 - Use Conventional Commits (subject of 72 characters or fewer). PRs are squash-merged, follow the PR
-  template, and reference an issue with `Fixes: #n`.
+  template, and reference an issue with `Fixes: #n`, or `Refs: #n` where several PRs land against
+  one issue.
 - Keep secrets in environment variables, and never mix one user's data with another's.
