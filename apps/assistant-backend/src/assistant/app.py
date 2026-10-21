@@ -5,6 +5,8 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.engine.url import make_url
+from sqlalchemy.exc import ArgumentError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
 from starlette.middleware.sessions import SessionMiddleware
@@ -17,6 +19,20 @@ from assistant.settings import Settings, settings
 from assistant.utils.database import get_database_url
 
 logger = logging.getLogger(__name__)
+
+
+def _redact_database_url(url) -> str:
+    try:
+        parsed = make_url(url)
+    except (ArgumentError, ValueError):
+        return '<unparseable database URL>'
+    if '@' in (parsed.host or ''):
+        return '<unparseable database URL>'
+    query = {
+        k: '***' if k in ('password', 'passwd', 'pwd') else v
+        for k, v in parsed.query.items()
+    }
+    return parsed.set(query=query).render_as_string(hide_password=True)
 
 
 def _get_safe_settings_for_logging(settings_to_log: Settings) -> dict:
@@ -33,6 +49,7 @@ def _get_safe_settings_for_logging(settings_to_log: Settings) -> dict:
     sensitive_fields = {
         'client_id',
         'session_secret_key',
+        'database_password',
     }
 
     data = settings_to_log.model_dump()
@@ -41,6 +58,8 @@ def _get_safe_settings_for_logging(settings_to_log: Settings) -> dict:
     for key, value in data.items():
         if key in sensitive_fields:
             safe_data[key] = '***REDACTED***'
+        elif key == 'database_url' and value:
+            safe_data[key] = _redact_database_url(value)
         else:
             safe_data[key] = value
 
@@ -60,6 +79,10 @@ def _log_startup_settings(settings_to_log: Settings) -> None:
     )
 
 
+def _log_database_url(database_url) -> None:
+    logger.info(f'Final Database URL: {_redact_database_url(database_url)!r}')
+
+
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     setup_logging()
@@ -68,9 +91,7 @@ async def lifespan(application: FastAPI):
     # Get the canonical database URL (uses DATABASE_URL or builds TCP connection)
     database_url = get_database_url()
 
-    logger.info(
-        f'Final Database URL: {database_url!r}'
-    )  # Ensure this is redacted if it's a string
+    _log_database_url(database_url)
 
     application.state.engine = create_async_engine(
         database_url, pool_pre_ping=True
@@ -79,7 +100,8 @@ async def lifespan(application: FastAPI):
     async with application.state.engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
-    logger.info(f'Engine URL after parsing: {application.state.engine.url!r}')
+    engine_url = _redact_database_url(application.state.engine.url)
+    logger.info(f'Engine URL after parsing: {engine_url!r}')
     logger.info(
         f'Engine URL components -> dialect='
         f'{application.state.engine.url.get_dialect().name}, '
