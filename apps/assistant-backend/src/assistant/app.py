@@ -5,6 +5,7 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
 from starlette.middleware.sessions import SessionMiddleware
@@ -17,6 +18,10 @@ from assistant.settings import Settings, settings
 from assistant.utils.database import get_database_url
 
 logger = logging.getLogger(__name__)
+
+
+def _redact_database_url(url) -> str:
+    return make_url(url).render_as_string(hide_password=True)
 
 
 def _get_safe_settings_for_logging(settings_to_log: Settings) -> dict:
@@ -33,6 +38,7 @@ def _get_safe_settings_for_logging(settings_to_log: Settings) -> dict:
     sensitive_fields = {
         'client_id',
         'session_secret_key',
+        'database_password',
     }
 
     data = settings_to_log.model_dump()
@@ -41,6 +47,8 @@ def _get_safe_settings_for_logging(settings_to_log: Settings) -> dict:
     for key, value in data.items():
         if key in sensitive_fields:
             safe_data[key] = '***REDACTED***'
+        elif key == 'database_url' and value:
+            safe_data[key] = _redact_database_url(value)
         else:
             safe_data[key] = value
 
@@ -68,9 +76,7 @@ async def lifespan(application: FastAPI):
     # Get the canonical database URL (uses DATABASE_URL or builds TCP connection)
     database_url = get_database_url()
 
-    logger.info(
-        f'Final Database URL: {database_url!r}'
-    )  # Ensure this is redacted if it's a string
+    logger.info(f'Final Database URL: {_redact_database_url(database_url)!r}')
 
     application.state.engine = create_async_engine(
         database_url, pool_pre_ping=True
