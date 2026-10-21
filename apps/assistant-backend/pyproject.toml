@@ -29,7 +29,7 @@ dependencies = [
     "fastapi==0.136.1",
     "cachecontrol==0.14.4",
     "google-auth==2.50.0",
-    "gunicorn==25.3.0",
+    "gunicorn==26.2.0",
     "httpx==0.28.1",
     "itsdangerous==2.2.0",
     "pydantic==2.13.3",
