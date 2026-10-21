@@ -8,6 +8,11 @@ updates:
       pip-minor-patch:
         patterns:
           - "*"
+        # Pre-1.0 lint/type tools ship breaking changes as minor bumps;
+        # keep them as individual PRs so they don't block the group.
+        exclude-patterns:
+          - "ruff"
+          - "pyrefly"
         update-types:
           - minor
           - patch
@@ -56,3 +61,6 @@ updates:
       github-actions:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
