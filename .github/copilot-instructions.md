@@ -1,221 +1,52 @@
 # Copilot Instructions for Family Assistant
 
-This document provides accurate, up-to-date guidance for GitHub Copilot and human developers working
-in this repository.
+Family Assistant is a self-hosted, multi-user household AI assistant with Google sign-in and
+per-user conversation memory.
 
-## Project Overview
+All agent behaviour is governed by [AGENTS.md](../AGENTS.md) and
+[AI_AGENT_GUIDELINES.md](../AI_AGENT_GUIDELINES.md). Read them before changing anything. Accepted
+architecture decisions in [docs/adr/](../docs/adr/README.md) bind; specs, plans and roadmap items
+live in GitHub issues.
 
-Family Assistant is a self-hosted, multi-user, multi-modal AI assistant for household use. It uses
-Google OAuth 2.0 for authentication and supports per-user memory isolation.
+## Stack
 
-**Tech stack:**
+- **Backend** (`apps/assistant-backend/`): Python 3.13+, FastAPI, SQLModel, PostgreSQL 16, Chroma
+- **Frontend** (`apps/assistant-ui/`): TypeScript, React 19, Vite 8, Tailwind CSS 4, Vitest
+- **LLM runtime**: Ollama in Docker Compose by default, or another OpenAI-compatible server
+  (`apps/llm-server/`)
 
-- **Backend**: Python 3.13+ / FastAPI (`apps/assistant-backend/`)
-- **Frontend**: TypeScript / React 19 / Vite (`apps/assistant-ui/`)
-- **Database**: PostgreSQL 16
-- **LLM Runtime**: llama.cpp / Ollama (external service, `apps/llm-server/`)
-- **Auth**: Google OAuth 2.0 with session cookies
+## Run and test
 
-______________________________________________________________________
-
-## Repository Structure
-
-```text
-apps/
-  assistant-backend/   # FastAPI Python backend
-    src/assistant/     # Application source
-      routers/         # API route handlers
-      models/          # Pydantic models
-      security/        # Auth & session management
-      services/        # Business logic (LLM, tool loop, etc.)
-        tools/         # Concrete backend tools: current time, web search, web fetch
-    tests/             # Pytest test suite
-  assistant-ui/        # React TypeScript frontend
-    src/
-      components/      # React components
-      lib/             # API client, auth context
-      types/           # TypeScript type definitions
-  llm-server/          # Local LLM setup instructions (README only)
-docs/                  # Architecture documentation
-.github/workflows/     # CI/CD pipelines
-docker-compose.yml     # Full stack orchestration
-.env.example           # Environment variable template
-```
-
-______________________________________________________________________
-
-## Backend (`apps/assistant-backend/`)
-
-### Language & Runtime
-
-- Python **3.13+** (uses `StrEnum` and other 3.13+ features)
-- FastAPI with Starlette `SessionMiddleware` (cookie: `family-assistant-session`)
-
-### Running locally
+Backend, from `apps/assistant-backend`:
 
 ```bash
-cd apps/assistant-backend
 pip install -e ".[dev]"
-uvicorn assistant.app:app --reload --port 8000
+uvicorn assistant.app:app --reload --port 8080
+ruff format src/ tests/ && ruff check src/ tests/
+pyrefly check
+pytest                         # coverage must stay at or above 90%
 ```
 
-### Testing
+Frontend, from `apps/assistant-ui`:
 
 ```bash
-cd apps/assistant-backend
-pytest                         # run all tests
-pytest --cov --cov-report=term # with coverage report
-```
-
-- Coverage threshold: **90%** (enforced in CI via `cov-fail-under=90`)
-- Tests live in `tests/` mirroring the `src/assistant/` structure
-- Uses `pytest-asyncio` for async test support
-
-### Linting & Formatting
-
-```bash
-cd apps/assistant-backend
-ruff check src/ tests/         # lint
-ruff format src/ tests/        # format
-pyrefly check                  # type checking (checks src/, per pyrefly.toml)
-```
-
-- **Ruff** handles both linting and formatting (configured in `/ruff.toml`)
-- **Pyrefly** for type analysis
-- Single quotes for all strings (`quote-style = "single"` in `ruff.toml`)
-- 80-character line length
-- Google Python Style Guide
-
-### Code Style (Python)
-
-- Type annotations required for all public functions and class attributes
-- Docstrings required for all public classes and functions
-- Single quotes for strings
-- Imports sorted per `ruff.toml` isort configuration (`known-first-party = ["assistant"]`)
-
-### Backend capabilities to keep in mind
-
-- Conversation replies use one bounded native tool loop through `ConversationService`
-- Token limits enforced via `LLM_MAX_TOKENS` setting (default: 1024 tokens)
-- Truncation recovery: finish_reason tracking enables Continue button in UI
-- Tool definitions and dispatch live in `src/assistant/services/tools/`
-- The currently shipped backend tools are:
-  - `get_current_time`
-  - `web_search`
-  - `web_fetch`
-- `web_fetch` is intentionally limited to public web targets and must keep its SSRF protections
-  intact
-
-______________________________________________________________________
-
-## Frontend (`apps/assistant-ui/`)
-
-### Language & Runtime
-
-- TypeScript 5 with strict mode enabled
-- React 18 + Vite 5 + Tailwind CSS 3
-
-### Running locally
-
-```bash
-cd apps/assistant-ui
 npm ci
-npm run dev                    # dev server (requires VITE_* env vars)
+npm run dev                    # needs VITE_API_BASE_URL and VITE_GOOGLE_CLIENT_ID
+npm run format && npm run lint && npm run typecheck
+npm run test:coverage
+npm run build
 ```
 
-Required environment variables (Vite bakes these in at build time):
+Full stack: `cp .env.example .env`, fill in the required values, then `docker compose up --build`
+(see [DOCKER.md](../DOCKER.md)). Frontend on port 3000, backend on port 8080.
 
-- `VITE_API_BASE_URL` — backend URL (e.g. `http://localhost:8080`)
-- `VITE_GOOGLE_CLIENT_ID` — Google OAuth client ID
+## Rules
 
-### Testing
-
-```bash
-cd apps/assistant-ui
-npm run test                   # run Vitest
-npm run test:coverage          # with coverage report
-```
-
-- Uses **Vitest** (not Jest) with `jsdom` environment
-- Test setup file: `src/setupTests.ts` (extends `@testing-library/jest-dom`)
-- Coverage threshold: **80%** minimum
-
-### Linting, Formatting & Type Checking
-
-```bash
-cd apps/assistant-ui
-npm run lint          # ESLint
-npm run format        # Prettier (write)
-npm run format:check  # Prettier (check only)
-npm run typecheck     # tsc --noEmit
-npm run build         # production build (also validates types)
-```
-
-- **ESLint** + **Prettier** for linting and formatting
-- Strict TypeScript (`tsconfig.json`)
-
-______________________________________________________________________
-
-## Docker / Full Stack
-
-```bash
-cp .env.example .env           # fill in required values
-docker compose up --build      # start all services
-```
-
-Service URLs:
-
-- Frontend: <http://localhost:3000>
-- Backend API: <http://localhost:8080>
-- Health check: <http://localhost:8080/health>
-
-See `.env.example` for all required environment variables. Secrets to set:
-
-- `SESSION_SECRET_KEY` — generate with `openssl rand -hex 32`
-- `GOOGLE_OAUTH_CLIENT_ID` / `VITE_GOOGLE_CLIENT_ID` — must be identical
-
-The LLM server runs **outside Docker** on the host machine. The backend connects to it via
-`LLM_BASE_URL` (default: `http://host.docker.internal:8000`).
-
-______________________________________________________________________
-
-## CI/CD Workflows
-
-| Workflow                             | Trigger                               | Steps                                                                         |
-| ------------------------------------ | ------------------------------------- | ----------------------------------------------------------------------------- |
-| `assistant-backend-test.yml`         | push/PR on `apps/assistant-backend/`  | pytest with coverage, codecov upload                                          |
-| `assistant-backend-docker-build.yml` | push/PR on `apps/assistant-backend/`  | Docker build + health check                                                   |
-| `assistant-ui-ci.yml`                | push/PR on `apps/assistant-ui/`       | test:coverage, build, codecov                                                 |
-| `assistant-ui-docker-build.yml`      | push/PR on `apps/assistant-ui/`       | Docker build + health check                                                   |
-| `pre-commit.yml`                     | every PR, push to `main`              | all pre-commit hooks (whole repo), secret scan of history reachable from HEAD |
-| `lint-pr.yml`                        | every non-Dependabot PR               | PR title is a lowercase Conventional Commit, matching a single commit         |
-| `adr-check.yml`                      | every PR, including labeled/unlabeled | ADR files and history rules (adr-check CI mode)                               |
-
-All CI checks must pass before merging.
-
-______________________________________________________________________
-
-## Commit & PR Guidelines
-
-- Install the pre-commit hooks once after cloning: `pre-commit install` (needs the backend venv at
-  `apps/assistant-backend/.venv`, `npm ci` in `apps/assistant-ui` and a `python3.14` executable on
-  `PATH` for the `adr-check` hook first). Run all hooks with `pre-commit run --all-files`. Never
-  commit with `--no-verify`; fix what the hooks report. Hooks do not run tests, so still run
-  `pytest` and `npm run test:coverage`.
-- Use **conventional commit syntax**: `feat:`, `fix:`, `chore:`, `test:`, `docs:` (subject line 72
-  characters or fewer; the `commit-msg` hook enforces this)
-- PRs are squash-merged: the PR title becomes the commit subject and the description the body.
-  Reference an issue with `Fixes: #n` and follow the PR template.
-- All commits must pass formatting, linting, and tests before merging
-- Each PR should include unit tests for new code
-- Coverage must not drop below the thresholds above
-
-______________________________________________________________________
-
-## Key Principles
-
-1. **Never hardcode secrets** — use environment variables
-2. **Per-user memory isolation** — never mix data between users
-3. **No bypassing lint/format checks** — all code must pass CI
-4. **Modular design** — keep routers, services, and models separate
-5. **Type safety** — type annotations in Python, strict TypeScript in frontend
+- Write a failing test first, then the code.
+- Run the full local validation for every app you touched, and `pre-commit run --all-files`, before
+  committing. Never use `--no-verify`.
+- Schema changes go through Alembic migrations.
+- Read [DESIGN.md](../DESIGN.md) before any UI change.
+- Use Conventional Commits (subject of 72 characters or fewer). PRs are squash-merged, follow the PR
+  template, and reference an issue with `Fixes: #n`.
+- Keep secrets in environment variables, and never mix one user's data with another's.
