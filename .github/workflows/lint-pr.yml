@@ -1,0 +1,32 @@
+name: 'Lint PR'
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - edited
+      - synchronize
+
+# Keyed on the workflow so it cannot share a group with another PR workflow.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  main:
+    name: Validate PR title
+    runs-on: ubuntu-slim
+    # Dependabot picks its own title casing, which we don't control.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Lowercase subject: no leading capital.
+          subjectPattern: ^(?![A-Z]).+$
+          validateSingleCommit: true
+          validateSingleCommitMatchesPrTitle: true

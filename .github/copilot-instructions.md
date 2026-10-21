@@ -188,6 +188,7 @@ ______________________________________________________________________
 | `assistant-ui-ci.yml`                | push/PR on `apps/assistant-ui/`      | test:coverage, build, codecov                                                 |
 | `assistant-ui-docker-build.yml`      | push/PR on `apps/assistant-ui/`      | Docker build + health check                                                   |
 | `pre-commit.yml`                     | every PR, push to `main`             | all pre-commit hooks (whole repo), secret scan of history reachable from HEAD |
+| `lint-pr.yml`                        | every non-Dependabot PR              | PR title is a lowercase Conventional Commit, matching a single commit         |
 
 All CI checks must pass before merging.
 
@@ -201,6 +202,8 @@ ______________________________________________________________________
   not run tests, so still run `pytest` and `npm run test:coverage`.
 - Use **conventional commit syntax**: `feat:`, `fix:`, `chore:`, `test:`, `docs:` (subject line 72
   characters or fewer; the `commit-msg` hook enforces this)
+- PRs are squash-merged: the PR title becomes the commit subject and the description the body.
+  Reference an issue with `Fixes: #n` and follow the PR template.
 - All commits must pass formatting, linting, and tests before merging
 - Each PR should include unit tests for new code
 - Coverage must not drop below the thresholds above

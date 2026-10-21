@@ -104,7 +104,6 @@ with `pre-commit autoupdate`.
 This repo includes configuration files for AI coding assistants:
 
 - [AGENTS.md](AGENTS.md) - Top-level agent behavior guidelines
-- [CLAUDE.md](CLAUDE.md) - Claude-specific instructions
-- [GEMINI.md](GEMINI.md) - Gemini-specific instructions
+- [CLAUDE.md](CLAUDE.md) - Points Claude Code at `AGENTS.md`
 - [AI_AGENT_GUIDELINES.md](AI_AGENT_GUIDELINES.md) - Comprehensive agent workflow rules (test-driven
   development, validation requirements, commit conventions)
