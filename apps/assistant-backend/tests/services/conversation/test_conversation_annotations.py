@@ -514,6 +514,65 @@ async def test_enrich_annotations_preserves_existing_data():
 
 
 @pytest.mark.asyncio
+async def test_enrich_annotations_preserves_finish_reason_and_thought():
+    """Enrichment keeps finish_reason and thought so Continue still shows."""
+    engine = create_async_engine('sqlite+aiosqlite:///:memory:', echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+
+    async_session_maker = sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    async with async_session_maker() as session:
+        conversation = Conversation(user_id='user-123', title='Test')
+        session.add(conversation)
+        await session.commit()
+        await session.refresh(conversation)
+
+        assistant_msg = Message(
+            conversation_id=conversation.id,
+            role='assistant',
+            content='Truncated resp',
+            sequence_number=1,
+            annotations={
+                'thought': 'Reasoning trace',
+                'finish_reason': 'length',
+                'failure': {
+                    'stage': 'tool',
+                    'retryable': True,
+                    'detail': 'boom',
+                },
+            },
+        )
+        session.add(assistant_msg)
+        await session.commit()
+        await session.refresh(assistant_msg)
+
+        service = ConversationService(
+            llm_service=AsyncMock(spec=LLMService),
+            context_assembly=AsyncMock(spec=ContextAssemblyService),
+            tool_service=Mock(spec=ToolService),
+            annotation_service=AssistantAnnotationService(),
+        )
+
+        await service._enrich_assistant_annotations_with_memory_saved(
+            session=session,
+            assistant_message_id=assistant_msg.id,
+            summary_saved=True,
+            facts_count=1,
+        )
+
+        refreshed = await session.get(Message, assistant_msg.id)
+        assert refreshed.annotations['finish_reason'] == 'length'
+        assert refreshed.annotations['thought'] == 'Reasoning trace'
+        assert refreshed.annotations['failure']['stage'] == 'tool'
+        assert len(refreshed.annotations['memory_saved']) == 1
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_enrich_annotations_nothing_saved_leaves_empty():
     """If nothing was saved, memory_saved remains empty."""
     engine = create_async_engine('sqlite+aiosqlite:///:memory:', echo=False)
