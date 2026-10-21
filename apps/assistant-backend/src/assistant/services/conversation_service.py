@@ -1490,8 +1490,8 @@ class ConversationService:
 
         After successful background extraction and persistence, update the assistant
         message row to include memory_saved annotations reflecting what was actually
-        persisted. This is read-modify-write to preserve existing annotations
-        (sources, tools, memory_hits, failure).
+        persisted. Existing annotations are preserved unless they cannot be
+        parsed, in which case they are replaced.
 
         Args:
             session: Database session
@@ -1537,13 +1537,8 @@ class ConversationService:
         )
 
         # Merge: preserve all existing fields, update only memory_saved
-        enriched_annotations = AssistantAnnotations(
-            thought=current_annotations.thought,  # PRESERVE: reasoning trace
-            sources=current_annotations.sources,
-            tools=current_annotations.tools,
-            memory_hits=current_annotations.memory_hits,
-            memory_saved=memory_saved,  # NEW: add memory_saved from extraction
-            failure=current_annotations.failure,
+        enriched_annotations = current_annotations.model_copy(
+            update={'memory_saved': memory_saved}
         )
 
         # Update the message row with enriched annotations
