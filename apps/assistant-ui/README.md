@@ -1,7 +1,7 @@
 # Family Assistant UI
 
-Frontend for the Family Assistant application.
-Implements Google OAuth-backed auth, the conversation sidebar and transcript shell, and the desktop trust UI for persisted assistant annotations.
+Frontend for the Family Assistant application. Implements Google OAuth-backed auth, the conversation
+sidebar and transcript shell, and the desktop trust UI for persisted assistant annotations.
 
 ## Technology Stack
 
@@ -25,22 +25,22 @@ Implements Google OAuth-backed auth, the conversation sidebar and transcript she
 
 1. **Install dependencies:**
 
-```bash
-npm install
-```
+   ```bash
+   npm install
+   ```
 
 2. **Configure environment variables:**
 
-```bash
-cp .env.example .env
-```
+   ```bash
+   cp .env.example .env
+   ```
 
-Edit `.env` with your configuration:
+   Edit `.env` with your configuration:
 
-```
-VITE_API_BASE_URL=http://localhost:8080
-VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
-```
+   ```text
+   VITE_API_BASE_URL=http://localhost:8080
+   VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   ```
 
 ## Development
 
@@ -89,9 +89,11 @@ The main application view includes:
 - one pending assistant placeholder while a request is in flight
 - replacement of that placeholder with the final persisted assistant row
 - an inline trust row for assistant messages with annotations
-- a desktop evidence panel showing sources, tool usage, memory hits, memory saves, and failure metadata
+- a desktop evidence panel showing sources, tool usage, memory hits, memory saves, and failure
+  metadata
 
-Reloaded conversations reuse persisted annotations returned by the API, so trust metadata remains stable after refresh.
+Reloaded conversations reuse persisted annotations returned by the API, so trust metadata remains
+stable after refresh.
 
 ## Code Quality
 
@@ -161,7 +163,7 @@ npm run preview
 
 ## File Structure
 
-```
+```text
 src/
 ├── lib/
 │   ├── api.ts                    # Backend API client
@@ -196,10 +198,10 @@ A two-panel chat interface with trust-aware assistant rendering:
 
 - **Left sidebar**: List of past conversations with a "+ New Chat" button and a Logout button
   showing the logged-in user's email, name, or user ID.
-- **Main panel**: Message history for the selected conversation and a message composer
-  (text input + Send button). Typing and pressing Enter or clicking Send sends the message,
-  shows one pending assistant placeholder, and then swaps in the persisted assistant reply
-  returned by the conversation API.
+- **Main panel**: Message history for the selected conversation and a message composer (text input +
+  Send button). Typing and pressing Enter or clicking Send sends the message, shows one pending
+  assistant placeholder, and then swaps in the persisted assistant reply returned by the
+  conversation API.
 - **Trust metadata**: Assistant messages may render a compact trust row that opens a desktop
   evidence panel sourced from persisted backend annotations.
 
@@ -207,7 +209,9 @@ Starting a new message without an active conversation automatically creates a ne
 
 ## Docker
 
-**Important:** Vite environment variables (`VITE_*`) are baked into the bundle at **build time**, not runtime. You must pass configuration values when building the image, not when running the container.
+**Important:** Vite environment variables (`VITE_*`) are baked into the bundle at **build time**,
+not runtime. You must pass configuration values when building the image, not when running the
+container.
 
 Build with configuration:
 
@@ -224,7 +228,8 @@ Run:
 docker run --rm -p 3000:3000 assistant-ui
 ```
 
-**Note:** The values are compiled into the static bundle during `docker build`. If you need different configuration, you must rebuild the image with new `--build-arg` values.
+**Note:** The values are compiled into the static bundle during `docker build`. If you need
+different configuration, you must rebuild the image with new `--build-arg` values.
 
 ## Notes
 

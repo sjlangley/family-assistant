@@ -3,3 +3,19 @@ python_version = "3.13"
 project-includes = [
     "src"
 ]
+
+# Pyrefly's default excludes include `**/.[!/.]*/**`, which is matched against
+# the absolute path and so excludes everything when the checkout lives under a
+# dot-directory (for example a git worktree in `.claude/worktrees/`). Turn the
+# defaults off and list what actually needs excluding.
+#
+# Run plain `pyrefly check`, not `pyrefly check src/`: when paths are passed on
+# the command line pyrefly ignores project-excludes from this file and falls
+# back to its defaults, which brings the problem back.
+disable-project-excludes-heuristics = true
+project-excludes = [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/venv/**",
+    "**/.venv/**",
+]

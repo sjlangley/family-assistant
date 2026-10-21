@@ -1,25 +1,23 @@
 # LLM Server
 
-Local inference server setup for running Large Language Models behind an
-OpenAI-compatible API for chat completions.
+Local inference server setup for running Large Language Models behind an OpenAI-compatible API for
+chat completions.
 
 ## Overview
 
-This directory contains instructions for setting up a local LLM server that serves
-models with an OpenAI-compatible HTTP API. The assistant backend
-(`apps/assistant-backend`) communicates with this server via the
-`/v1/chat/completions` endpoint.
+This directory contains instructions for setting up a local LLM server that serves models with an
+OpenAI-compatible HTTP API. The assistant backend (`apps/assistant-backend`) communicates with this
+server via the `/v1/chat/completions` endpoint.
 
 There are two ways to run the LLM server:
 
-1. **Docker Compose** (recommended) — the `docker-compose.yml` in the repository root
-   includes an `ollama` service. Start the container first with
-   `docker compose up -d ollama`, pull `qwen2.5:7b` with
-   `docker compose exec ollama ollama pull qwen2.5:7b`, and then run
-   `docker compose up` for the full stack.
-2. **Manually on the host** — follow the Quick Start below to install and run a local
-   server directly. This is useful for GPU-accelerated inference or when running only
-   part of the stack in Docker.
+1. **Docker Compose** (recommended) — the `docker-compose.yml` in the repository root includes an
+   `ollama` service. Start the container first with `docker compose up -d ollama`, pull `qwen2.5:7b`
+   with `docker compose exec ollama ollama pull qwen2.5:7b`, and then run `docker compose up` for
+   the full stack.
+2. **Manually on the host** — follow the Quick Start below to install and run a local server
+   directly. This is useful for GPU-accelerated inference or when running only part of the stack in
+   Docker.
 
 **Key Features:**
 
@@ -74,8 +72,8 @@ ollama list
 
 ### 3. Optional: Run llama-cpp-python manually
 
-If you want to keep experimenting with GGUF models and manual template control, you can
-still run `llama-cpp-python` directly.
+If you want to keep experimenting with GGUF models and manual template control, you can still run
+`llama-cpp-python` directly.
 
 ```bash
 pip install llama-cpp-python[server]
@@ -113,9 +111,9 @@ Ollama serves its OpenAI-compatible API at:
 http://localhost:11434/v1
 ```
 
-**Important:** The assistant-backend expects the LLM server at the URL specified in
-`LLM_BASE_URL`. Because the backend appends `/v1/chat/completions` itself, set
-`LLM_BASE_URL` to the root server URL, for example `http://localhost:11434`.
+**Important:** The assistant-backend expects the LLM server at the URL specified in `LLM_BASE_URL`.
+Because the backend appends `/v1/chat/completions` itself, set `LLM_BASE_URL` to the root server
+URL, for example `http://localhost:11434`.
 
 ## Configuration Options
 
@@ -203,7 +201,8 @@ Expected response:
 
 ## Integration with Assistant Backend
 
-Update the backend configuration in `apps/assistant-backend/.env` (or the root `.env` for Docker Compose):
+Update the backend configuration in `apps/assistant-backend/.env` (or the root `.env` for Docker
+Compose):
 
 ```env
 LLM_BASE_URL=http://localhost:11434
@@ -211,13 +210,12 @@ LLM_MODEL=qwen2.5:7b
 LLM_TIMEOUT_SECONDS=120
 ```
 
-When running via Docker Compose the backend connects to the `ollama` service
-automatically; the `LLM_BASE_URL` is set to `http://ollama:11434` inside the container
-network. For local development outside Docker, point `LLM_BASE_URL` at the host address
-where the server is running.
+When running via Docker Compose the backend connects to the `ollama` service automatically; the
+`LLM_BASE_URL` is set to `http://ollama:11434` inside the container network. For local development
+outside Docker, point `LLM_BASE_URL` at the host address where the server is running.
 
-The backend will automatically connect to the LLM server and use it for chat completions
-via the `/v1/chat/completions` endpoint.
+The backend will automatically connect to the LLM server and use it for chat completions via the
+`/v1/chat/completions` endpoint.
 
 ## Troubleshooting
 
@@ -225,7 +223,8 @@ via the `/v1/chat/completions` endpoint.
 
 **Issue**: `ImportError: cannot import name 'Llama'`
 
-- **Solution**: Reinstall llama-cpp-python: `pip uninstall llama-cpp-python && pip install llama-cpp-python[server]`
+- **Solution**: Reinstall llama-cpp-python:
+  `pip uninstall llama-cpp-python && pip install llama-cpp-python[server]`
 
 **Issue**: Model file not found
 
@@ -263,11 +262,11 @@ via the `/v1/chat/completions` endpoint.
 
 ## Model Recommendations
 
-| Model | Size | RAM Required | Best For |
-|-------|------|--------------|----------|
-| `qwen2.5:7b` via Ollama | ~4.7GB download | 8GB+ | Default local development path with working tool calls |
-| Qwen2.5-7B-Instruct (Q4_K_M GGUF) | ~4.7GB | 8GB+ | Manual llama.cpp experiments |
-| Qwen2.5-7B-Instruct (Q5_K_M GGUF) | ~5.4GB | 10GB+ | Better quality manual llama.cpp experiments |
+| Model                             | Size            | RAM Required | Best For                                               |
+| --------------------------------- | --------------- | ------------ | ------------------------------------------------------ |
+| `qwen2.5:7b` via Ollama           | ~4.7GB download | 8GB+         | Default local development path with working tool calls |
+| Qwen2.5-7B-Instruct (Q4_K_M GGUF) | ~4.7GB          | 8GB+         | Manual llama.cpp experiments                           |
+| Qwen2.5-7B-Instruct (Q5_K_M GGUF) | ~5.4GB          | 10GB+        | Better quality manual llama.cpp experiments            |
 
 ## Resources
 

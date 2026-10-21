@@ -2,62 +2,54 @@
 
 ## Summary
 
-This document defines the implementation plan for user-selectable model
-presets in Family Assistant.
+This document defines the implementation plan for user-selectable model presets in Family Assistant.
 
-The product goal is to let users choose between a small curated set of
-assistant modes per message, while keeping model-specific prompt
-construction, reasoning controls, response parsing, and memory extraction
-logic behind backend abstractions.
+The product goal is to let users choose between a small curated set of assistant modes per message,
+while keeping model-specific prompt construction, reasoning controls, response parsing, and memory
+extraction logic behind backend abstractions.
 
 ## Prerequisites
 
-This work assumes the following capabilities have been implemented
-independently:
+This work assumes the following capabilities have been implemented independently:
 
-- **Streaming Support:** The backend and frontend must support Server-Sent
-  Events (SSE) for real-time response generation.
-- **Multimodal (Vision) Support:** The system is assumed to have a base
-  capability for image handling (upload, storage, and model-native
-  payloads) if multimodal presets are to be included.
+- **Streaming Support:** The backend and frontend must support Server-Sent Events (SSE) for
+  real-time response generation.
+- **Multimodal (Vision) Support:** The system is assumed to have a base capability for image
+  handling (upload, storage, and model-native payloads) if multimodal presets are to be included.
 
 ## Product Goals
 
 - Let the user choose between `2-3` curated presets from the chat UI.
 - Support presets that may point to:
-  - the same base model with different behavior such as `quick` vs
-    `thinking`
+  - the same base model with different behavior such as `quick` vs `thinking`
   - different Ollama models entirely
 - Apply the selected preset per message, not per conversation.
 - The UI features a dropdown model selector near the message composer.
-- Allow experimentation with prompt construction, reasoning controls,
-  response parsing, and extraction models without changing the UI
-  contract.
+- Allow experimentation with prompt construction, reasoning controls, response parsing, and
+  extraction models without changing the UI contract.
 
 ## Non-Goals
 
 - Exposing every locally installed Ollama model directly to end users
 - Committing to one universal reasoning token format across models
 - Refactoring the full memory storage schema up front
-- **Implementing Streaming or Image Storage:** These are treated as
-  independent architectural prerequisites.
+- **Implementing Streaming or Image Storage:** These are treated as independent architectural
+  prerequisites.
 
 ## Confirmed Product Decisions
 
 - Preset selection is per message.
 - The initial UI is a dropdown below or beside the text input.
 - Initial presets may all point at the same base model.
-- Curated presets only; no raw Ollama model picker in the main product
-  UI.
-- The curated preset list lives in the repository as checked-in
-  configuration.
-- Memory extraction is configurable and uses a stable model independent
-  from the user-facing reply preset.
+- Curated presets only; no raw Ollama model picker in the main product UI.
+- The curated preset list lives in the repository as checked-in configuration.
+- Memory extraction is configurable and uses a stable model independent from the user-facing reply
+  preset.
 
 ## Problem Statement
 
-The current backend assumes a single configured model and a mostly
-uniform request and response shape.
+The current backend assumes a single configured model and a mostly uniform request and response
+shape.
 
 That assumption breaks down once we support:
 
@@ -67,8 +59,8 @@ That assumption breaks down once we support:
 - model-specific response parsing rules
 - future experimentation with separate extraction models
 
-We need a design that keeps the product surface stable while allowing the
-backend to adapt to model-specific behavior.
+We need a design that keeps the product surface stable while allowing the backend to adapt to
+model-specific behavior.
 
 ## Key Technical Observations
 
@@ -86,15 +78,13 @@ without forcing the UI to understand Ollama-specific model behavior.
 
 ### Reasoning controls are not universal
 
-We should not assume that `<think>`-style or `<|think|>`-style control
-tokens are universal across models.
+We should not assume that `<think>`-style or `<|think|>`-style control tokens are universal across
+models.
 
-Some models can be controlled through Ollama-native request fields such
-as `think`, while others may require prompt-level conventions or emit
-model-specific thought markers.
+Some models can be controlled through Ollama-native request fields such as `think`, while others may
+require prompt-level conventions or emit model-specific thought markers.
 
-This means reasoning behavior must be handled by backend adapters, not by
-hardcoded UI logic.
+This means reasoning behavior must be handled by backend adapters, not by hardcoded UI logic.
 
 ### Response parsing may vary by preset
 
@@ -109,8 +99,8 @@ Examples:
 
 ### Memory extraction is a separate concern
 
-The user-selected reply preset should not automatically determine the
-model used for summary and durable-fact extraction.
+The user-selected reply preset should not automatically determine the model used for summary and
+durable-fact extraction.
 
 Extraction has different goals:
 
@@ -119,45 +109,42 @@ Extraction has different goals:
 - lower latency
 - fewer reasoning artifacts
 
-We should therefore treat extraction model selection as preset-driven
-configuration, not an implicit copy of the visible chat preset.
+We should therefore treat extraction model selection as preset-driven configuration, not an implicit
+copy of the visible chat preset.
 
 ## Capability-Specific Handling
 
-The system adapts its behavior based on the `capabilities` defined in the
-preset registry, assuming the necessary independent prerequisites (like
-Streaming and Vision) are active.
+The system adapts its behavior based on the `capabilities` defined in the preset registry, assuming
+the necessary independent prerequisites (like Streaming and Vision) are active.
 
 ### Multimodal (Vision) Support
 
 If a preset includes the `vision` capability:
 
-- **Request Payload:** The frontend includes image attachments in the
-  `user_message` payload (handled by the independent Vision project).
-- **Request Adapter:** The adapter formats the images into the required
-  Ollama/OpenAI payload shape.
-- **Validation:** The backend rejects image attachments if the selected
-  preset lacks the `vision` capability.
+- **Request Payload:** The frontend includes image attachments in the `user_message` payload
+  (handled by the independent Vision project).
+- **Request Adapter:** The adapter formats the images into the required Ollama/OpenAI payload shape.
+- **Validation:** The backend rejects image attachments if the selected preset lacks the `vision`
+  capability.
 
 ### Streaming for Reasoning Presets
 
-Reasoning models (like `thinking` presets) benefit from real-time feedback
-as thought traces are generated.
+Reasoning models (like `thinking` presets) benefit from real-time feedback as thought traces are
+generated.
 
-- **Policy:** Presets with `reasoning` capabilities use the independent
-  Streaming infrastructure to show thought traces as they arrive.
-- **Thought Disclosure:** The response adapter identifies and separates
-  "thinking" tokens from "content" tokens for distinct UI rendering.
+- **Policy:** Presets with `reasoning` capabilities use the independent Streaming infrastructure to
+  show thought traces as they arrive.
+- **Thought Disclosure:** The response adapter identifies and separates "thinking" tokens from
+  "content" tokens for distinct UI rendering.
 
 ## Proposed Solution
 
 ### Curated preset registry
 
-The backend maintains a checked-in registry of user-facing model presets
-located in `apps/assistant-backend/src/assistant/config/model_presets.py`.
+The backend maintains a checked-in registry of user-facing model presets located in
+`apps/assistant-backend/src/assistant/config/model_presets.py`.
 
-The implementation uses a Python-based registry for type-safe
-configuration and ease of integration.
+The implementation uses a Python-based registry for type-safe configuration and ease of integration.
 
 Each preset defines:
 
@@ -176,18 +163,17 @@ Field intent:
 
 - `capabilities`
   - a list of features supported by the preset (e.g., `["text", "vision", "tools", "reasoning"]`)
-  - used by the backend to validate behavior and by the UI to decide
-    whether optional affordances (like image upload) should appear
+  - used by the backend to validate behavior and by the UI to decide whether optional affordances
+    (like image upload) should appear
 - `request_strategy`
-  - a stable identifier for the request adapter behavior used to build
-    prompts and reasoning controls for this preset
-  - example values might look like `default_chat`,
-    `ollama_native_think`, or `gemma_think_token`
+  - a stable identifier for the request adapter behavior used to build prompts and reasoning
+    controls for this preset
+  - example values might look like `default_chat`, `ollama_native_think`, or `gemma_think_token`
 - `response_strategy`
-  - a stable identifier for the response adapter behavior used to parse
-    assistant output for this preset
-  - example values might look like `plain_content`,
-    `ollama_thinking_field`, or `gemma_tag_stripping`
+  - a stable identifier for the response adapter behavior used to parse assistant output for this
+    preset
+  - example values might look like `plain_content`, `ollama_thinking_field`, or
+    `gemma_tag_stripping`
 
 Example conceptual presets:
 
@@ -207,11 +193,9 @@ Initial endpoint:
 GET /api/v1/model-presets
 ```
 
-The response should include only curated presets approved for the
-product.
+The response should include only curated presets approved for the product.
 
-It should not expose the raw set of locally installed Ollama models in
-the main UI path.
+It should not expose the raw set of locally installed Ollama models in the main UI path.
 
 ### Request adapter layer
 
@@ -222,8 +206,7 @@ Introduce a model preset request adapter that is responsible for:
 - choosing the appropriate Ollama request shape
 - passing through model-specific request options
 
-This layer keeps prompt-generation logic out of the conversation route
-handlers and out of the UI.
+This layer keeps prompt-generation logic out of the conversation route handlers and out of the UI.
 
 ### Response adapter layer
 
@@ -255,8 +238,7 @@ This allows mixed-preset conversations while preserving traceability.
 
 ### Memory extraction configuration
 
-Keep the current extraction path, but move toward a dedicated extraction
-preset configuration.
+Keep the current extraction path, but move toward a dedicated extraction preset configuration.
 
 Initial behavior:
 
@@ -291,8 +273,7 @@ Future behavior:
 
 ## Data Model Implications
 
-Preset usage is recorded in message-level metadata within the existing
-`annotations` field.
+Preset usage is recorded in message-level metadata within the existing `annotations` field.
 
 On user messages:
 
@@ -340,12 +321,10 @@ The initial UI change is intentionally small:
 
 The UI must adapt its composer state when a user switches presets:
 
-- **Capability Enforcement:** If a user switches from a `vision`-capable preset to a
-  text-only preset, the UI should warn the user that current image attachments
-  will be ignored or removed.
-- **Visual Cues:** The UI should use subtle indicators (e.g., a "Thinking" badge or
-  an "Image Supported" icon) to reflect the capabilities of the currently active
-  preset.
+- **Capability Enforcement:** If a user switches from a `vision`-capable preset to a text-only
+  preset, the UI should warn the user that current image attachments will be ignored or removed.
+- **Visual Cues:** The UI should use subtle indicators (e.g., a "Thinking" badge or an "Image
+  Supported" icon) to reflect the capabilities of the currently active preset.
 
 ## Reasoning Display Policy
 
@@ -353,13 +332,12 @@ Policy for handling reasoning traces:
 
 - Persist clean final assistant content as the canonical message body.
 - Reasoning traces are stored as structured metadata in `annotations`.
-- **Do not** include reasoning traces in conversation history for future
-  turns to avoid context contamination.
-- Reasoning traces are treated as optional metadata for display or
-  debugging.
+- **Do not** include reasoning traces in conversation history for future turns to avoid context
+  contamination.
+- Reasoning traces are treated as optional metadata for display or debugging.
 
-This ensures that the main dialogue remains focused and that memory
-extraction logic is not confused by internal reasoning steps.
+This ensures that the main dialogue remains focused and that memory extraction logic is not confused
+by internal reasoning steps.
 
 ## Rollout Plan
 
@@ -375,12 +353,11 @@ Deliver a testable backend registry and the endpoint for the UI to consume.
 
 ### Phase 2: Backend Payload & Persistence Support
 
-Add the ability for the backend to receive and persist `preset_id` without
-changing existing LLM behavior yet.
+Add the ability for the backend to receive and persist `preset_id` without changing existing LLM
+behavior yet.
 
 - **Deliverables:**
-  - Update `CreateMessageRequest` and `CreateConversationWithMessageRequest`
-    to include `preset_id`.
+  - Update `CreateMessageRequest` and `CreateConversationWithMessageRequest` to include `preset_id`.
   - Update `Message` SQL model (metadata/annotations) to store the selected preset.
   - Update `ConversationService` to extract and persist the preset ID.
   - Tests for message creation with/without preset IDs.
@@ -393,13 +370,12 @@ Implement the UI for selecting presets and passing the ID to the backend.
   - Frontend API client updates.
   - Dropdown component near the message composer.
   - Logic to remember the last-selected preset.
-  - Handling of capability transitions (e.g., clearing images if switching to
-    text-only).
+  - Handling of capability transitions (e.g., clearing images if switching to text-only).
 
 ### Phase 4: Adapter Architecture & Default Adapter
 
-Refactor the LLM service to use the Adapter Pattern, preserving current behavior
-as the "Default" strategy.
+Refactor the LLM service to use the Adapter Pattern, preserving current behavior as the "Default"
+strategy.
 
 - **Deliverables:**
   - `BaseModelAdapter` interface.
@@ -442,48 +418,44 @@ We should add coverage for:
 
 ### How should we handle Gemma reasoning controls?
 
-**Question:** When Gemma presets are introduced, should we use Ollama-native reasoning
-controls, prompt tokens, or both?
+**Question:** When Gemma presets are introduced, should we use Ollama-native reasoning controls,
+prompt tokens, or both?
 
-**Recommendation:** We should **prefer Ollama-native reasoning controls** (using the
-`think` parameter) when they are supported by Ollama for the specific Gemma variant.
+**Recommendation:** We should **prefer Ollama-native reasoning controls** (using the `think`
+parameter) when they are supported by Ollama for the specific Gemma variant.
 
-- **Why:** It provides a cleaner request structure and lets the backend handle
-  model-specific token updates. Most importantly, it allows the reasoning trace to
-  be returned in a separate field, simplifying the process of extracting clean
-  content for persistence.
-- **Fallback:** We should **fallback to prompt tokens** (manual tag injection) only if
-  Ollama's native support for a specific model's reasoning mode is missing or
-  inconsistent.
+- **Why:** It provides a cleaner request structure and lets the backend handle model-specific token
+  updates. Most importantly, it allows the reasoning trace to be returned in a separate field,
+  simplifying the process of extracting clean content for persistence.
+- **Fallback:** We should **fallback to prompt tokens** (manual tag injection) only if Ollama's
+  native support for a specific model's reasoning mode is missing or inconsistent.
 
 ### Should reasoning traces be persisted?
 
 **Question:** Should reasoning traces ever be persisted beyond transient UI metadata?
 
-**Recommendation:** Yes, reasoning traces should be persisted as **structured metadata**
-within the assistant message's `annotations` field, but kept separate from the
-canonical `content`.
+**Recommendation:** Yes, reasoning traces should be persisted as **structured metadata** within the
+assistant message's `annotations` field, but kept separate from the canonical `content`.
 
-- **Why:** Persisting reasoning traces enables debugging, model evaluation, and
-  features like "Show Thinking" for past messages in the UI.
-- **Policy:** While persisted, these traces should **not** be included in the
-  conversation history sent back to the LLM in future turns. This prevents
-  "context contamination" and keeps the prompt focused on the actual dialogue.
+- **Why:** Persisting reasoning traces enables debugging, model evaluation, and features like "Show
+  Thinking" for past messages in the UI.
+- **Policy:** While persisted, these traces should **not** be included in the conversation history
+  sent back to the LLM in future turns. This prevents "context contamination" and keeps the prompt
+  focused on the actual dialogue.
 
 ### Global vs. Per-Preset Extraction
 
 **Question:** Do we want one extraction preset globally, or per user-facing preset?
 
-**Recommendation:** We should use a **global default extraction preset** with the
-capability for **per-preset overrides** in the registry.
+**Recommendation:** We should use a **global default extraction preset** with the capability for
+**per-preset overrides** in the registry.
 
-- **Why:** For most chat presets, a single stable model (like `qwen2.5:7b`) is the
-  most reliable for memory extraction. However, specialized presets (e.g., for
-  coding or structured data) may eventually require specialized extraction models
-  or prompts.
+- **Why:** For most chat presets, a single stable model (like `qwen2.5:7b`) is the most reliable for
+  memory extraction. However, specialized presets (e.g., for coding or structured data) may
+  eventually require specialized extraction models or prompts.
 - **Implementation:** The `ModelPresetRegistry` should include an optional
-  `memory_extraction_preset` field. If omitted, the system falls back to the
-  configured global default.
+  `memory_extraction_preset` field. If omitted, the system falls back to the configured global
+  default.
 
 ## Recommended First Milestone
 
@@ -497,8 +469,8 @@ The smallest meaningful slice is:
 - default `qwen2.5` adapter
 - extraction continues using `qwen2.5`
 
-That gives us a real user-facing feature and the core abstraction seam
-without forcing all model-specific parsing work into the first pass.
+That gives us a real user-facing feature and the core abstraction seam without forcing all
+model-specific parsing work into the first pass.
 
 ## References
 
@@ -506,6 +478,8 @@ without forcing all model-specific parsing work into the first pass.
 - **Ollama API (Search for `think`):** [https://ollama.com/blog/v0.9](https://ollama.com/blog/v0.9)
 - **Gemma 4:** [https://ai.google.dev/gemma](https://ai.google.dev/gemma)
 - **Qwen 2.5:** [https://qwenlm.github.io/blog/qwen2.5/](https://qwenlm.github.io/blog/qwen2.5/)
-- **Adapter Pattern:** [https://refactoring.guru/design-patterns/adapter](https://refactoring.guru/design-patterns/adapter)
+- **Adapter Pattern:**
+  [https://refactoring.guru/design-patterns/adapter](https://refactoring.guru/design-patterns/adapter)
 - **Pydantic:** [https://docs.pydantic.dev/](https://docs.pydantic.dev/)
-- **OpenAI Chat Completions API:** [https://platform.openai.com/docs/api-reference/chat](https://platform.openai.com/docs/api-reference/chat)
+- **OpenAI Chat Completions API:**
+  [https://platform.openai.com/docs/api-reference/chat](https://platform.openai.com/docs/api-reference/chat)
