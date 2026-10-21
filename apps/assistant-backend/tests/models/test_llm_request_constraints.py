@@ -32,7 +32,9 @@ CONSTRAINTS: dict[str, tuple[Any, Any, tuple[type, ...]]] = {
 
 
 def _step(bound: Any) -> Any:
-    return 1 if isinstance(bound, int) else 0.1
+    # Small enough that a just-outside value catches drift of any float bound,
+    # e.g. mirostat_eta 0.001 -> 0.0.
+    return 1 if isinstance(bound, int) else 0.001
 
 
 def _cases() -> tuple[list[Any], list[Any]]:
