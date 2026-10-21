@@ -60,19 +60,6 @@ def _log_startup_settings(settings_to_log: Settings) -> None:
     )
 
 
-def _log_startup_settings(settings_to_log: Settings) -> None:
-    """Log application settings at startup for debugging.
-
-    Args:
-        settings_to_log: The application settings to log.
-    """
-    safe_settings = _get_safe_settings_for_logging(settings_to_log)
-    logger.info(
-        'Application startup configuration: %s',
-        safe_settings,
-    )
-
-
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     setup_logging()
