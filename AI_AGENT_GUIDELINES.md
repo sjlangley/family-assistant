@@ -1,7 +1,7 @@
 # AI Agent Guidelines
 
-This is the single source of truth for all AI agent behaviour in this repository. `AGENTS.md`,
-`CLAUDE.md`, and `GEMINI.md` all defer to this file.
+This is the single source of truth for all AI agent behaviour in this repository. `AGENTS.md` defers
+to this file, and `CLAUDE.md` points at `AGENTS.md`.
 
 ______________________________________________________________________
 
