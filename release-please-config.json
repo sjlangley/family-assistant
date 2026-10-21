@@ -6,7 +6,6 @@
     "apps/assistant-backend": {
       "release-type": "python",
       "package-name": "assistant-backend",
-      "changelog-path": "apps/assistant-backend/CHANGELOG.md",
       "extra-files": [
         {
           "type": "yaml",
@@ -18,7 +17,6 @@
     "apps/assistant-ui": {
       "release-type": "node",
       "package-name": "assistant-ui",
-      "changelog-path": "apps/assistant-ui/CHANGELOG.md",
       "extra-files": [
         {
           "type": "yaml",
