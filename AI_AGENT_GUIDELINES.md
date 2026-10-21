@@ -172,9 +172,9 @@ is the affected area of the repo, for example `ci(pre-commit): add hook for X`. 
 release-please reads the commit messages on `main` and cuts a release for an app when a commit
 touching it has a type its changelog shows. For both apps those are `feat`, `fix`, `perf`, `revert`
 and any breaking change (`!` after the type, or a `BREAKING CHANGE:` footer). The backend
-(`release-type: python`) also shows `docs`. Use these only when the change should ship. Tooling and
-housekeeping use `ci`, `chore`, `style`, `test` or `refactor`, and `docs` only outside
-`apps/assistant-backend/`.
+(`release-type: python`) also shows `deps` and `docs`. Use these only when the change should ship.
+Tooling and housekeeping use `ci`, `chore`, `style`, `test`, `build` or `refactor`, and `docs` only
+outside `apps/assistant-backend/`.
 
 Squash merge. The repo is configured so the PR title becomes the commit subject and the PR
 description becomes the commit body, so both are permanent. Write them for someone reading `git log`
