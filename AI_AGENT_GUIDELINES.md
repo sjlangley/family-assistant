@@ -49,6 +49,28 @@ Do not rely on CI to tell you what you should have checked before committing.
 **Exception:** If you discover a check failure after committing, create a separate fix commit with
 the corrected code. Do not amend or rewrite history on branches that have been pushed.
 
+### Pre-commit hooks (all changes)
+
+All commits go through [pre-commit](https://pre-commit.com). The config is `.pre-commit-config.yaml`
+and CI re-runs the full suite on every PR (`.github/workflows/pre-commit.yml`).
+
+- Install the hooks **once** after cloning, with both the `pre-commit` and `commit-msg` hooks:
+  `pre-commit install`. This needs the backend venv (`apps/assistant-backend/.venv`, so pyrefly can
+  resolve imports) and `npm ci` in `apps/assistant-ui` to exist first.
+- Run every hook against the whole repo with `pre-commit run --all-files`.
+- **Never** bypass the hooks with `git commit --no-verify`. If a hook fails, fix the cause. Hooks
+  that auto-fix (ruff, prettier, mdformat, whitespace) leave the changes unstaged: review them,
+  `git add` them and commit again.
+- The hooks cover format, lint and type checks (ruff, pyrefly, prettier, eslint, tsc), Markdown
+  (mdformat, markdownlint), workflow and `dependabot.yml` schemas, shellcheck and secret scanning.
+  The `commit-msg` hook enforces Conventional Commits with a subject of 72 characters or fewer.
+- Hooks do **not** run tests or the production build. Keep `pytest`, `npm run test:coverage` and
+  `npm run build` as explicit steps below.
+- Bump hook versions with `pre-commit autoupdate`. Keep the `ruff-pre-commit` rev in step with the
+  `ruff` pin in `apps/assistant-backend/pyproject.toml`.
+- `apps/*/CHANGELOG.md` is owned by release-please and the vendored `.agents/skills/` is third-party
+  content. Both are excluded from every hook; do not edit them by hand to satisfy a linter.
+
 ### Frontend changes: `apps/assistant-ui/**`
 
 **WORKFLOW: Run these in order from `apps/assistant-ui` BEFORE EVERY COMMIT:**
@@ -82,7 +104,8 @@ fails. Fix the issue first, then re-run all checks.
 ### Scope rules
 
 - If you touch both apps, run both validation suites.
-- If you only change documentation such as `*.md` files, app-specific checks are not required.
+- If you only change documentation such as `*.md` files, app-specific checks are not required, but
+  the pre-commit hooks (mdformat, markdownlint) still run on commit.
 - Do not claim checks were run when they were skipped.
 
 ### Reporting requirements

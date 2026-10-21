@@ -68,6 +68,31 @@ See individual READMEs for detailed instructions:
 - [Frontend Setup](apps/assistant-ui/README.md)
 - [LLM Server Setup](apps/llm-server/README.md)
 
+### Pre-commit Hooks
+
+Commits are checked by [pre-commit](https://pre-commit.com) (ruff, pyrefly, prettier, eslint, tsc,
+mdformat, markdownlint, shellcheck, secret scanning, and Conventional Commit messages). CI runs the
+same hooks on every pull request. Install the tool once, then the hooks:
+
+```bash
+# 1. Backend venv, so the pyrefly hook can resolve imports
+python3 -m venv apps/assistant-backend/.venv
+apps/assistant-backend/.venv/bin/pip install -e "apps/assistant-backend[dev]"
+
+# 2. Frontend dependencies, so the prettier/eslint/tsc hooks use the pinned versions
+npm ci --prefix apps/assistant-ui
+
+# 3. Install pre-commit (uv tool install pre-commit, pipx install pre-commit, or pip) and the hooks
+pre-commit install   # installs both the pre-commit and commit-msg hooks
+
+# Run every hook against the whole repo
+pre-commit run --all-files
+```
+
+Do not bypass the hooks with `git commit --no-verify`; fix what they report. Hooks do not run tests,
+so still run `pytest` and `npm run test:coverage` (see the app READMEs). Update pinned hook versions
+with `pre-commit autoupdate`.
+
 ## Project Docs
 
 - [Architecture](docs/ARCHITECTURE.md)

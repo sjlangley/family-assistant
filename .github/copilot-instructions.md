@@ -188,6 +188,7 @@ ______________________________________________________________________
 | `assistant-backend-docker-build.yml` | push/PR on `apps/assistant-backend/` | Docker build + health check                                  |
 | `assistant-ui-ci.yml`                | push/PR on `apps/assistant-ui/`      | lint, format:check, typecheck, test:coverage, build, codecov |
 | `assistant-ui-docker-build.yml`      | push/PR on `apps/assistant-ui/`      | Docker build + health check                                  |
+| `pre-commit.yml`                     | every PR, push to `main`             | `pre-commit run --all-files` (all hooks, whole repo)         |
 
 All CI checks must pass before merging.
 
@@ -195,7 +196,12 @@ ______________________________________________________________________
 
 ## Commit & PR Guidelines
 
-- Use **conventional commit syntax**: `feat:`, `fix:`, `chore:`, `test:`, `docs:`
+- Install the pre-commit hooks once after cloning: `pre-commit install` (needs the backend venv at
+  `apps/assistant-backend/.venv` and `npm ci` in `apps/assistant-ui` first). Run all hooks with
+  `pre-commit run --all-files`. Never commit with `--no-verify`; fix what the hooks report. Hooks do
+  not run tests, so still run `pytest` and `npm run test:coverage`.
+- Use **conventional commit syntax**: `feat:`, `fix:`, `chore:`, `test:`, `docs:` (subject line 72
+  characters or fewer; the `commit-msg` hook enforces this)
 - All commits must pass formatting, linting, and tests before merging
 - Each PR should include unit tests for new code
 - Coverage must not drop below the thresholds above
