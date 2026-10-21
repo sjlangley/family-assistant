@@ -10,14 +10,15 @@ The Docker Compose setup includes:
 - **Backend** - FastAPI application serving the API (`assistant-backend`)
 - **Frontend** - React application serving the UI (`assistant-ui`)
 
-**Note:** Docker Compose now includes an `ollama` service by default. You can still point
-the backend at another host-run OpenAI-compatible server if you want; see
-`apps/llm-server/README.md` for setup details.
+**Note:** Docker Compose now includes an `ollama` service by default. You can still point the
+backend at another host-run OpenAI-compatible server if you want; see `apps/llm-server/README.md`
+for setup details.
 
 ## Prerequisites
 
 - **Docker** and **Docker Compose** installed
-- **Local LLM runtime** available either through the bundled Ollama service or a host-run server (see `apps/llm-server/README.md`)
+- **Local LLM runtime** available either through the bundled Ollama service or a host-run server
+  (see `apps/llm-server/README.md`)
 - **Google OAuth credentials** (see setup instructions below)
 
 ## Quick Start
@@ -57,8 +58,8 @@ openssl rand -hex 32
 
 ### 4. Start the LLM Runtime
 
-Docker Compose now includes an `ollama` service by default. After the stack is up,
-pull the default model once:
+Docker Compose now includes an `ollama` service by default. After the stack is up, pull the default
+model once:
 
 ```bash
 docker compose up -d ollama
@@ -80,11 +81,11 @@ docker compose up --build -d
 
 The services will be available at:
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8080
-- **Backend Health**: http://localhost:8080/health
+- **Frontend**: <http://localhost:3000>
+- **Backend API**: <http://localhost:8080>
+- **Backend Health**: <http://localhost:8080/health>
 - **PostgreSQL**: localhost:5432
-- **Ollama API**: http://localhost:11434
+- **Ollama API**: <http://localhost:11434>
 
 ### 6. View Logs
 
@@ -134,7 +135,8 @@ docker compose up --build
 
 ### Database Persistence
 
-PostgreSQL data is stored in a Docker volume named `family-assistant_postgres_data`. Data persists across container restarts.
+PostgreSQL data is stored in a Docker volume named `family-assistant_postgres_data`. Data persists
+across container restarts.
 
 ### Reset Database
 
@@ -220,6 +222,7 @@ npm run dev  # Runs on port 5173
 ### Port conflicts
 
 If ports are already in use, override them in `.env`:
+
 ```bash
 FRONTEND_PORT=3001
 BACKEND_PORT=8081
@@ -230,7 +233,8 @@ POSTGRES_PORT=5433
 
 ### Networking
 
-Services communicate via a private Docker network (`family-assistant-network`). The backend connects to:
+Services communicate via a private Docker network (`family-assistant-network`). The backend connects
+to:
 
 - PostgreSQL at `postgres:5432` (internal network)
 - Ollama at `ollama:11434` (internal network)

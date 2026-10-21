@@ -1,24 +1,26 @@
 # Family AI Assistant
 
-A self-hosted, multi-user household assistant built around trustworthy text chat.
-The current shipped core combines a local OpenAI-compatible LLM, canonical Postgres-backed conversation memory, a bounded web research path, and persisted trust metadata in the desktop chat UI.
+A self-hosted, multi-user household assistant built around trustworthy text chat. The current
+shipped core combines a local OpenAI-compatible LLM, canonical Postgres-backed conversation memory,
+a bounded web research path, and persisted trust metadata in the desktop chat UI.
 
 ## What Exists Today
 
-- **Multi-user conversations**
-  Google-authenticated users get isolated conversation history and memory at the API and storage layers.
-- **Canonical conversation memory**
-  Successful replies trigger background extraction that refreshes one latest summary per conversation and per-user durable facts in PostgreSQL.
-- **Bounded research tools**
-  Conversation replies can use an explicit allowlist of tools, with `web_search` for source discovery and `web_fetch` for grounded page reads.
-- **Persisted trust metadata**
-  Assistant messages store compact `annotations` so reloads preserve tool usage, evidence sources, memory hits, memory saves, and terminal failure context.
-- **Desktop trust UI**
-  The conversation shell renders an inline trust row plus an evidence panel driven entirely by persisted annotations.
-- **Real-time streaming responses**
-  Assistant replies stream in real-time via Server-Sent Events, with token-limit handling (configurable via `LLM_MAX_TOKENS`, default: 1024). When responses truncate due to length, UI displays a Continue button.
-- **Direct chat endpoint**
-  The backend also keeps a simpler `/api/v1/chat/completions` path for non-conversation chat requests through the shared LLM completion seam.
+- **Multi-user conversations** Google-authenticated users get isolated conversation history and
+  memory at the API and storage layers.
+- **Canonical conversation memory** Successful replies trigger background extraction that refreshes
+  one latest summary per conversation and per-user durable facts in PostgreSQL.
+- **Bounded research tools** Conversation replies can use an explicit allowlist of tools, with
+  `web_search` for source discovery and `web_fetch` for grounded page reads.
+- **Persisted trust metadata** Assistant messages store compact `annotations` so reloads preserve
+  tool usage, evidence sources, memory hits, memory saves, and terminal failure context.
+- **Desktop trust UI** The conversation shell renders an inline trust row plus an evidence panel
+  driven entirely by persisted annotations.
+- **Real-time streaming responses** Assistant replies stream in real-time via Server-Sent Events,
+  with token-limit handling (configurable via `LLM_MAX_TOKENS`, default: 1024). When responses
+  truncate due to length, UI displays a Continue button.
+- **Direct chat endpoint** The backend also keeps a simpler `/api/v1/chat/completions` path for
+  non-conversation chat requests through the shared LLM completion seam.
 
 ## Tech Stack
 
@@ -27,7 +29,8 @@ The current shipped core combines a local OpenAI-compatible LLM, canonical Postg
 - **LLM runtime:** Ollama by default in Docker Compose, or another local OpenAI-compatible server
 - **Storage:** PostgreSQL 16 for canonical data, Chroma for retrieval support
 - **Authentication:** Google OAuth 2.0 with server-side sessions
-- **Validation:** Ruff + Pyrefly + pytest on the backend, ESLint + Prettier + TypeScript + Vitest on the frontend
+- **Validation:** Ruff + Pyrefly + pytest on the backend, ESLint + Prettier + TypeScript + Vitest on
+  the frontend
 
 ## Getting Started
 
@@ -76,6 +79,7 @@ See individual READMEs for detailed instructions:
 This repo includes configuration files for AI coding assistants:
 
 - [AGENTS.md](AGENTS.md) - Top-level agent behavior guidelines
-- [CLAUDE.md](CLAUDE.md) - Claude-specific instructions  
+- [CLAUDE.md](CLAUDE.md) - Claude-specific instructions
 - [GEMINI.md](GEMINI.md) - Gemini-specific instructions
-- [AI_AGENT_GUIDELINES.md](AI_AGENT_GUIDELINES.md) - Comprehensive agent workflow rules (test-driven development, validation requirements, commit conventions)
+- [AI_AGENT_GUIDELINES.md](AI_AGENT_GUIDELINES.md) - Comprehensive agent workflow rules (test-driven
+  development, validation requirements, commit conventions)

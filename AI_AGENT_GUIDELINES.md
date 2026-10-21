@@ -1,48 +1,44 @@
 # AI Agent Guidelines
 
-This is the single source of truth for all AI agent behaviour in this repository.
-`AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` all defer to this file.
+This is the single source of truth for all AI agent behaviour in this repository. `AGENTS.md`,
+`CLAUDE.md`, and `GEMINI.md` all defer to this file.
 
----
+______________________________________________________________________
 
 ## Design System
 
-Always read `DESIGN.md` before making any visual or UI decisions.
-All font choices, colors, spacing, and aesthetic direction are defined there.
-Do not deviate without explicit user approval.
-In QA mode, flag any code that doesn't match `DESIGN.md`.
+Always read `DESIGN.md` before making any visual or UI decisions. All font choices, colors, spacing,
+and aesthetic direction are defined there. Do not deviate without explicit user approval. In QA
+mode, flag any code that doesn't match `DESIGN.md`.
 
----
+______________________________________________________________________
 
 ## Test-Driven Development
 
 Follow TDD for all code changes:
 
-1. **Write a failing test first.** Before writing any production code, add a test
-   that captures the expected behaviour and confirm it fails (red).
+1. **Write a failing test first.** Before writing any production code, add a test that captures the
+   expected behaviour and confirm it fails (red).
 2. **Write the minimum production code** to make the test pass (green).
-3. **Refactor** — clean up both the production code and the test while keeping
-   all tests passing.
+3. **Refactor** — clean up both the production code and the test while keeping all tests passing.
 4. **Never skip the red step.** A test that was never failing gives no confidence.
-5. **One behaviour per test.** Keep tests focused and descriptive so failures are
-   easy to diagnose.
-6. **Test files mirror source files.** Place tests in `tests/` (backend) or
-   alongside source under `src/` (frontend), following existing conventions.
-7. **Do not delete or weaken existing tests** to make new code pass — fix the
-   code instead.
+5. **One behaviour per test.** Keep tests focused and descriptive so failures are easy to diagnose.
+6. **Test files mirror source files.** Place tests in `tests/` (backend) or alongside source under
+   `src/` (frontend), following existing conventions.
+7. **Do not delete or weaken existing tests** to make new code pass — fix the code instead.
 
----
+______________________________________________________________________
 
 ## Required Validation Before Commit or Push
 
 **CRITICAL: These are pre-commit gates, not post-commit checks.**
 
-Treat local validation as a hard gate, not a nice-to-have.
-Do not create a commit, push a branch, or open a PR until every relevant check
-for the files you changed has been run locally and is passing.
+Treat local validation as a hard gate, not a nice-to-have. Do not create a commit, push a branch, or
+open a PR until every relevant check for the files you changed has been run locally and is passing.
 Do not rely on CI to tell you what you should have checked before committing.
 
 **The workflow is:**
+
 1. Make code changes
 2. Run ALL validation commands for changed files
 3. Fix any errors found
@@ -50,9 +46,8 @@ Do not rely on CI to tell you what you should have checked before committing.
 5. Only when all checks pass → create commit
 6. Never commit with failing checks
 
-**Exception:** If you discover a check failure after committing, create a
-separate fix commit with the corrected code. Do not amend or rewrite history
-on branches that have been pushed.
+**Exception:** If you discover a check failure after committing, create a separate fix commit with
+the corrected code. Do not amend or rewrite history on branches that have been pushed.
 
 ### Frontend changes: `apps/assistant-ui/**`
 
@@ -66,8 +61,8 @@ npm run test:coverage # Run all tests with coverage
 npm run build         # Verify production build works
 ```
 
-**All five commands must pass with zero errors before creating a commit.**
-Do not commit if any check fails. Fix the issue first, then re-run all checks.
+**All five commands must pass with zero errors before creating a commit.** Do not commit if any
+check fails. Fix the issue first, then re-run all checks.
 
 ### Backend changes: `apps/assistant-backend/**`
 
@@ -81,21 +76,20 @@ pyrefly check src/          # Type check with pyrefly
 pytest -v                   # Run all tests
 ```
 
-**All checks must pass with zero errors before creating a commit.**
-Do not commit if any check fails. Fix the issue first, then re-run all checks.
+**All checks must pass with zero errors before creating a commit.** Do not commit if any check
+fails. Fix the issue first, then re-run all checks.
 
 ### Scope rules
 
 - If you touch both apps, run both validation suites.
-- If you only change documentation such as `*.md` files, app-specific checks
-  are not required.
+- If you only change documentation such as `*.md` files, app-specific checks are not required.
 - Do not claim checks were run when they were skipped.
 
 ### Reporting requirements
 
 **Before creating each commit, explicitly state:**
 
-```
+```text
 Pre-commit validation for [backend/frontend]:
 ✅ format - passed
 ✅ lint - passed
@@ -104,20 +98,19 @@ Pre-commit validation for [backend/frontend]:
 ✅ build - passed (frontend only)
 ```
 
-If a required check fails, do not commit. Report the failure, fix it,
-re-run all checks, then commit.
+If a required check fails, do not commit. Report the failure, fix it, re-run all checks, then
+commit.
 
-If you cannot run a required check due to environment issues, stop before
-commit and explain the blocker.
+If you cannot run a required check due to environment issues, stop before commit and explain the
+blocker.
 
----
+______________________________________________________________________
 
 ## Database Migrations
 
 ### Alembic Infrastructure
 
-Database schema evolution is managed via Alembic migrations in
-`apps/assistant-backend/alembic/`.
+Database schema evolution is managed via Alembic migrations in `apps/assistant-backend/alembic/`.
 
 **Key principles:**
 
@@ -133,8 +126,8 @@ The application uses different database drivers for different contexts:
 - **Runtime (FastAPI)**: `postgresql+asyncpg` for async operations
 - **Migrations (Alembic)**: `postgresql+psycopg` for synchronous operations
 
-The conversion is automatic in `alembic/env.py` — you don't need to configure
-separate connection strings.
+The conversion is automatic in `alembic/env.py` — you don't need to configure separate connection
+strings.
 
 ### Creating Migrations
 
@@ -151,8 +144,8 @@ alembic revision --autogenerate -m "description of changes"
 alembic revision -m "description of changes"
 ```
 
-Always review auto-generated migrations before applying them. Alembic's
-autogenerate is good but not perfect.
+Always review auto-generated migrations before applying them. Alembic's autogenerate is good but not
+perfect.
 
 ### Applying Migrations
 
@@ -164,8 +157,8 @@ alembic upgrade head
 
 **For fresh databases** (CI, new local setups):
 
-1. Bootstrap base schema first via `SQLModel.metadata.create_all()`
-   (conversations, messages tables).
+1. Bootstrap base schema first via `SQLModel.metadata.create_all()` (conversations, messages
+   tables).
 2. Mark migrations as applied: `alembic stamp head`.
 3. Future migrations will work normally.
 
@@ -193,12 +186,13 @@ See `apps/assistant-backend/alembic/README` for detailed bootstrap instructions.
    ```
 
 3. **Test both upgrade and downgrade:**
+
    - Run `alembic upgrade head` on a test database.
    - Run `alembic downgrade -1` to verify rollback works.
    - Run `alembic upgrade head` again to verify idempotency.
 
-4. **Model imports required.** All SQLModel table classes must be imported in
-   `alembic/env.py` for autogenerate to work:
+4. **Model imports required.** All SQLModel table classes must be imported in `alembic/env.py` for
+   autogenerate to work:
 
    ```python
    from assistant.models.conversation_sql import Conversation, Message

@@ -2,8 +2,7 @@
 
 ## Summary
 
-This document defines the implementation plan for unified attachment support in
-Family Assistant.
+This document defines the implementation plan for unified attachment support in Family Assistant.
 
 The goal is to add first-class conversation attachments for:
 
@@ -11,12 +10,12 @@ The goal is to add first-class conversation attachments for:
 - image files such as `.png`, `.jpg`, `.webp`
 - convertible document formats beginning with `.pdf`
 
-The implementation must support immediate local-upload use cases while being
-explicitly designed so future Google Drive ingestion can reuse the same
-attachment model, extraction pipeline, and LLM integration.
+The implementation must support immediate local-upload use cases while being explicitly designed so
+future Google Drive ingestion can reuse the same attachment model, extraction pipeline, and LLM
+integration.
 
-The system should treat attachments as canonical conversation artifacts, not as
-one-off prompt stuffing.
+The system should treat attachments as canonical conversation artifacts, not as one-off prompt
+stuffing.
 
 ## Goals
 
@@ -24,8 +23,8 @@ one-off prompt stuffing.
 - Support text summarization and question answering over uploaded files.
 - Support image attachments for vision-capable presets.
 - Support PDF ingestion through extracted text.
-- Keep storage, ingestion, and LLM-read flows source-agnostic so future Google
-  Drive imports can reuse them.
+- Keep storage, ingestion, and LLM-read flows source-agnostic so future Google Drive imports can
+  reuse them.
 
 ## Non-Goals
 
@@ -50,8 +49,8 @@ Future sources:
 - Google Drive
 - other connectors
 
-The canonical attachment row must therefore include source metadata from day
-one, even if only local uploads are active initially.
+The canonical attachment row must therefore include source metadata from day one, even if only local
+uploads are active initially.
 
 ### Separation of concerns
 
@@ -63,14 +62,12 @@ The implementation must separate:
 - transcript linkage
 - LLM access
 
-This avoids hard-coding the system around browser uploads and lets future
-Google Drive ingestion plug into the same internal pipeline after bytes are
-acquired.
+This avoids hard-coding the system around browser uploads and lets future Google Drive ingestion
+plug into the same internal pipeline after bytes are acquired.
 
 ### Storage model
 
-Use PostgreSQL as the canonical store for attachment metadata and small derived
-artifacts.
+Use PostgreSQL as the canonical store for attachment metadata and small derived artifacts.
 
 Store original uploaded binaries on local disk behind a storage abstraction.
 
@@ -92,8 +89,8 @@ This protects prompt budgets and scales better to larger files.
 
 In the initial implementation, attachments are conversation-scoped artifacts.
 
-They are persisted and reusable in later turns within the same conversation,
-but they are not yet a cross-conversation user document library.
+They are persisted and reusable in later turns within the same conversation, but they are not yet a
+cross-conversation user document library.
 
 ## Data model
 
@@ -132,8 +129,7 @@ Initial values:
 - `source_ref=null`
 - `source_version=null`
 
-This is required so future Google Drive files can flow through the same
-attachment table with:
+This is required so future Google Drive files can flow through the same attachment table with:
 
 - `source_type='google_drive'`
 - `source_ref=<drive file id>`
@@ -175,8 +171,7 @@ Local filesystem storage stores:
 
 ### Storage abstraction
 
-Introduce an `AttachmentStorage` abstraction with a local-disk implementation
-first.
+Introduce an `AttachmentStorage` abstraction with a local-disk implementation first.
 
 The abstraction should support operations like:
 
@@ -185,8 +180,8 @@ The abstraction should support operations like:
 - `exists`
 - `delete`
 
-This keeps the implementation ready for future MinIO, S3, Azure Blob, or other
-backends without forcing that complexity into the first release.
+This keeps the implementation ready for future MinIO, S3, Azure Blob, or other backends without
+forcing that complexity into the first release.
 
 ### Local storage layout
 
@@ -211,11 +206,11 @@ Define a source-neutral ingestion service that receives:
 
 The ingestion service must not depend on FastAPI `UploadFile` directly.
 
-Browser upload is only one acquisition adapter that converts incoming request
-files into this internal ingestion request.
+Browser upload is only one acquisition adapter that converts incoming request files into this
+internal ingestion request.
 
-Future Google Drive ingestion should be able to call the same ingestion service
-after downloading or exporting file bytes from Drive.
+Future Google Drive ingestion should be able to call the same ingestion service after downloading or
+exporting file bytes from Drive.
 
 ### Ingestion classes
 
@@ -250,8 +245,7 @@ For PDFs first:
 - persist extracted text and preview
 - transition to `ready`, `partial`, or `failed`
 
-Later document types like `.docx`, `.pptx`, and `.xlsx` should follow the same
-ingestion pattern.
+Later document types like `.docx`, `.pptx`, and `.xlsx` should follow the same ingestion pattern.
 
 ## Conversation and transcript integration
 
@@ -270,8 +264,7 @@ The backend must validate that referenced attachments:
 
 ### Transcript read APIs
 
-Transcript responses should include lightweight attachment summaries on user
-messages.
+Transcript responses should include lightweight attachment summaries on user messages.
 
 The UI should receive only safe metadata such as:
 
@@ -289,8 +282,8 @@ Storage paths and internal file locations must not be exposed.
 
 ### Attachment manifest
 
-When a user turn includes attachments, conversation preparation should include
-a compact manifest describing the available attachments.
+When a user turn includes attachments, conversation preparation should include a compact manifest
+describing the available attachments.
 
 The manifest should include:
 
@@ -311,8 +304,7 @@ Add bounded attachment tools such as:
 
 These tools must operate on canonical attachment ids only.
 
-They must not depend on whether the source file came from local upload or
-Google Drive.
+They must not depend on whether the source file came from local upload or Google Drive.
 
 ### Text attachment behavior
 
@@ -327,19 +319,17 @@ For text attachments:
 
 For image attachments:
 
-- if the selected preset supports `vision`, the request adapter includes image
-  inputs in the provider-specific multimodal request shape
-- if the preset does not support `vision`, the backend rejects the image-backed
-  request or the UI warns before send
+- if the selected preset supports `vision`, the request adapter includes image inputs in the
+  provider-specific multimodal request shape
+- if the preset does not support `vision`, the backend rejects the image-backed request or the UI
+  warns before send
 
 ### PDF behavior
 
 For PDFs:
 
-- if extracted text is ready, treat the PDF as a text-readable attachment via
-  bounded tools
-- scanned PDF fallback via rendered page images is intentionally deferred to a
-  later phase
+- if extracted text is ready, treat the PDF as a text-readable attachment via bounded tools
+- scanned PDF fallback via rendered page images is intentionally deferred to a later phase
 
 ## Lifecycle and retention
 
@@ -351,8 +341,7 @@ When a conversation is deleted:
 
 - linked attachments are soft-deleted
 - `purge_after` is set
-- a background cleanup process later removes binary artifacts and finalizes
-  deletion
+- a background cleanup process later removes binary artifacts and finalizes deletion
 
 ### Faster cleanup cases
 
@@ -374,8 +363,8 @@ Cleanup must be idempotent and resilient to partially missing files.
 
 ## Relationship to future Google Drive ingestion
 
-This design is intentionally structured so Google Drive integration becomes a
-new source-acquisition layer, not a new document architecture.
+This design is intentionally structured so Google Drive integration becomes a new source-acquisition
+layer, not a new document architecture.
 
 Future Drive integration should add:
 
@@ -397,8 +386,8 @@ It should not need to replace:
 
 The guiding rule is:
 
-Google Drive files should become canonical attachments and then follow the same
-ingestion and LLM-read path as browser-uploaded files.
+Google Drive files should become canonical attachments and then follow the same ingestion and
+LLM-read path as browser-uploaded files.
 
 ## Incremental implementation plan
 
@@ -608,8 +597,7 @@ Each step should follow strict TDD:
 - implement the minimum code to pass
 - refactor while preserving passing tests
 
-Testing should explicitly verify that provider-specific acquisition concerns do
-not leak into:
+Testing should explicitly verify that provider-specific acquisition concerns do not leak into:
 
 - extraction
 - transcript linkage
@@ -618,8 +606,8 @@ not leak into:
 
 The implementation should preserve this invariant:
 
-A future Google Drive file should be able to become a canonical attachment and
-then use the same downstream path as a browser-uploaded file.
+A future Google Drive file should be able to become a canonical attachment and then use the same
+downstream path as a browser-uploaded file.
 
 ## Validation requirements
 
@@ -649,5 +637,5 @@ npm run build
 - PostgreSQL stores metadata and small derived text artifacts.
 - Attachments are conversation-scoped in the first implementation.
 - Browser upload is the only live source initially.
-- Google Drive support will later add a new acquisition path on top of the
-  same canonical attachment and ingestion model.
+- Google Drive support will later add a new acquisition path on top of the same canonical attachment
+  and ingestion model.

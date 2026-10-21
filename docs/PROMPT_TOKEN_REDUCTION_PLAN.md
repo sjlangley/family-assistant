@@ -2,22 +2,19 @@
 
 ## Summary
 
-This document explains how we can reduce the number of tokens sent to the
-language model without losing useful context, and outlines a practical plan to
-implement that work later.
+This document explains how we can reduce the number of tokens sent to the language model without
+losing useful context, and outlines a practical plan to implement that work later.
 
-It is written for readers who may understand the backend architecture but do
-not already know how token counting or prompt compression works.
+It is written for readers who may understand the backend architecture but do not already know how
+token counting or prompt compression works.
 
 ## What Token Compression Means
 
-Large language models do not read text the way humans do. Before a prompt is
-processed, the model turns it into smaller pieces called tokens. Some words
-become one token, some become several, and message formatting also consumes
-tokens.
+Large language models do not read text the way humans do. Before a prompt is processed, the model
+turns it into smaller pieces called tokens. Some words become one token, some become several, and
+message formatting also consumes tokens.
 
-When we talk about token compression, we are really talking about two separate
-steps:
+When we talk about token compression, we are really talking about two separate steps:
 
 1. Measuring how large a prompt is in tokens.
 2. Reducing the number of tokens we send while keeping the meaning we need.
@@ -26,17 +23,16 @@ These are related, but they are not the same thing.
 
 ## Tokenization Measures Size
 
-Tokenization is the step that tells us how big a prompt is. It is a
-measurement tool, not a compression tool.
+Tokenization is the step that tells us how big a prompt is. It is a measurement tool, not a
+compression tool.
 
-In this system, the backend would build the candidate prompt first. Then it
-would run that prompt through a tokenizer locally to estimate or calculate how
-many tokens the model will see. This happens in our application before the
-request is sent to the model.
+In this system, the backend would build the candidate prompt first. Then it would run that prompt
+through a tokenizer locally to estimate or calculate how many tokens the model will see. This
+happens in our application before the request is sent to the model.
 
-That means we are not asking the model to tokenize the prompt for us. There is
-no extra model call just to count tokens. We do the counting locally, use it
-to make decisions, and then send the final prompt once.
+That means we are not asking the model to tokenize the prompt for us. There is no extra model call
+just to count tokens. We do the counting locally, use it to make decisions, and then send the final
+prompt once.
 
 A simple way to think about it is:
 
@@ -47,8 +43,8 @@ The ruler tells us the size. The scissors decide what to cut.
 
 ## Compression Reduces Size
 
-If the prompt is larger than we want, or if we see obvious waste, we reduce it
-by changing what we send.
+If the prompt is larger than we want, or if we see obvious waste, we reduce it by changing what we
+send.
 
 That can include:
 
@@ -82,8 +78,7 @@ The intended flow is:
 
 ## What We Should Always Reduce
 
-We should reduce low-value tokens whenever we can, even if we are not near a
-hard limit.
+We should reduce low-value tokens whenever we can, even if we are not near a hard limit.
 
 Examples include:
 
@@ -106,16 +101,16 @@ Examples include:
 - facts the answer depends on
 - tool output or evidence needed for the response
 
-The goal is not to make the prompt as small as possible. The goal is to remove
-waste while preserving signal.
+The goal is not to make the prompt as small as possible. The goal is to remove waste while
+preserving signal.
 
 ## How This Applies To This Repository
 
-In this repository, the main opportunity is not the transport layer. The main
-opportunity is prompt assembly.
+In this repository, the main opportunity is not the transport layer. The main opportunity is prompt
+assembly.
 
-`ContextAssemblyService` already decides which summaries, facts, and recent
-turns are included. That makes it the right place to:
+`ContextAssemblyService` already decides which summaries, facts, and recent turns are included. That
+makes it the right place to:
 
 - measure prompt size
 - identify which sections are expensive
@@ -126,9 +121,8 @@ turns are included. That makes it the right place to:
 
 ## Where Caveman Fits
 
-[`caveman`](https://github.com/juliusbrussee/caveman) can help make fixed
-prompt text or model outputs terser, but it does not replace context selection
-or memory compression.
+[`caveman`](https://github.com/juliusbrussee/caveman) can help make fixed prompt text or model
+outputs terser, but it does not replace context selection or memory compression.
 
 That means it may be useful for:
 
@@ -136,15 +130,14 @@ That means it may be useful for:
 - compressing extraction prompt text
 - optionally making assistant replies terser
 
-It should not be the primary strategy for deciding which conversation history
-or memory to include.
+It should not be the primary strategy for deciding which conversation history or memory to include.
 
 ## Proposed Implementation
 
 ### 1. Add Prompt-Budget Instrumentation
 
-Add prompt-budget instrumentation to the conversation path so each LLM call can
-report approximate size by section:
+Add prompt-budget instrumentation to the conversation path so each LLM call can report approximate
+size by section:
 
 - system prompt
 - memory summary
@@ -163,15 +156,13 @@ Refactor context assembly to optimize dynamic prompt content directly:
 - keep the newest exchange verbatim
 - prefer turns referenced by the latest user message
 - prefer turns overlapping with selected fact subjects
-- treat the saved summary as the canonical representation of older turns once
-  present
+- treat the saved summary as the canonical representation of older turns once present
 
 ### 3. Tighten Memory Payloads
 
 Shorten memory payloads before they reach the LLM:
 
-- rewrite conversation summaries toward state-oriented summaries instead of
-  narrative recap
+- rewrite conversation summaries toward state-oriented summaries instead of narrative recap
 - normalize durable facts into short atomic statements
 - deduplicate overlapping facts by subject or content before inclusion
 - reduce default fact count when relevance is weak
@@ -186,38 +177,36 @@ Reduce prompt overhead created by formatting itself:
 
 ### 5. Add Optional Caveman Layer
 
-Use `caveman` only as an optional secondary layer for static or semi-static
-text:
+Use `caveman` only as an optional secondary layer for static or semi-static text:
 
 - compress the fixed system prompt if benchmarks show no regression
 - evaluate use for the background extraction prompt
 - optionally support terse assistant-output mode as a product choice
 
-Do not use `caveman` for dynamic conversation history selection or durable
-memory retrieval. Those remain owned by custom backend logic.
+Do not use `caveman` for dynamic conversation history selection or durable memory retrieval. Those
+remain owned by custom backend logic.
 
 ## Recommended Scope
 
 The current recommendation is:
 
 - keep prompt assembly custom and lightweight
-- add local token measurement using the serving model's tokenizer where
-  feasible
+- add local token measurement using the serving model's tokenizer where feasible
 - improve summary and fact compaction in our own code
 - treat `caveman` as optional and low-blast-radius
 
-This keeps the architecture aligned with the existing backend instead of
-pulling in a large framework for a narrow problem.
+This keeps the architecture aligned with the existing backend instead of pulling in a large
+framework for a narrow problem.
 
 ## Background Reading
 
-These references are useful for understanding existing techniques without
-implying that we should adopt all of them.
+These references are useful for understanding existing techniques without implying that we should
+adopt all of them.
 
 ### Model-Native Token Counting
 
-Use the model's own tokenizer and chat template to estimate prompt size
-accurately for non-GPT models such as Qwen.
+Use the model's own tokenizer and chat template to estimate prompt size accurately for non-GPT
+models such as Qwen.
 
 - Hugging Face Transformers chat templating:
   [chat_templating.md](https://github.com/huggingface/transformers/blob/main/docs/source/en/chat_templating.md)
@@ -226,28 +215,25 @@ accurately for non-GPT models such as Qwen.
 
 ### GPT-Oriented Token Counting
 
-`tiktoken` is a good reference for local token counting concepts and
-OpenAI-style chat-message accounting, even though it is not the ground-truth
-tokenizer for Qwen.
+`tiktoken` is a good reference for local token counting concepts and OpenAI-style chat-message
+accounting, even though it is not the ground-truth tokenizer for Qwen.
 
 - OpenAI `tiktoken`:
   [How to count tokens with tiktoken](https://cookbook.openai.com/examples/how_to_count_tokens_with_tiktoken)
 
 ### Rolling Summary Middleware
 
-LangChain provides a reference implementation of token-triggered chat-history
-summarization that keeps the latest messages verbatim while compressing older
-context.
+LangChain provides a reference implementation of token-triggered chat-history summarization that
+keeps the latest messages verbatim while compressing older context.
 
-- LangChain memory concepts:
-  [Memory](https://python.langchain.com/docs/concepts/memory/)
+- LangChain memory concepts: [Memory](https://python.langchain.com/docs/concepts/memory/)
 - LangChain context engineering:
   [Prompt Engineering](https://python.langchain.com/docs/concepts/prompt_engineering/)
 
 ### Summary-Backed Memory Buffers
 
-LlamaIndex provides examples of token-limited memory buffers and
-summary-backed chat-history retention.
+LlamaIndex provides examples of token-limited memory buffers and summary-backed chat-history
+retention.
 
 - LlamaIndex memory buffer:
   [memory.ipynb](https://github.com/run-llama/llama_index/blob/main/docs/examples/memory/memory.ipynb)
@@ -256,15 +242,13 @@ summary-backed chat-history retention.
 
 ### Static Prompt And Output Terseness
 
-`caveman` is a useful reference for terse static prompt and output compression.
-It is best treated as a secondary technique rather than the main
-conversation-memory strategy.
+`caveman` is a useful reference for terse static prompt and output compression. It is best treated
+as a secondary technique rather than the main conversation-memory strategy.
 
-- Caveman:
-  [github.com/juliusbrussee/caveman](https://github.com/juliusbrussee/caveman)
+- Caveman: [github.com/juliusbrussee/caveman](https://github.com/juliusbrussee/caveman)
 
-We are using these as background reading and technique references, not as an
-automatic adoption decision.
+We are using these as background reading and technique references, not as an automatic adoption
+decision.
 
 ## Validation And Success Criteria
 
