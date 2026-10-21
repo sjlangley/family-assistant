@@ -11,16 +11,6 @@ from sqlmodel import SQLModel
 # Add the src directory to the path so we can import our models
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
-# Ensure CLIENT_ORIGINS is properly formatted for pydantic-settings
-# pytest-env can set it to a bare [] which causes JSON parsing errors
-client_origins = os.getenv('CLIENT_ORIGINS', '').strip()
-if client_origins and not client_origins.startswith('['):
-    # If it's set but not valid JSON, unset it to use the default
-    os.environ.pop('CLIENT_ORIGINS', None)
-elif not client_origins:
-    # If empty or not set, use empty JSON array
-    os.environ['CLIENT_ORIGINS'] = '[]'
-
 # Set minimal env vars for migration context if not already set
 if not os.getenv('GOOGLE_OAUTH_CLIENT_ID'):
     os.environ['GOOGLE_OAUTH_CLIENT_ID'] = 'migration-placeholder'

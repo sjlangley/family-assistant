@@ -247,7 +247,8 @@ All services have health checks configured:
 - **Backend**: Checks `/health` endpoint
 - **Frontend**: Checks HTTP server response
 
-Services wait for their dependencies to be healthy before starting.
+The backend waits for PostgreSQL to be healthy before starting; Chroma has no healthcheck, so it
+only waits for the Chroma container to start (`service_started`).
 
 ### Build Process
 
