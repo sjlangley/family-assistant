@@ -4,11 +4,34 @@ updates:
     directory: /apps/assistant-backend
     schedule:
       interval: monthly
+    groups:
+      pip-minor-patch:
+        patterns:
+          - "*"
+        # Pre-1.0 lint/type tools ship breaking changes as minor bumps;
+        # keep them as individual PRs so they don't block the group.
+        exclude-patterns:
+          - "ruff"
+          - "pyrefly"
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: npm
     directory: /apps/assistant-ui
     schedule:
       interval: monthly
+    groups:
+      npm-production:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      npm-development:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: docker
     directory: /apps/assistant-backend
@@ -34,3 +57,10 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
