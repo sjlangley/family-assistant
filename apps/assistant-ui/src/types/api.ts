@@ -82,12 +82,7 @@ export interface AssistantAnnotations {
  * SSE Event types for streaming responses
  */
 export type SSEEventType =
-  | "thought"
-  | "token"
-  | "tool_call"
-  | "meta"
-  | "done"
-  | "error";
+  "thought" | "token" | "tool_call" | "meta" | "done" | "error";
 
 export interface SSEEvent {
   event: SSEEventType;

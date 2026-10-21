@@ -829,8 +829,7 @@ describe("ConversationsChat", () => {
       };
 
       let resolveReconciledTranscript:
-        | ((value: typeof initialTranscript) => void)
-        | undefined;
+        ((value: typeof initialTranscript) => void) | undefined;
       const delayedReconciledTranscript = new Promise<typeof initialTranscript>(
         (resolve) => {
           resolveReconciledTranscript = resolve;
