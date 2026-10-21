@@ -1445,3 +1445,60 @@ async def test_postgres_upsert_keyless_includes_correct_index_where(
     assert 'ON CONFLICT' in compiled_str
     assert 'fact_key IS NULL' in compiled_str
     assert 'active' in compiled_str
+
+
+@pytest.mark.asyncio
+async def test_upsert_durable_fact_postgres_attempt_runs_in_savepoint(
+    memory_storage, async_db_session
+):
+    """A failed PostgreSQL upsert must not abort the caller's transaction."""
+    from contextlib import asynccontextmanager
+
+    from assistant.models.memory_sql import (
+        DurableFactConfidence,
+        DurableFactSourceType,
+    )
+
+    real_execute = async_db_session.execute
+    real_begin_nested = async_db_session.begin_nested
+    state = {'depth': 0, 'upsert_in_savepoint': None}
+
+    @asynccontextmanager
+    async def tracking_begin_nested():
+        state['depth'] += 1
+        try:
+            async with real_begin_nested() as nested:
+                yield nested
+        finally:
+            state['depth'] -= 1
+
+    async def failing_upsert_execute(stmt, *args, **kwargs):
+        if state['upsert_in_savepoint'] is None:
+            state['upsert_in_savepoint'] = state['depth'] > 0
+            raise RuntimeError('simulated ON CONFLICT failure')
+        return await real_execute(stmt, *args, **kwargs)
+
+    with (
+        patch.object(type(async_db_session.bind.dialect), 'name', 'postgresql'),
+        patch.object(
+            memory_storage,
+            '_build_durable_fact_upsert_statement',
+            return_value=text('SELECT 1'),
+        ),
+        patch.object(async_db_session, 'execute', failing_upsert_execute),
+        patch.object(async_db_session, 'begin_nested', tracking_begin_nested),
+    ):
+        result = await memory_storage.upsert_durable_fact(
+            session=async_db_session,
+            user_id='user@example.com',
+            subject='John Doe',
+            fact_text='John works at Acme Corp',
+            confidence=DurableFactConfidence.HIGH,
+            source_type=DurableFactSourceType.CONVERSATION,
+            fact_key='employment_status',
+        )
+        await async_db_session.commit()
+
+    assert state['upsert_in_savepoint'] is True
+    assert result.fact_key == 'employment_status'
+    assert result.id is not None
