@@ -18,9 +18,10 @@ below are those of the runtime switch.
 
 `complete_messages()` builds the request, calls the server, validates the response and classifies
 failures as timeout, unreachable, backend error or invalid response. The chat router and the
-conversation service both use it, and streaming goes through the same service. The #70 description
-gives its purpose as removing duplicate error handling and response parsing, and carrying
-`tool_calls` and `finish_reason` for future tool calling.
+conversation service both use it. Streaming replies, added later (ADR 0014), go through a separate
+`LLMService.stream_messages()` with its own request and error handling. The #70 description gives
+its purpose as removing duplicate error handling and response parsing, and carrying `tool_calls` and
+`finish_reason` for future tool calling.
 
 `docker-compose.yml` runs an `ollama` service, and the default model is `qwen2.5:7b`. #74 records
 that Ollama's `/v1/chat/completions` was manually verified to return structured `tool_calls` for the
@@ -48,13 +49,15 @@ This was the first local runtime, replaced in #74.
 We will use Ollama as the default runtime in `docker-compose.yml`, with `qwen2.5:7b` as the default
 model.
 
-We will send every model call through `LLMService.complete_messages()`, so the rest of the backend
-does not depend on a particular runtime or provider.
+We will send every model call through `LLMService`, so the rest of the backend does not depend on a
+particular runtime or provider.
 
 ## Consequences
 
-- Good: error handling and response parsing live in one place, and the tool loop gets structured
-  `tool_calls` from the default runtime.
+- Good: error handling and response parsing live in `LLMService`, not in its callers, and the tool
+  loop gets structured `tool_calls` from the default runtime.
+- Bad: `complete_messages()` and `stream_messages()` each carry their own error handling, so the two
+  paths can drift.
 - Good: a hosted backend can be added behind the same seam (#156).
 - Bad: the default model is pulled through Ollama, and response quality and speed depend on the
   local hardware and that model.
