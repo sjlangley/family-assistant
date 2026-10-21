@@ -1,7 +1,17 @@
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, confloat, conint
+from pydantic import BaseModel, Field, NonNegativeInt
+
+# Constrained numeric types. These are spelled as ``Annotated`` aliases rather
+# than ``conint(...)`` / ``confloat(...)`` calls, which type checkers reject in
+# annotations. The generated JSON schema is identical.
+Probability = Annotated[float, Field(ge=0.0, le=1.0)]
+RepeatPenalty = Annotated[float, Field(ge=0.0)]
+Penalty = Annotated[float, Field(ge=-2.0, le=2.0)]
+MirostatMode = Annotated[int, Field(ge=0, le=2)]
+MirostatTau = Annotated[float, Field(ge=0.0, le=10.0)]
+MirostatEta = Annotated[float, Field(ge=0.001, le=1.0)]
 
 
 class ChatCompletionFunction(BaseModel):
@@ -146,12 +156,12 @@ class CreateCompletionRequest(BaseModel):
         description='A suffix to append to the generated text. If None, no suffix is appended. Useful for chatbots.',
         title='Suffix',
     )
-    max_tokens: conint(ge=0) | None = Field(
+    max_tokens: NonNegativeInt | None = Field(
         16,
         description='The maximum number of tokens to generate.',
         title='Max Tokens',
     )
-    min_tokens: conint(ge=0) | None = Field(
+    min_tokens: NonNegativeInt | None = Field(
         0,
         description='The minimum number of tokens to generate. It may return fewer tokens if another condition is met (e.g. max_tokens, stop).',
         title='Min Tokens',
@@ -161,12 +171,12 @@ class CreateCompletionRequest(BaseModel):
         description="Adjust the randomness of the generated text.\n\nTemperature is a hyperparameter that controls the randomness of the generated text. It affects the probability distribution of the model's output tokens. A higher temperature (e.g., 1.5) makes the output more random and creative, while a lower temperature (e.g., 0.5) makes the output more focused, deterministic, and conservative. The default value is 0.8, which provides a balance between randomness and determinism. At the extreme, a temperature of 0 will always pick the most likely next token, leading to identical outputs in each run.",
         title='Temperature',
     )
-    top_p: confloat(ge=0.0, le=1.0) | None = Field(
+    top_p: Probability | None = Field(
         0.95,
         description='Limit the next token selection to a subset of tokens with a cumulative probability above a threshold P.\n\nTop-p sampling, also known as nucleus sampling, is another text generation method that selects the next token from a subset of tokens that together have a cumulative probability of at least p. This method provides a balance between diversity and quality by considering both the probabilities of tokens and the number of tokens to sample from. A higher value for top_p (e.g., 0.95) will lead to more diverse text, while a lower value (e.g., 0.5) will generate more focused and conservative text.',
         title='Top P',
     )
-    min_p: confloat(ge=0.0, le=1.0) | None = Field(
+    min_p: Probability | None = Field(
         0.05,
         description='Sets a minimum base probability threshold for token selection.\n\nThe Min-P sampling method was designed as an alternative to Top-P, and aims to ensure a balance of quality and variety. The parameter min_p represents the minimum probability for a token to be considered, relative to the probability of the most likely token. For example, with min_p=0.05 and the most likely token having a probability of 0.9, logits with a value less than 0.045 are filtered out.',
         title='Min P',
@@ -186,17 +196,17 @@ class CreateCompletionRequest(BaseModel):
         description='Whether to stream the results as they are generated. Useful for chatbots.',
         title='Stream',
     )
-    logprobs: conint(ge=0) | None = Field(
+    logprobs: NonNegativeInt | None = Field(
         None,
         description='The number of logprobs to generate. If None, no logprobs are generated.',
         title='Logprobs',
     )
-    presence_penalty: confloat(ge=-2.0, le=2.0) | None = Field(
+    presence_penalty: Penalty | None = Field(
         0.0,
         description="Positive values penalize new tokens based on whether they appear in the text so far, increasing the model's likelihood to talk about new topics.",
         title='Presence Penalty',
     )
-    frequency_penalty: confloat(ge=-2.0, le=2.0) | None = Field(
+    frequency_penalty: Penalty | None = Field(
         0.0,
         description="Positive values penalize new tokens based on their existing frequency in the text so far, decreasing the model's likelihood to repeat the same line verbatim.",
         title='Frequency Penalty',
@@ -211,28 +221,28 @@ class CreateCompletionRequest(BaseModel):
     n: int | None = Field(1, title='N')
     best_of: int | None = Field(1, title='Best Of')
     user: str | None = Field(None, title='User')
-    top_k: conint(ge=0) | None = Field(
+    top_k: NonNegativeInt | None = Field(
         40,
         description='Limit the next token selection to the K most probable tokens.\n\nTop-k sampling is a text generation method that selects the next token only from the top k most likely tokens predicted by the model. It helps reduce the risk of generating low-probability or nonsensical tokens, but it may also limit the diversity of the output. A higher value for top_k (e.g., 100) will consider more tokens and lead to more diverse text, while a lower value (e.g., 10) will focus on the most probable tokens and generate more conservative text.',
         title='Top K',
     )
-    repeat_penalty: confloat(ge=0.0) | None = Field(
+    repeat_penalty: RepeatPenalty | None = Field(
         1.1,
         description='A penalty applied to each token that is already generated. This helps prevent the model from repeating itself.\n\nRepeat penalty is a hyperparameter used to penalize the repetition of token sequences during text generation. It helps prevent the model from generating repetitive or monotonous text. A higher value (e.g., 1.5) will penalize repetitions more strongly, while a lower value (e.g., 0.9) will be more lenient.',
         title='Repeat Penalty',
     )
     logit_bias_type: LogitBiasType | None = Field(None, title='Logit Bias Type')
-    mirostat_mode: conint(ge=0, le=2) | None = Field(
+    mirostat_mode: MirostatMode | None = Field(
         0,
         description='Enable Mirostat constant-perplexity algorithm of the specified version (1 or 2; 0 = disabled)',
         title='Mirostat Mode',
     )
-    mirostat_tau: confloat(ge=0.0, le=10.0) | None = Field(
+    mirostat_tau: MirostatTau | None = Field(
         5.0,
         description='Mirostat target entropy, i.e. the target perplexity - lower values produce focused and coherent text, larger values produce more diverse and less coherent text',
         title='Mirostat Tau',
     )
-    mirostat_eta: confloat(ge=0.001, le=1.0) | None = Field(
+    mirostat_eta: MirostatEta | None = Field(
         0.1, description='Mirostat learning rate', title='Mirostat Eta'
     )
     grammar: str | None = Field(None, title='Grammar')
@@ -428,7 +438,7 @@ class CreateChatCompletionRequest(BaseModel):
         description='The maximum number of tokens to generate. Defaults to inf',
         title='Max Tokens',
     )
-    min_tokens: conint(ge=0) | None = Field(
+    min_tokens: NonNegativeInt | None = Field(
         0,
         description='The minimum number of tokens to generate. It may return fewer tokens if another condition is met (e.g. max_tokens, stop).',
         title='Min Tokens',
@@ -438,7 +448,7 @@ class CreateChatCompletionRequest(BaseModel):
         description='Whether to output the logprobs or not. Default is True',
         title='Logprobs',
     )
-    top_logprobs: conint(ge=0) | None = Field(
+    top_logprobs: NonNegativeInt | None = Field(
         None,
         description='The number of logprobs to generate. If None, no logprobs are generated. logprobs need to set to True.',
         title='Top Logprobs',
@@ -448,12 +458,12 @@ class CreateChatCompletionRequest(BaseModel):
         description="Adjust the randomness of the generated text.\n\nTemperature is a hyperparameter that controls the randomness of the generated text. It affects the probability distribution of the model's output tokens. A higher temperature (e.g., 1.5) makes the output more random and creative, while a lower temperature (e.g., 0.5) makes the output more focused, deterministic, and conservative. The default value is 0.8, which provides a balance between randomness and determinism. At the extreme, a temperature of 0 will always pick the most likely next token, leading to identical outputs in each run.",
         title='Temperature',
     )
-    top_p: confloat(ge=0.0, le=1.0) | None = Field(
+    top_p: Probability | None = Field(
         0.95,
         description='Limit the next token selection to a subset of tokens with a cumulative probability above a threshold P.\n\nTop-p sampling, also known as nucleus sampling, is another text generation method that selects the next token from a subset of tokens that together have a cumulative probability of at least p. This method provides a balance between diversity and quality by considering both the probabilities of tokens and the number of tokens to sample from. A higher value for top_p (e.g., 0.95) will lead to more diverse text, while a lower value (e.g., 0.5) will generate more focused and conservative text.',
         title='Top P',
     )
-    min_p: confloat(ge=0.0, le=1.0) | None = Field(
+    min_p: Probability | None = Field(
         0.05,
         description='Sets a minimum base probability threshold for token selection.\n\nThe Min-P sampling method was designed as an alternative to Top-P, and aims to ensure a balance of quality and variety. The parameter min_p represents the minimum probability for a token to be considered, relative to the probability of the most likely token. For example, with min_p=0.05 and the most likely token having a probability of 0.9, logits with a value less than 0.045 are filtered out.',
         title='Min P',
@@ -468,12 +478,12 @@ class CreateChatCompletionRequest(BaseModel):
         description='Whether to stream the results as they are generated. Useful for chatbots.',
         title='Stream',
     )
-    presence_penalty: confloat(ge=-2.0, le=2.0) | None = Field(
+    presence_penalty: Penalty | None = Field(
         0.0,
         description="Positive values penalize new tokens based on whether they appear in the text so far, increasing the model's likelihood to talk about new topics.",
         title='Presence Penalty',
     )
-    frequency_penalty: confloat(ge=-2.0, le=2.0) | None = Field(
+    frequency_penalty: Penalty | None = Field(
         0.0,
         description="Positive values penalize new tokens based on their existing frequency in the text so far, decreasing the model's likelihood to repeat the same line verbatim.",
         title='Frequency Penalty',
@@ -488,28 +498,28 @@ class CreateChatCompletionRequest(BaseModel):
     )
     n: int | None = Field(1, title='N')
     user: str | None = Field(None, title='User')
-    top_k: conint(ge=0) | None = Field(
+    top_k: NonNegativeInt | None = Field(
         40,
         description='Limit the next token selection to the K most probable tokens.\n\nTop-k sampling is a text generation method that selects the next token only from the top k most likely tokens predicted by the model. It helps reduce the risk of generating low-probability or nonsensical tokens, but it may also limit the diversity of the output. A higher value for top_k (e.g., 100) will consider more tokens and lead to more diverse text, while a lower value (e.g., 10) will focus on the most probable tokens and generate more conservative text.',
         title='Top K',
     )
-    repeat_penalty: confloat(ge=0.0) | None = Field(
+    repeat_penalty: RepeatPenalty | None = Field(
         1.1,
         description='A penalty applied to each token that is already generated. This helps prevent the model from repeating itself.\n\nRepeat penalty is a hyperparameter used to penalize the repetition of token sequences during text generation. It helps prevent the model from generating repetitive or monotonous text. A higher value (e.g., 1.5) will penalize repetitions more strongly, while a lower value (e.g., 0.9) will be more lenient.',
         title='Repeat Penalty',
     )
     logit_bias_type: LogitBiasType | None = Field(None, title='Logit Bias Type')
-    mirostat_mode: conint(ge=0, le=2) | None = Field(
+    mirostat_mode: MirostatMode | None = Field(
         0,
         description='Enable Mirostat constant-perplexity algorithm of the specified version (1 or 2; 0 = disabled)',
         title='Mirostat Mode',
     )
-    mirostat_tau: confloat(ge=0.0, le=10.0) | None = Field(
+    mirostat_tau: MirostatTau | None = Field(
         5.0,
         description='Mirostat target entropy, i.e. the target perplexity - lower values produce focused and coherent text, larger values produce more diverse and less coherent text',
         title='Mirostat Tau',
     )
-    mirostat_eta: confloat(ge=0.001, le=1.0) | None = Field(
+    mirostat_eta: MirostatEta | None = Field(
         0.1, description='Mirostat learning rate', title='Mirostat Eta'
     )
     grammar: str | None = Field(None, title='Grammar')

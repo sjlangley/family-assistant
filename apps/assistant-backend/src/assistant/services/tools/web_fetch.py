@@ -88,7 +88,7 @@ class WebFetchTool(BaseTool):
         result = await self._perform_fetch(url)
 
         payload = WebFetchPayload(
-            kind=self.name,
+            kind='web_fetch',
             url=url,
             title=result.get('title', ''),
             content=result.get('content', ''),

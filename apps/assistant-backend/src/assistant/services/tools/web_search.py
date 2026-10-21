@@ -72,7 +72,7 @@ class WebSearchTool(BaseTool):
         )
 
         payload = WebSearchPayload(
-            kind=self.name,
+            kind='web_search',
             results=results,
         )
 
