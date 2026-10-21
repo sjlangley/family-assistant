@@ -409,9 +409,10 @@ class MemoryStorage:
                     source_excerpt=source_excerpt,
                 )
 
-                result = await session.execute(stmt)
-                await session.flush()
-                row = result.scalars().first()
+                # SAVEPOINT: a failure must not abort the caller's transaction
+                async with session.begin_nested():
+                    result = await session.execute(stmt)
+                    row = result.scalars().first()
                 if row is not None:
                     return row
             except Exception as e:
