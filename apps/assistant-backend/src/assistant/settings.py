@@ -4,8 +4,11 @@ It uses Pydantic's BaseSettings to load environment variables from a `.env`
 file.
 """
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import json
+from typing import Annotated, Any
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from assistant.enums import Environment
 
@@ -21,7 +24,7 @@ class Settings(BaseSettings):
 
     # FastAPI’s CORS middleware does NOT support wildcard subdomains.
     # Ensure to include all specific subdomains for the web application.
-    client_origins: list[str] = Field(
+    client_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=list, alias='CLIENT_ORIGINS'
     )
 
@@ -41,7 +44,7 @@ class Settings(BaseSettings):
         alias='GOOGLE_OAUTH_CLIENT_ID',
     )
 
-    allowed_hosted_domains: list[str] = Field(
+    allowed_hosted_domains: Annotated[list[str], NoDecode] = Field(
         default_factory=list,
         description=(
             'List of allowed hosted domains (hd claim) for Google accounts. '
@@ -111,6 +114,16 @@ class Settings(BaseSettings):
         description='The Chroma collection name for storing assistant memory.',
         alias='CHROMA_COLLECTION_NAME',
     )
+
+    @field_validator('client_origins', 'allowed_hosted_domains', mode='before')
+    @classmethod
+    def _split_csv(cls, value: Any) -> Any:
+        """Accept comma-separated strings (or a JSON list) from the env."""
+        if not isinstance(value, str):
+            return value
+        if value.strip().startswith('['):
+            return json.loads(value)
+        return [item.strip() for item in value.split(',') if item.strip()]
 
 
 settings = Settings()  # pyrefly: ignore[missing-argument]

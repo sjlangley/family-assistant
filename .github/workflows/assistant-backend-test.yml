@@ -8,6 +8,7 @@ on:
       - '!apps/assistant-backend/*.md'
       - '!apps/assistant-backend/**/*.md'
       - '.github/workflows/assistant-backend-test.yml'
+      - 'docker-compose.yml'
   pull_request:
     branches: [main]
     paths:
@@ -15,6 +16,7 @@ on:
       - '!apps/assistant-backend/*.md'
       - '!apps/assistant-backend/**/*.md'
       - '.github/workflows/assistant-backend-test.yml'
+      - 'docker-compose.yml'
 
 jobs:
   test:
