@@ -58,7 +58,7 @@ See [DOCKER.md](DOCKER.md) for detailed Docker setup instructions.
 
 1. Clone the repo
 2. Install Python 3.13+ dependencies via pip
-3. Install Node.js 22+ dependencies for the frontend
+3. Install Node.js 22.13+ dependencies for the frontend
 4. Configure Google OAuth credentials
 5. Start PostgreSQL, the LLM server, the backend, and the frontend
 
@@ -104,7 +104,6 @@ with `pre-commit autoupdate`.
 This repo includes configuration files for AI coding assistants:
 
 - [AGENTS.md](AGENTS.md) - Top-level agent behavior guidelines
-- [CLAUDE.md](CLAUDE.md) - Claude-specific instructions
-- [GEMINI.md](GEMINI.md) - Gemini-specific instructions
+- [CLAUDE.md](CLAUDE.md) - Points Claude Code at `AGENTS.md`
 - [AI_AGENT_GUIDELINES.md](AI_AGENT_GUIDELINES.md) - Comprehensive agent workflow rules (test-driven
   development, validation requirements, commit conventions)

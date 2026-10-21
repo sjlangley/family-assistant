@@ -22,6 +22,19 @@ updates:
     schedule:
       interval: monthly
     groups:
+      # Listed before npm-development: Dependabot assigns a dependency to the
+      # first matching group, so ESLint majors land together with their plugins.
+      eslint:
+        patterns:
+          - "eslint"
+          - "@eslint/*"
+          - "eslint-plugin-*"
+          - "typescript-eslint"
+          - "@typescript-eslint/*"
+        update-types:
+          - major
+          - minor
+          - patch
       npm-production:
         dependency-type: production
         update-types:
