@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/sjlangley/family-assistant/compare/assistant-backend-v0.1.2...assistant-backend-v0.1.3) (2026-10-21)
+
+
+### Documentation
+
+* move specs and plans into issues and remove stale docs ([#188](https://github.com/sjlangley/family-assistant/issues/188)) ([5422e53](https://github.com/sjlangley/family-assistant/commit/5422e53cd399ef45a8ee78304de33d0831df03af))
+
 ## [0.1.2](https://github.com/sjlangley/family-assistant/compare/assistant-backend-v0.1.1...assistant-backend-v0.1.2) (2026-10-21)
 
 
