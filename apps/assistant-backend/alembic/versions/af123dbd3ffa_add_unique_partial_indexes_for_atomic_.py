@@ -23,7 +23,7 @@ def upgrade() -> None:
     # This supports atomic upsert when fact_key is present
     op.execute(
         """
-        CREATE UNIQUE INDEX durable_facts_user_fact_key_active_uniq
+        CREATE UNIQUE INDEX IF NOT EXISTS durable_facts_user_fact_key_active_uniq
         ON durable_facts(user_id, fact_key, active)
         WHERE fact_key IS NOT NULL AND active = true
         """
@@ -32,7 +32,7 @@ def upgrade() -> None:
     # This supports atomic upsert when fact_key is absent (keyless facts only)
     op.execute(
         """
-        CREATE UNIQUE INDEX durable_facts_user_subject_text_active_uniq
+        CREATE UNIQUE INDEX IF NOT EXISTS durable_facts_user_subject_text_active_uniq
         ON durable_facts(user_id, subject, fact_text, active)
         WHERE active = true AND fact_key IS NULL
         """
@@ -46,7 +46,7 @@ def downgrade() -> None:
     # Restore the old non-unique index
     op.execute(
         """
-        CREATE INDEX durable_facts_user_fact_key_active_idx
+        CREATE INDEX IF NOT EXISTS durable_facts_user_fact_key_active_idx
         ON durable_facts(user_id, fact_key, active)
         """
     )
