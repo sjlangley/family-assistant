@@ -1,0 +1,156 @@
+# See https://pre-commit.com for usage and hook docs.
+# Update pinned revs with: pre-commit autoupdate
+
+default_install_hook_types: [pre-commit, commit-msg]
+
+# Applies to every hook.
+#  - CHANGELOG.md: release-please owns apps/*/CHANGELOG.md and rewrites it in
+#    its own format on every release, so formatting it here just starts a tug
+#    of war (see #151).
+#  - .agents/skills/: vendored agent skills; keep them byte-identical to
+#    upstream so updates stay a clean diff.
+exclude: (^|/)CHANGELOG\.md$|^\.agents/skills/
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md] # keep 2-space hard line breaks in .md
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        # Bundled fonts are deliberately committed; everything else stays
+        # under the default 500 KB limit.
+        exclude: ^apps/assistant-ui/public/fonts/
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: https://github.com/hukkin/mdformat
+    rev: 1.0.0
+    hooks:
+      - id: mdformat
+        additional_dependencies:
+          - mdformat-gfm
+          - mdformat-footnote
+          - mdformat-frontmatter # leave YAML front matter untouched
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.49.1
+    hooks:
+      - id: markdownlint
+        args: [--config, .markdownlint.jsonc]
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      # The plain id builds from source rather than pulling a Docker image or
+      # expecting a preinstalled binary; the CI job installs only Python.
+      # Go pinned to the version betterleaks also uses, so the two hooks share
+      # one cached toolchain.
+      - id: actionlint
+        language_version: "1.27.0"
+
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.38.2
+    hooks:
+      # Validates .github/dependabot.yml and the workflows against their
+      # published schemas.
+      - id: check-dependabot
+      - id: check-github-workflows
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Keep in step with the ruff pin in apps/assistant-backend/pyproject.toml.
+    # Config comes from the root ruff.toml.
+    rev: v0.17.1
+    hooks:
+      # --fix writes the fixes and still fails the commit, so stage them and
+      # commit again.
+      - id: ruff-check
+        args: [--fix]
+      # types_or narrowed: the upstream hook can also claim Markdown, and
+      # mdformat owns Markdown here.
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  - repo: local
+    hooks:
+      # Pyrefly ships no .pre-commit-hooks.yaml, so this is a local hook. It
+      # needs the backend's dependencies installed to resolve imports, so it
+      # uses the backend venv at apps/assistant-backend/.venv when present
+      # (see README "Getting Started") and otherwise falls back to a `pyrefly`
+      # on PATH, which is how CI runs it (pip install -e "apps/assistant-backend[dev]").
+      # Runs from the backend directory so pyrefly picks up its pyrefly.toml.
+      - id: pyrefly
+        name: pyrefly
+        entry: >-
+          bash -c 'cd apps/assistant-backend &&
+          if [ -x .venv/bin/pyrefly ]; then exec .venv/bin/pyrefly check src/;
+          else exec pyrefly check src/; fi'
+        language: system
+        files: ^apps/assistant-backend/.*\.(py|pyi|toml)$
+        pass_filenames: false # the checker needs the project, not the staged files
+
+      # These run the frontend's own binaries (from apps/assistant-ui/node_modules,
+      # so the versions match CI and the npm scripts). `exec --no` makes a missing
+      # node_modules an error rather than npm fetching some other version. Run
+      # `npm ci` in apps/assistant-ui first.
+      # Markdown, YAML and Python are absent from types_or on purpose: mdformat,
+      # check-yaml/actionlint and ruff own those.
+      # --ignore-path is needed because prettier reads .prettierignore from the
+      # current directory, which is the repo root under pre-commit; without it the
+      # changelog ignore from apps/assistant-ui/.prettierignore would be lost.
+      - id: prettier
+        name: prettier
+        entry: >-
+          npm --prefix apps/assistant-ui exec --no -- prettier --write
+          --ignore-unknown --ignore-path apps/assistant-ui/.prettierignore
+        language: system
+        files: ^apps/assistant-ui/
+        types_or: [ts, tsx, javascript, jsx, json, css]
+
+      - id: eslint
+        name: eslint
+        entry: npm --prefix apps/assistant-ui run lint -- --max-warnings 0
+        language: system
+        files: ^apps/assistant-ui/
+        types_or: [ts, tsx, javascript, jsx]
+        pass_filenames: false # the type-aware rules need the project
+
+      - id: typecheck
+        name: typecheck
+        entry: npm --prefix apps/assistant-ui run typecheck
+        language: system
+        files: ^apps/assistant-ui/
+        types_or: [ts, tsx, json]
+        pass_filenames: false
+
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.19.2
+    hooks:
+      # release-please reads Conventional Commit types, so a malformed message
+      # silently drops out of the changelog or cuts the wrong release. -l
+      # measures the whole first line (type and scope included) and ignores the
+      # body. Overriding args replaces the hook's shipped defaults, so
+      # --allow-abort is repeated here, and --commit-msg-file stays last because
+      # pre-commit appends the message filename after the configured args.
+      - id: commitizen
+        stages: [commit-msg]
+        args: [--allow-abort, --message-length-limit, "72", --commit-msg-file]
+
+  - repo: https://github.com/betterleaks/betterleaks
+    rev: v1.9.0
+    hooks:
+      # Reports without writing, so nothing is left modified and unstaged.
+      # .betterleaks.toml holds what the repository treats as benign.
+      # language_version so every machine builds the same scanner.
+      - id: betterleaks
+        language_version: "1.27.0"
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1-1
+    hooks:
+      # shellcheck-py ships the binary as a wheel, so this needs no system
+      # shellcheck -- the CI job installs only Python.
+      - id: shellcheck

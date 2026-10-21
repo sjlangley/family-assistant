@@ -1,0 +1,32 @@
+[extend]
+useDefault = true
+
+# Placeholder values shipped in the example env files. They are documentation,
+# not credentials.
+[[allowlists]]
+description = "Placeholder values in the committed .env.example files"
+paths = [
+  '''(?:^|/)\.env\.example$''',
+]
+
+# Build output and dependencies: never committed (see .gitignore), and derived
+# from sources that are scanned anyway.
+[[allowlists]]
+description = "Generated output and installed dependencies, per .gitignore"
+paths = [
+  '''(?:^|/)node_modules/''',
+  '''(?:^|/)\.venv/''',
+  '''(?:^|/)coverage/''',
+  '''(?:^|/)dist/''',
+  '''(?:^|/)build/''',
+]
+
+# Parallel checkouts, read as a second copy of the tree: the same findings
+# twice, against whichever branch that worktree is on. Their commits are still
+# covered by the staged-diff hook and by CI on their PRs.
+[[allowlists]]
+description = "Git worktrees -- other checkouts of this repository, scanned on their own branch"
+paths = [
+  '''(?:^|/)\.claude/worktrees/''',
+  '''(?:^|/)\.worktrees/''',
+]
