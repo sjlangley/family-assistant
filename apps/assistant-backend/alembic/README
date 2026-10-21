@@ -84,15 +84,26 @@ the base schema first:
 **Option 1: Use SQLModel.metadata.create_all() then stamp**
 ```python
 # In a Python script or interactive session
-from assistant.database import engine
+from sqlalchemy import create_engine
+from sqlalchemy.engine.url import URL
 from sqlmodel import SQLModel
+
+from assistant.settings import settings
 
 # Import all models to register them
 from assistant.models.conversation_sql import Conversation, Message
 from assistant.models.memory_sql import ConversationMemorySummary, DurableFact
 
-# Create all tables
-SQLModel.metadata.create_all(engine)
+# Create all tables using a synchronous engine (mirrors get_url() in env.py)
+url = URL.create(
+    drivername='postgresql+psycopg',
+    username=settings.database_user,
+    password=settings.database_password,
+    host=settings.database_host,
+    port=settings.database_port,
+    database=settings.database_name,
+)
+SQLModel.metadata.create_all(create_engine(url))
 ```
 
 Then mark the migration as applied:
