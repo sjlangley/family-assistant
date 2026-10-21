@@ -7,12 +7,13 @@ This guide explains how to run the Family Assistant application stack using Dock
 The Docker Compose setup includes:
 
 - **PostgreSQL** - Database for storing user data, conversations, and memories
+- **Chroma** - Vector store used as a derived retrieval index for memory
+- **Ollama** - Local LLM runtime serving the default model
 - **Backend** - FastAPI application serving the API (`assistant-backend`)
 - **Frontend** - React application serving the UI (`assistant-ui`)
 
-**Note:** Docker Compose now includes an `ollama` service by default. You can still point the
-backend at another host-run OpenAI-compatible server if you want; see `apps/llm-server/README.md`
-for setup details.
+**Note:** You can still point the backend at another host-run OpenAI-compatible server instead of
+the bundled `ollama` service; see `apps/llm-server/README.md` for setup details.
 
 ## Prerequisites
 
@@ -273,4 +274,4 @@ For production deployments:
 - [Backend README](apps/assistant-backend/README.md)
 - [Frontend README](apps/assistant-ui/README.md)
 - [LLM Server Setup](apps/llm-server/README.md)
-- [Architecture Documentation](docs/ARCHITECTURE.md)
+- [Architecture decisions](docs/adr/README.md)

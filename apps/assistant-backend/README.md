@@ -53,6 +53,11 @@ ______________________________________________________________________
 | `GET`  | `/api/v1/conversations/{id}/messages` | Get all messages in a conversation                                                        |
 | `POST` | `/api/v1/conversations/{id}/messages` | Add a message to an existing conversation; returns JSON or SSE when `stream=true`         |
 
+`GET /api/v1/chat/debug-stream` streams dummy `thought`, `token` and `done` SSE events (with
+optional `thought_delay` and `token_delay` query parameters) to check the SSE pipeline. It needs a
+signed-in user, only works when `ENVIRONMENT` is `local` or `development` (404 otherwise), and is
+hidden from the OpenAPI schema.
+
 ______________________________________________________________________
 
 ## Running the Server
