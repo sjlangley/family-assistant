@@ -32,8 +32,8 @@ CONSTRAINTS: dict[str, tuple[Any, Any, tuple[type, ...]]] = {
 
 
 def _step(bound: Any) -> Any:
-    # Small enough that a just-outside value catches drift of any float bound,
-    # e.g. mirostat_eta 0.001 -> 0.0.
+    # Probes 0.001 outside each float bound, so outward drift of 0.001 or more
+    # fails (e.g. mirostat_eta 0.001 -> 0.0); smaller drift is not caught.
     return 1 if isinstance(bound, int) else 0.001
 
 
@@ -71,6 +71,21 @@ def test_value_outside_bound_is_rejected(case: Any) -> None:
 def test_boundary_and_none_are_accepted(case: Any) -> None:
     model, field, value = case
     assert getattr(model(**{field: value}), field) == value
+
+
+@pytest.mark.parametrize(
+    ('model', 'field'),
+    [(m, f) for f, (_, _, models) in CONSTRAINTS.items() for m in models],
+    ids=lambda x: getattr(x, '__name__', x),
+)
+def test_default_is_within_bounds(model: type, field: str) -> None:
+    # Pydantic does not validate defaults, so check them against the bounds.
+    low, high, _ = CONSTRAINTS[field]
+    default = model.model_fields[field].default
+    if default is None:
+        return
+    assert low is None or default >= low
+    assert high is None or default <= high
 
 
 @pytest.mark.parametrize('model', BOTH)
