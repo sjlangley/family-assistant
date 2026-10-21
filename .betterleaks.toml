@@ -36,6 +36,10 @@ paths = [
 # `${POSTGRES_PASSWORD:-...}` reference in the connection URL as a password.
 # condition = "AND" is required: the default is OR, which would let the path
 # alone suppress every finding in docker-compose.yml.
+# regexTarget = "line" matches the regex against the whole line, so ANY finding
+# on a docker-compose line containing this placeholder is suppressed (today only
+# the POSTGRES_PASSWORD and DATABASE_URL lines). Don't add other credentials to
+# those lines.
 [[allowlists]]
 description = "Compose variable interpolation with the placeholder default"
 condition = "AND"
