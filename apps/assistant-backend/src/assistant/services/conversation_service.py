@@ -1490,8 +1490,8 @@ class ConversationService:
 
         After successful background extraction and persistence, update the assistant
         message row to include memory_saved annotations reflecting what was actually
-        persisted. This is read-modify-write that preserves all existing
-        annotation fields.
+        persisted. Existing annotations are preserved unless they cannot be
+        parsed, in which case they are replaced.
 
         Args:
             session: Database session
