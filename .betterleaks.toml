@@ -34,8 +34,12 @@ paths = [
 # docker-compose.yml interpolates the database password from the environment
 # and falls back to the same placeholder as .env.example; the scanner reads the
 # `${POSTGRES_PASSWORD:-...}` reference in the connection URL as a password.
+# condition = "AND" is required: the default is OR, which would let the path
+# alone suppress every finding in docker-compose.yml.
 [[allowlists]]
 description = "Compose variable interpolation with the placeholder default"
+condition = "AND"
+regexTarget = "line"
 paths = [
   '''(?:^|/)docker-compose\.ya?ml$''',
 ]
